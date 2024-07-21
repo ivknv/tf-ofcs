@@ -1,0 +1,9 @@
+*.py[co]
+__pycache__/
+*.egg-info/
+.*.sw[a-z]
+build/
+dist/
+.venv/
+.vim/
+.tool-versions
