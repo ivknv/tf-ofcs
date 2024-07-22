@@ -18,6 +18,10 @@ scipy = "^1.14.0"
 ruff = "^0.5.3"
 mypy = "^1.10.1"
 ipython = "^8.26.0"
+jupyterlab = "^4.2.4"
+jupyterlab-lsp = "^5.1.0"
+python-lsp-server = {extras = ["rope"], version = "^1.11.0"}
+pylsp-mypy = "^0.6.8"
 
 [build-system]
 requires = ["poetry-core"]
@@ -42,3 +46,8 @@ ignore = ["F403", "F405", "RUF010", "I001", "PIE790", "RUF012"]
 venvPath = "."
 venv = ".venv"
 reportMissingModuleSource = "none"
+
+[tool.pylsp-mypy]
+enabled = true
+live_mode = true
+strict = false

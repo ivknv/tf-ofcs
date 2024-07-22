@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 import numpy.typing as npt
 import numpy as np
 import scipy.signal
@@ -10,7 +10,8 @@ import math
 
 from dataclasses import dataclass
 
-from .types import *
+if TYPE_CHECKING:
+    from .types import *
 
 __all__ = [
     "Signal",
@@ -36,7 +37,7 @@ class Constants:
 @dataclass
 class Signal:
     #: Type of the signal
-    type: SignalType
+    type: "SignalType"
 
     #: Signal's samples
     samples: npt.NDArray
@@ -56,7 +57,7 @@ class Signal:
     def __init__(
         self,
         *,
-        type: SignalType,
+        type: "SignalType",
         samples: npt.NDArray,
         sampling_rate: float,
         data_rate: float,
@@ -165,12 +166,12 @@ class NRZEncoder:
 @dataclass
 class System:
     #: System components
-    components: list[Component]
+    components: list["Component"]
 
-    def __init__(self, components: Optional[list[Component]] = None) -> None:
+    def __init__(self, components: Optional[list["Component"]] = None) -> None:
         self.components = components or []
 
-    def add(self, component: Component, /, *args, **kwargs) -> None:
+    def add(self, component: "Component", /, *args, **kwargs) -> None:
         self.components.append(component)
 
     def __call__(self, input_signal: DigitalSignal) -> Signal:
@@ -354,7 +355,7 @@ class OpticalChannel:
 @dataclass
 class ElectricalLowPassFilter:
     #: Filter type
-    type: FilterType
+    type: "FilterType"
 
     #: Filter cutoff frequency in Hz
     cutoff_frequency: float

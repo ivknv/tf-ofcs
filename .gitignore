@@ -7,3 +7,5 @@ dist/
 .venv/
 .vim/
 .tool-versions
+.ipynb_checkpoints/
+.virtual_documents/
