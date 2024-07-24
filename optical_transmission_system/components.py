@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from typing import TYPE_CHECKING, ClassVar, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, ClassVar
 import numpy.typing as npt
 import numpy as np
 import scipy.signal
@@ -15,13 +16,11 @@ if TYPE_CHECKING:
 
 __all__ = [
     "Signal",
-    "DigitalSignal",
-    "ElectricalSignal",
-    "OpticalSignal",
 
     "NRZEncoder",
     "System",
     "Transmitter",
+    "PulseAmplitudeModulator",
     "AWGN",
     "OpticalChannel",
     "ChromaticDispersion",
@@ -36,20 +35,9 @@ class Constants:
 
 
 @dataclass(frozen=True)
-class Signal:
-    #: Data type (dtype) for the samples array
-    dtype: ClassVar[npt.DTypeLike] = [("time", np.float32)]
-
-    #: Type of the signal
-    type: "SignalType"
-
+class Timing:
+    #: Time axis of the signal (in seconds)
     time: npt.NDArray[np.float32]
-
-    #: Signal's frequencies (in Hz), for every frequency there's an amplitude
-    frequencies: npt.NDArray[np.float32]
-
-    #: Signal's samples
-    samples: npt.NDArray
 
     #: Sampling rate in Hz
     sampling_rate: float
@@ -57,90 +45,66 @@ class Signal:
     #: Data rate in bits/second
     data_rate: float
 
+
+@dataclass(frozen=True)
+class Signal:
+    #: Data type (dtype) for the samples array
+    dtype: ClassVar[npt.DTypeLike] = [("time", np.float32)]
+
+    #: Type of the signal
+    type: "SignalType"
+
+    #: Signal's timing information
+    timing: Timing
+
+    #: Signal's frequencies (in Hz), for every frequency there's an amplitude
+    frequencies: npt.NDArray[np.float32]
+
+    #: Signal's samples
+    samples: npt.NDArray
+
     #: Central frequency of the of the emitted light in Hz
     central_frequency: float = 0.0
 
-    #: Line width of the signal, full width at half-maximum (FWHM), Hz
-    linewidth: float = 0.0
-
-
-@dataclass(frozen=True)
-class DigitalSignal(Signal):
-    dtype: ClassVar[npt.DTypeLike] = np.bool
-
-    def __init__(
-        self,
-        *,
-        time: Optional[npt.NDArray[np.float32]] = None,
-        samples: npt.NDArray,
-        sampling_rate: float,
-        data_rate: float,
-        central_frequency: float = 0,
-        linewidth: float = 0
-    ) -> None:
-        if time is None:
-            duration = len(samples) / data_rate
-            time = np.arange(0, duration, 1 / sampling_rate, dtype="float32")
-
-        super().__init__(
-            type="digital",
-            time=time,
-            frequencies=np.array([]),
-            samples=samples,
-            sampling_rate=sampling_rate,
-            data_rate=data_rate,
-            central_frequency=central_frequency,
-            linewidth=linewidth
-        )
-
-
-class ElectricalSignal(Signal):
-    dtype: ClassVar[npt.DTypeLike] = np.float32
-
-    def __init__(
-        self,
-        *,
-        time: npt.NDArray[np.float32],
-        samples: npt.NDArray,
-        sampling_rate: float,
-        data_rate: float,
-    ) -> None:
-        super().__init__(
-            type="electrical",
-            time=time,
-            frequencies=np.array([]),
-            samples=samples,
+    @staticmethod
+    def digital(samples: npt.NDArray, data_rate: float) -> "Signal":
+        duration = len(samples) / data_rate
+        sampling_rate = data_rate
+        timing = Timing(
+            np.arange(0, duration, 1 / sampling_rate, dtype=np.float32),
             sampling_rate=sampling_rate,
             data_rate=data_rate
         )
 
+        return Signal(
+            type="digital",
+            timing=timing,
+            frequencies=np.array([]),
+            samples=samples
+        )
 
-class OpticalSignal(Signal):
-    dtype: ClassVar[npt.DTypeLike] = np.float32
+    @staticmethod
+    def electrical(timing: Timing, samples: npt.NDArray) -> "Signal":
+        return Signal(
+            type="electrical",
+            timing=timing,
+            frequencies=np.array([]),
+            samples=samples
+        )
 
-    def __init__(
-        self,
-        *,
-        time: npt.NDArray[np.float32],
-        frequencies: Optional[npt.NDArray[np.float32]] = None,
+    @staticmethod
+    def optical(
+        timing: Timing,
+        frequencies: npt.NDArray[np.float32],
         samples: npt.NDArray,
-        sampling_rate: float,
-        data_rate: float,
-        central_frequency: float,
-        linewidth: float
-    ) -> None:
-        if frequencies is None:
-            frequencies = np.array([central_frequency], dtype="float32")
-
-        super().__init__(
+        central_frequency: float
+    ) -> "Signal":
+        return Signal(
             type="optical",
-            time=time,
+            timing=timing,
             frequencies=frequencies,
             samples=samples,
-            sampling_rate=sampling_rate,
-            data_rate=data_rate,
-            central_frequency=central_frequency,
-            linewidth=linewidth
+            central_frequency=central_frequency
         )
 
 
@@ -149,14 +113,11 @@ class NRZEncoder:
     #: Sampling rate in Hz
     sampling_rate: float
 
-    def __call__(self, digital_signal: DigitalSignal) -> ElectricalSignal:
-        signal_duration = len(digital_signal.samples) / digital_signal.data_rate
+    def __call__(self, digital_signal: Signal) -> Signal:
+        signal_duration = len(digital_signal.samples) / digital_signal.timing.data_rate
         time = np.arange(0, signal_duration, 1 / self.sampling_rate, dtype="float32")
 
-        samples = samples=np.zeros(
-            shape=(len(time),),
-            dtype=ElectricalSignal.dtype
-        )
+        samples = np.zeros(shape=time.shape, dtype=np.float32)
 
         # Oversample input signal if needed
         samples = np.repeat(
@@ -164,24 +125,29 @@ class NRZEncoder:
             math.ceil(len(time) / len(digital_signal.samples))
         )[:len(time)]
 
-        return ElectricalSignal(
-            time=time,
-            samples=samples,
-            sampling_rate=self.sampling_rate,
-            data_rate=digital_signal.data_rate,
+        return Signal.electrical(
+            timing=Timing(
+                time=time,
+                sampling_rate=self.sampling_rate,
+                data_rate=digital_signal.timing.data_rate
+            ),
+            samples=samples
         )
 
 
 @dataclass(frozen=True)
 class System:
     #: System components
-    components: list["Component"]
+    components: list["Callable"]
 
-    def __call__(self, input_signal: DigitalSignal) -> Signal:
-        result: Signal = input_signal
+    def __call__(self, inp: Any = None) -> Any:
+        result: Any = inp
 
         for component in self.components:
-            result = component(result)
+            if result is not None:
+                result = component(result)
+            else:
+                result = component()
 
         return result
 
@@ -203,20 +169,12 @@ class Transmitter:
     #: Number of frequency components in the signal
     frequency_count: int = 64
 
-    def __call__(self, electrical_signal: ElectricalSignal) -> OpticalSignal:
-        # Produce carrier signal
+    def __call__(self, timing: Timing) -> Signal:
         signal = np.ones(
-            shape=(len(electrical_signal.samples), self.frequency_count),
-            dtype=OpticalSignal.dtype
+            shape=(len(timing.time), self.frequency_count),
+            dtype=np.float32
         )
         signal *= self.power ** 0.5
-
-        # PAM modulation
-        signal *= abs(
-            electrical_signal.samples.repeat(
-                self.frequency_count
-            ).reshape(signal.shape)
-        ) ** 0.5
 
         gauss_variance = 1 / (2 * math.log(2)) ** 0.5 * self.linewidth
 
@@ -235,14 +193,37 @@ class Transmitter:
 
         signal[:,] *= distribution**0.5
 
-        return OpticalSignal(
-            time=electrical_signal.time,
+        return Signal.optical(
+            timing=timing,
             frequencies=frequencies,
             samples=signal,
-            sampling_rate=electrical_signal.sampling_rate,
-            data_rate=electrical_signal.data_rate,
             central_frequency=self.central_frequency,
-            linewidth=self.linewidth
+        )
+
+
+@dataclass(frozen=True)
+class PulseAmplitudeModulator:
+    #: Carrier signal source
+    carrier_source: Callable
+
+    #: Modulation order (number of amplitude/power levels)
+    order: int = 1
+
+    def __call__(self, modulation_signal: Signal) -> Signal:
+        carrier_signal = self.carrier_source(modulation_signal.timing)
+
+        modulated_signal = np.array(carrier_signal.samples)
+        modulated_signal *= abs(
+            modulation_signal.samples.repeat(
+                len(carrier_signal.frequencies)
+            ).reshape(modulated_signal.shape)
+        ) ** 0.5
+
+        return Signal.optical(
+            timing=carrier_signal.timing,
+            frequencies=carrier_signal.frequencies,
+            samples=modulated_signal,
+            central_frequency=carrier_signal.central_frequency,
         )
 
 
@@ -251,7 +232,7 @@ class AWGN:
     #: Signal's power
     power: float = 2e-5
 
-    def __call__(self, optical_signal: OpticalSignal) -> OpticalSignal:
+    def __call__(self, optical_signal: Signal) -> Signal:
         noise_amplitude = self.power ** 0.5
         noise = np.random.normal(
             0.0,
@@ -262,14 +243,11 @@ class AWGN:
         samples = np.array(optical_signal.samples)
         samples += noise
 
-        return OpticalSignal(
-            time=optical_signal.time,
+        return Signal.optical(
+            timing=optical_signal.timing,
             frequencies=optical_signal.frequencies,
             samples=samples,
-            sampling_rate=optical_signal.sampling_rate,
-            data_rate=optical_signal.data_rate,
             central_frequency=optical_signal.central_frequency,
-            linewidth=optical_signal.linewidth
         )
 
 
@@ -289,13 +267,13 @@ class ChromaticDispersion:
     #: Dispersion in ps/nm
     amount: float
 
-    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
+    def __call__(self, signal: Signal) -> Signal:
         wavelength_deltas = (Constants.c * 1e9 / signal.frequencies) - (Constants.c * 1e9 / signal.central_frequency)
 
         # Each wavelength (or frequency) will be shifted in time by some number
         # of samples
         timeshifts = (
-            self.amount * 1e-12 * signal.sampling_rate * wavelength_deltas
+            self.amount * 1e-12 * signal.timing.sampling_rate * wavelength_deltas
         ).astype(np.int32)
 
         min_shift = timeshifts.min()
@@ -326,14 +304,11 @@ class ChromaticDispersion:
         else:
             samples = new_signal[left_pad:]
 
-        return OpticalSignal(
-            time=signal.time,
+        return Signal.optical(
+            timing=signal.timing,
             frequencies=signal.frequencies,
             samples=samples,
-            sampling_rate=signal.sampling_rate,
-            data_rate=signal.data_rate,
             central_frequency=signal.central_frequency,
-            linewidth=signal.linewidth
         )
 
 
@@ -342,18 +317,15 @@ class OpticalLoss:
     # Optical signal power loss in dB
     loss: float
 
-    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
+    def __call__(self, signal: Signal) -> Signal:
         samples = np.array(signal.samples)
         samples /= 10 ** (self.loss * 0.1 * 0.5)
 
-        return OpticalSignal(
-            time=signal.time,
+        return Signal.optical(
+            timing=signal.timing,
             frequencies=signal.frequencies,
             samples=samples,
-            sampling_rate=signal.sampling_rate,
-            data_rate=signal.data_rate,
             central_frequency=signal.central_frequency,
-            linewidth=signal.linewidth
         )
 
 @dataclass(frozen=True)
@@ -367,7 +339,7 @@ class OpticalChannel:
     #: Transmission distance in km
     length: float
 
-    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
+    def __call__(self, signal: Signal) -> Signal:
         attenuated_signal = OpticalLoss(self.attenuation * self.length)(signal)
 
         if abs(self.chromatic_dispersion) >= 1e-6:
@@ -386,12 +358,12 @@ class ElectricalLowPassFilter:
     #: Filter order
     order: int
 
-    def __call__(self, signal: ElectricalSignal) -> ElectricalSignal:
+    def __call__(self, signal: Signal) -> Signal:
         sos = sp.signal.bessel(
             self.order,
             self.cutoff_frequency,
             "low",
-            fs=int(signal.sampling_rate),
+            fs=int(signal.timing.sampling_rate),
             output="sos",
             norm="delay"
         )
@@ -400,9 +372,7 @@ class ElectricalLowPassFilter:
         filtered_samples = np.array(signal.samples)
         filtered_samples = filtered_amplitude
 
-        return ElectricalSignal(
-            time=signal.time,
+        return Signal.electrical(
+            timing=signal.timing,
             samples=filtered_samples,
-            sampling_rate=signal.sampling_rate,
-            data_rate=signal.data_rate,
         )
