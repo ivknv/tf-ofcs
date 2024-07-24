@@ -277,8 +277,12 @@ class AWGN:
     #: Noise level in dB relative to the input signal
     level: float
 
+    #: Fixed amount of noise in watts that is independent of input signal
+    fixed_power: float
+
     def __call__(self, input_signal: Signal) -> Signal:
-        noise_amplitude = input_signal.power * 10 ** (self.level * 0.1)
+        noise_amplitude = self.fixed_power
+        noise_amplitude += input_signal.power * 10 ** (self.level * 0.1)
 
         if len(input_signal.frequencies):
             noise_amplitude /= len(input_signal.frequencies)
