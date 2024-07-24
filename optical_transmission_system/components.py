@@ -21,6 +21,9 @@ __all__ = [
     "System",
     "Transmitter",
     "PulseAmplitudeModulator",
+    "Identity",
+    "Fork",
+    "SignalCombination",
     "AWGN",
     "OpticalChannel",
     "ChromaticDispersion",
@@ -63,11 +66,14 @@ class Signal:
     #: Signal's samples
     samples: npt.NDArray
 
+    #: Power (maximum) of the optical signal in watts
+    power: float = 0.0
+
     #: Central frequency of the of the emitted light in Hz
     central_frequency: float = 0.0
 
     @staticmethod
-    def digital(samples: npt.NDArray, data_rate: float) -> "Signal":
+    def digital(*, samples: npt.NDArray, data_rate: float) -> "Signal":
         duration = len(samples) / data_rate
         sampling_rate = data_rate
         timing = Timing(
@@ -84,7 +90,7 @@ class Signal:
         )
 
     @staticmethod
-    def electrical(timing: Timing, samples: npt.NDArray) -> "Signal":
+    def electrical(*, timing: Timing, samples: npt.NDArray) -> "Signal":
         return Signal(
             type="electrical",
             timing=timing,
@@ -94,17 +100,20 @@ class Signal:
 
     @staticmethod
     def optical(
+        *,
         timing: Timing,
         frequencies: npt.NDArray[np.float32],
         samples: npt.NDArray,
-        central_frequency: float
+        central_frequency: float,
+        power: float
     ) -> "Signal":
         return Signal(
             type="optical",
             timing=timing,
             frequencies=frequencies,
             samples=samples,
-            central_frequency=central_frequency
+            central_frequency=central_frequency,
+            power=power
         )
 
 
@@ -198,6 +207,7 @@ class Transmitter:
             frequencies=frequencies,
             samples=signal,
             central_frequency=self.central_frequency,
+            power=self.power
         )
 
 
@@ -224,31 +234,70 @@ class PulseAmplitudeModulator:
             frequencies=carrier_signal.frequencies,
             samples=modulated_signal,
             central_frequency=carrier_signal.central_frequency,
+            power=carrier_signal.power
+        )
+
+
+class Identity:
+    def __call__(self, inp: Any) -> Any:
+        return inp
+
+
+@dataclass(frozen=True)
+class Fork:
+    #: Components that will process forked output. Every list item will get its
+    #: own copy of the forked output
+    components: list[Callable]
+
+    def __call__(self, inp: Any) -> tuple[Any, ...]:
+        return tuple(component(inp) for component in self.components)
+
+
+@dataclass(frozen=True)
+class SignalCombination:
+    def __call__(self, signals: tuple[Signal, ...]) -> Signal:
+        first_signal = signals[0]
+        combined_signal_samples = np.array(first_signal.samples)
+
+        for signal in signals[1:]:
+            combined_signal_samples += signal.samples
+
+        return Signal(
+            type=first_signal.type,
+            timing=first_signal.timing,
+            frequencies=first_signal.frequencies,
+            samples=combined_signal_samples,
+            power=first_signal.power,
+            central_frequency=first_signal.central_frequency
         )
 
 
 @dataclass(frozen=True)
 class AWGN:
-    #: Signal's power
-    power: float = 2e-5
+    #: Noise level in dB relative to the input signal
+    level: float
 
     def __call__(self, input_signal: Signal) -> Signal:
-        noise_amplitude = self.power ** 0.5
+        noise_amplitude = input_signal.power * 10 ** (self.level * 0.1)
+
+        if len(input_signal.frequencies):
+            noise_amplitude /= len(input_signal.frequencies)
+
+        noise_amplitude **= 0.5
+
         noise = np.random.normal(
             0.0,
             noise_amplitude,
             input_signal.samples.shape
         )
 
-        samples = np.array(input_signal.samples)
-        samples += noise
-
         return Signal(
             type=input_signal.type,
             timing=input_signal.timing,
             frequencies=input_signal.frequencies,
-            samples=samples,
-            central_frequency=input_signal.central_frequency
+            samples=noise + input_signal.samples,
+            central_frequency=input_signal.central_frequency,
+            power=input_signal.power
         )
 
 
@@ -303,6 +352,7 @@ class ChromaticDispersion:
             frequencies=signal.frequencies,
             samples=samples,
             central_frequency=signal.central_frequency,
+            power=signal.power
         )
 
 
@@ -312,14 +362,16 @@ class OpticalLoss:
     loss: float
 
     def __call__(self, signal: Signal) -> Signal:
+        power_loss_coeff = 10 ** (self.loss * 0.1)
         samples = np.array(signal.samples)
-        samples /= 10 ** (self.loss * 0.1 * 0.5)
+        samples /= power_loss_coeff ** 0.5
 
         return Signal.optical(
             timing=signal.timing,
             frequencies=signal.frequencies,
             samples=samples,
             central_frequency=signal.central_frequency,
+            power=signal.power / power_loss_coeff
         )
 
 @dataclass(frozen=True)
@@ -368,5 +420,5 @@ class ElectricalLowPassFilter:
 
         return Signal.electrical(
             timing=signal.timing,
-            samples=filtered_samples,
+            samples=filtered_samples
         )
