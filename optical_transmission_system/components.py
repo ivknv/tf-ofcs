@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 import numpy.typing as npt
 import numpy as np
 import scipy.signal
@@ -51,9 +51,6 @@ class Timing:
 
 @dataclass(frozen=True)
 class Signal:
-    #: Data type (dtype) for the samples array
-    dtype: ClassVar[npt.DTypeLike] = [("time", np.float32)]
-
     #: Type of the signal
     type: "SignalType"
 
@@ -71,23 +68,6 @@ class Signal:
 
     #: Central frequency of the of the emitted light in Hz
     central_frequency: float = 0.0
-
-    @staticmethod
-    def digital(*, samples: npt.NDArray, data_rate: float) -> "Signal":
-        duration = len(samples) / data_rate
-        sampling_rate = data_rate
-        timing = Timing(
-            np.arange(0, duration, 1 / sampling_rate, dtype=np.float32),
-            sampling_rate=sampling_rate,
-            data_rate=data_rate
-        )
-
-        return Signal(
-            type="digital",
-            timing=timing,
-            frequencies=np.array([]),
-            samples=samples
-        )
 
     @staticmethod
     def electrical(*, timing: Timing, samples: npt.NDArray) -> "Signal":
@@ -122,23 +102,26 @@ class NRZEncoder:
     #: Sampling rate in Hz
     sampling_rate: float
 
-    def __call__(self, digital_signal: Signal) -> Signal:
-        signal_duration = len(digital_signal.samples) / digital_signal.timing.data_rate
-        time = np.arange(0, signal_duration, 1 / self.sampling_rate, dtype="float32")
+    #: Data rate in bits/s
+    data_rate: float
+
+    def __call__(self, bitseq: "BitSequence") -> Signal:
+        signal_duration = len(bitseq) / self.data_rate
+        time = np.arange(0, signal_duration, 1 / self.sampling_rate, dtype=np.float32)
 
         samples = np.zeros(shape=time.shape, dtype=np.float32)
 
         # Oversample input signal if needed
         samples = np.repeat(
-            digital_signal.samples,
-            math.ceil(len(time) / len(digital_signal.samples))
+            bitseq.astype(np.float32),
+            math.ceil(len(time) / len(bitseq))
         )[:len(time)]
 
         return Signal.electrical(
             timing=Timing(
                 time=time,
                 sampling_rate=self.sampling_rate,
-                data_rate=digital_signal.timing.data_rate
+                data_rate=self.data_rate
             ),
             samples=samples
         )
@@ -275,10 +258,10 @@ class SignalCombination:
 @dataclass(frozen=True)
 class AWGN:
     #: Noise level in dB relative to the input signal
-    level: float
+    level: float = 0.0
 
     #: Fixed amount of noise in watts that is independent of input signal
-    fixed_power: float
+    fixed_power: float = 0.0
 
     def __call__(self, input_signal: Signal) -> Signal:
         noise_amplitude = self.fixed_power
