@@ -9,9 +9,7 @@ if TYPE_CHECKING:
 __all__ = [
     "Component",
     "SignalType",
-    "FilterType"
 ]
 
 Component = Callable[["Signal"], "Signal"]
 SignalType = Union[Literal["digital"], Literal["electrical"], Literal["optical"]]
-FilterType = Union[Literal["butterworth"], Literal["bessel"], Literal["chebyshev"]]
