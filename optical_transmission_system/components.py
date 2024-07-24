@@ -232,34 +232,28 @@ class AWGN:
     #: Signal's power
     power: float = 2e-5
 
-    def __call__(self, optical_signal: Signal) -> Signal:
+    def __call__(self, input_signal: Signal) -> Signal:
         noise_amplitude = self.power ** 0.5
         noise = np.random.normal(
             0.0,
             noise_amplitude,
-            optical_signal.samples.shape
+            input_signal.samples.shape
         )
 
-        samples = np.array(optical_signal.samples)
+        samples = np.array(input_signal.samples)
         samples += noise
 
-        return Signal.optical(
-            timing=optical_signal.timing,
-            frequencies=optical_signal.frequencies,
+        return Signal(
+            type=input_signal.type,
+            timing=input_signal.timing,
+            frequencies=input_signal.frequencies,
             samples=samples,
-            central_frequency=optical_signal.central_frequency,
+            central_frequency=input_signal.central_frequency
         )
 
 
 def gaussian_distribution(x: npt.NDArray, mean: float, variance: float) -> npt.NDArray:
     return 1 / (variance * ((2 * math.pi) ** 0.5)) * math.e ** (-1/2 * ((x - mean) / variance) ** 2)
-
-
-def linewidth_from_hz_to_nm(central_frequency_hz: float, linewidth_hz: float) -> float:
-    lambda_hi = Constants.c / (central_frequency_hz - linewidth_hz * 0.5) * 1e9
-    lambda_lo = Constants.c / (central_frequency_hz + linewidth_hz * 0.5) * 1e9
-
-    return lambda_hi - lambda_lo
 
 
 @dataclass(frozen=True)
