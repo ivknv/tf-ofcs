@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any, Optional
 import numpy.typing as npt
 import numpy as np
 import scipy.signal
@@ -10,17 +10,16 @@ import scipy as sp
 import math
 
 from dataclasses import dataclass
-
-if TYPE_CHECKING:
-    from .types import *
+from .types import *
 
 __all__ = [
     "Signal",
 
     "NRZEncoder",
+    "PAMEncoder",
     "System",
     "Transmitter",
-    "PulseAmplitudeModulator",
+    "IntensityModulator",
     "Identity",
     "Fork",
     "SignalCombination",
@@ -128,6 +127,60 @@ class NRZEncoder:
 
 
 @dataclass(frozen=True)
+class PAMEncoder:
+    #: Sampling rate in Hz
+    sampling_rate: float
+
+    #: Data rate in symbols/second
+    symbol_rate: float
+
+    #: Modulation order (number of amplitude/power levels)
+    order: int = 1
+
+    #: Constellation used for encoding
+    constellation: Optional[dict[tuple[int, ...], float]] = None
+
+    def _map_to_pam(self, bitseq: "BitSequence") -> float:
+        symbol = 0
+
+        for i, bit in enumerate(bitseq):
+            symbol += bit * self.order ** (len(bitseq) - 1 - i)
+
+        return symbol
+
+    def __call__(self, bitseq: "BitSequence") -> Signal:
+        if len(bitseq) % self.order != 0:
+            raise ValueError(f"bit sequence length must be a multiple of {self.order} bits")
+
+        signal_duration = len(bitseq) / self.symbol_rate
+        time = np.arange(0, signal_duration, 1 / self.sampling_rate, dtype=np.float32)
+
+        pam_sequence = np.zeros(shape=(len(bitseq) // self.order,), dtype=np.float32)
+
+        for i in range(len(pam_sequence)):
+            input_symbol = bitseq[i * self.order:(i + 1) * self.order]
+
+            if self.constellation is None:
+                pam_sequence[i] = self._map_to_pam(input_symbol)
+            else:
+                pam_sequence[i] = self.constellation[tuple(input_symbol)]
+
+        pam_sequence /= self.order
+
+        return Signal.electrical(
+            timing=Timing(
+                time=time,
+                sampling_rate=self.sampling_rate,
+                data_rate=self.symbol_rate * self.order
+            ),
+            samples=np.repeat(
+                pam_sequence,
+                math.ceil(len(time) / len(pam_sequence))
+            )[:len(time)]
+        )
+
+
+@dataclass(frozen=True)
 class System:
     #: System components
     components: list["Callable"]
@@ -195,12 +248,9 @@ class Transmitter:
 
 
 @dataclass(frozen=True)
-class PulseAmplitudeModulator:
+class IntensityModulator:
     #: Carrier signal source
-    carrier_source: Callable
-
-    #: Modulation order (number of amplitude/power levels)
-    order: int = 1
+    carrier_source: Callable[[Timing], Signal]
 
     def __call__(self, modulation_signal: Signal) -> Signal:
         carrier_signal = self.carrier_source(modulation_signal.timing)
@@ -221,6 +271,7 @@ class PulseAmplitudeModulator:
         )
 
 
+@dataclass(frozen=True)
 class Identity:
     def __call__(self, inp: Any) -> Any:
         return inp
