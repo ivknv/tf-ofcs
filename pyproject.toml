@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "optical-transmission-system"
+name = "optical-communication-system"
 version = "0.1.0"
 description = ""
 authors = ["Ivan Konovalov <ivknv0@gmail.com>"]
@@ -28,7 +28,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.mypy]
-packages = ["optical_transmission_system"]
+packages = ["optical_communication_system"]
 
 [tool.ruff]
 line-length = 120
