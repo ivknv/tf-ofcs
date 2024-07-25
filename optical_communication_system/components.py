@@ -108,11 +108,11 @@ class NRZEncoder:
         signal_duration = len(bitseq) / self.data_rate
         time = np.arange(0, signal_duration, 1 / self.sampling_rate, dtype=np.float32)
 
-        samples = np.zeros(shape=time.shape, dtype=np.float32)
+        samples = np.zeros(shape=time.shape, dtype=np.complex64)
 
         # Oversample input signal if needed
         samples = np.repeat(
-            bitseq.astype(np.float32),
+            bitseq.astype(np.complex64),
             math.ceil(len(time) / len(bitseq))
         )[:len(time)]
 
@@ -155,7 +155,7 @@ class PAMEncoder:
         signal_duration = len(bitseq) / self.symbol_rate
         time = np.arange(0, signal_duration, 1 / self.sampling_rate, dtype=np.float32)
 
-        pam_sequence = np.zeros(shape=(len(bitseq) // self.order,), dtype=np.float32)
+        pam_sequence = np.zeros(shape=(len(bitseq) // self.order,), dtype=np.complex64)
 
         for i in range(len(pam_sequence)):
             input_symbol = bitseq[i * self.order:(i + 1) * self.order]
@@ -217,7 +217,7 @@ class Transmitter:
     def __call__(self, timing: Timing) -> Signal:
         signal = np.ones(
             shape=(len(timing.time), self.frequency_count),
-            dtype=np.float32
+            dtype=np.complex64
         )
         signal *= self.power ** 0.5
 
@@ -325,9 +325,9 @@ class AWGN:
 
         noise = np.random.normal(
             0.0,
-            noise_amplitude,
-            input_signal.samples.shape
-        )
+            noise_amplitude / (2 ** 0.5),
+            input_signal.samples.size * 2
+        ).astype(np.float32).view(np.complex64).reshape(input_signal.samples.shape)
 
         return Signal(
             type=input_signal.type,
