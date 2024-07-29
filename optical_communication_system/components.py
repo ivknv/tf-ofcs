@@ -7,12 +7,14 @@ import numpy as np
 import scipy.signal
 import scipy as sp
 
+import itertools
 import math
 
 from dataclasses import dataclass
 from .types import *
 
 __all__ = [
+    "Timing",
     "Signal",
 
     "NRZEncoder",
@@ -27,7 +29,10 @@ __all__ = [
     "OpticalChannel",
     "ChromaticDispersion",
     "OpticalLoss",
-    "ElectricalLowPassFilter"
+    "ElectricalLowPassFilter",
+    "Photodiode",
+    "NRZDecoder",
+    "PAMDecoder"
 ]
 
 
@@ -44,8 +49,8 @@ class Timing:
     #: Sampling rate in Hz
     sampling_rate: float
 
-    #: Data rate in bits/second
-    data_rate: float
+    #: Data rate in symbols/second
+    symbol_rate: float
 
 
 @dataclass(frozen=True)
@@ -120,10 +125,17 @@ class NRZEncoder:
             timing=Timing(
                 time=time,
                 sampling_rate=self.sampling_rate,
-                data_rate=self.data_rate
+                symbol_rate=self.data_rate
             ),
             samples=samples
         )
+
+
+def _default_pam_constellation(order: int) -> dict[tuple[int, ...], float]:
+    return {
+        key: sum(bit * 2 ** (order - i - 1) for i, bit in enumerate(key)) / (2 ** order - 1)
+        for key in itertools.product((0, 1), repeat=order)
+    }
 
 
 @dataclass(frozen=True)
@@ -131,28 +143,35 @@ class PAMEncoder:
     #: Sampling rate in Hz
     sampling_rate: float
 
-    #: Data rate in symbols/second
-    symbol_rate: float
+    #: Data rate in bits/second
+    data_rate: float
+
+    #: Constellation used for encoding
+    constellation: dict[tuple[int, ...], float]
 
     #: Modulation order (number of amplitude/power levels)
     order: int = 1
 
-    #: Constellation used for encoding
-    constellation: Optional[dict[tuple[int, ...], float]] = None
+    def __init__(
+        self,
+        sampling_rate: float,
+        data_rate: float,
+        order: int = 1,
+        constellation: Optional[dict[tuple[int, ...], float]] = None
+    ) -> None:
+        if constellation is None:
+            constellation = _default_pam_constellation(order)
 
-    def _map_to_pam(self, bitseq: "BitSequence") -> float:
-        symbol = 0
-
-        for i, bit in enumerate(bitseq):
-            symbol += bit * self.order ** (len(bitseq) - 1 - i)
-
-        return symbol
+        object.__setattr__(self, "sampling_rate", sampling_rate)
+        object.__setattr__(self, "data_rate", data_rate)
+        object.__setattr__(self, "order", order)
+        object.__setattr__(self, "constellation", constellation)
 
     def __call__(self, bitseq: "BitSequence") -> Signal:
         if len(bitseq) % self.order != 0:
             raise ValueError(f"bit sequence length must be a multiple of {self.order} bits")
 
-        signal_duration = len(bitseq) / self.symbol_rate
+        signal_duration = len(bitseq) / self.data_rate
         time = np.arange(0, signal_duration, 1 / self.sampling_rate, dtype=np.float32)
 
         pam_sequence = np.zeros(shape=(len(bitseq) // self.order,), dtype=np.complex64)
@@ -160,18 +179,13 @@ class PAMEncoder:
         for i in range(len(pam_sequence)):
             input_symbol = bitseq[i * self.order:(i + 1) * self.order]
 
-            if self.constellation is None:
-                pam_sequence[i] = self._map_to_pam(input_symbol)
-            else:
-                pam_sequence[i] = self.constellation[tuple(input_symbol)]
-
-        pam_sequence /= self.order
+            pam_sequence[i] = self.constellation[tuple(input_symbol)]
 
         return Signal.electrical(
             timing=Timing(
                 time=time,
                 sampling_rate=self.sampling_rate,
-                data_rate=self.symbol_rate * self.order
+                symbol_rate=self.data_rate / self.order
             ),
             samples=np.repeat(
                 pam_sequence,
@@ -236,7 +250,7 @@ class Transmitter:
         )
         distribution /= np.sum(distribution)
 
-        signal[:,] *= distribution**0.5
+        signal[:,] *= distribution ** 0.5
 
         return Signal.optical(
             timing=timing,
@@ -256,7 +270,7 @@ class IntensityModulator:
         carrier_signal = self.carrier_source(modulation_signal.timing)
 
         modulated_signal = np.array(carrier_signal.samples)
-        modulated_signal *= abs(
+        modulated_signal *= np.abs(
             modulation_signal.samples.repeat(
                 len(carrier_signal.frequencies)
             ).reshape(modulated_signal.shape)
@@ -412,6 +426,7 @@ class OpticalLoss:
             power=signal.power / power_loss_coeff
         )
 
+
 @dataclass(frozen=True)
 class OpticalChannel:
     #: Attenuation in the channel in dB/km
@@ -452,11 +467,123 @@ class ElectricalLowPassFilter:
             norm="delay"
         )
 
-        filtered_amplitude = sp.signal.sosfilt(sos, signal.samples)
-        filtered_samples = np.array(signal.samples)
-        filtered_samples = filtered_amplitude
+        filtered_samples = sp.signal.sosfilt(sos, signal.samples)
 
         return Signal.electrical(
             timing=signal.timing,
             samples=filtered_samples
         )
+
+
+@dataclass(frozen=True)
+class Photodiode:
+    #: Minimum power (in watts) that can be converted into a current
+    sensitivity: float = 1e-5
+
+    #: Maximum power the diode can convert (anything above will be clipped)
+    maximum_power: float = 2e-3
+
+    def __call__(self, signal: Signal) -> Signal:
+        electrical_signal = np.sum(np.abs(signal.samples)**2, axis=1)
+        electrical_signal = electrical_signal.clip(self.sensitivity, self.maximum_power)
+
+        return Signal.electrical(
+            timing=signal.timing,
+            samples=electrical_signal
+        )
+
+
+@dataclass(frozen=True)
+class NRZDecoder:
+    #: Data rate in bits/s
+    data_rate: float
+
+    #: Minimum current (or power in watts) recognized as a 1
+    threshold: float = 1e-5
+
+    #: Currents above this value will be clipped
+    max_current: float = 2e-3
+
+    def __call__(self, signal: Signal) -> "BitSequence":
+        n = int(round(signal.timing.sampling_rate / self.data_rate))
+        output = np.zeros((signal.samples.size // n,), dtype=np.bool)
+
+        current = np.array(signal.samples)
+        current[current > self.max_current] = self.max_current
+
+        max_current = max(np.max(signal.samples), self.threshold)
+
+        for i in range(output.size):
+            average_current = np.average(np.abs(current[i * n:(i + 1) * n]))
+
+            output[i] = average_current >= (max_current * 0.5)
+
+        return output
+
+
+@dataclass(frozen=True)
+class PAMDecoder:
+    #: Data rate in bits/second
+    data_rate: float
+
+    #: Constellation used for encoding
+    constellation: dict[tuple[int, ...], float]
+
+    #: Modulation order (number of amplitude/power levels)
+    order: int = 1
+
+    #: Minimum current (or power in watts) recognized as non-zero
+    threshold: float = 1e-5
+
+    #: Currents above this value will be clipped
+    max_current: float = 2e-3
+
+    def __init__(
+        self,
+        data_rate: float,
+        order: int = 1,
+        constellation: Optional[dict[tuple[int, ...], float]] = None,
+        threshold: float = 1e-5,
+        max_current: float = 2e-3
+    ) -> None:
+        if constellation is None:
+            constellation = _default_pam_constellation(order)
+
+        object.__setattr__(self, "data_rate", data_rate)
+        object.__setattr__(self, "order", order)
+        object.__setattr__(self, "constellation", constellation)
+        object.__setattr__(self, "threshold", threshold)
+        object.__setattr__(self, "max_current", max_current)
+
+    def __call__(self, signal: Signal) -> "BitSequence":
+        n = int(round(signal.timing.sampling_rate / (self.data_rate / self.order)))
+        symbols = np.zeros((signal.samples.size // n,), dtype=np.float32)
+
+        current = np.array(signal.samples)
+        current[current > self.max_current] = self.max_current
+
+        max_current = max(np.max(signal.samples), self.threshold)
+
+        for i in range(symbols.size):
+            average_current = np.average(np.abs(current[i * n:(i + 1) * n]))
+
+            symbols[i] = average_current / max_current
+
+        output = np.zeros(shape=(symbols.size * self.order,), dtype=np.bool)
+        symbol_map = sorted(self.constellation.items(), key=lambda item: item[1])
+
+        for i, symbol in enumerate(symbols):
+            found_mapping: tuple[tuple, float] = (tuple(), float("inf"))
+
+            for sequence, value in symbol_map:
+                if abs(symbol - value) < abs(symbol - found_mapping[1]):
+                    found_mapping = (sequence, value)
+                else:
+                    break
+
+            sequence = found_mapping[0]
+
+            if sequence:
+                output[i * self.order:(i + 1) * self.order] = sequence
+
+        return output
