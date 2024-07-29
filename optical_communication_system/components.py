@@ -32,7 +32,8 @@ __all__ = [
     "ElectricalLowPassFilter",
     "Photodiode",
     "NRZDecoder",
-    "PAMDecoder"
+    "PAMDecoder",
+    "BERAnalyzer"
 ]
 
 
@@ -587,3 +588,14 @@ class PAMDecoder:
                 output[i * self.order:(i + 1) * self.order] = sequence
 
         return output
+
+
+@dataclass(frozen=True)
+class BERAnalyzer:
+    def __call__(self, expected_output: "BitSequence", output: "BitSequence") -> float:
+        if output.size != expected_output.size:
+            raise ValueError("shapes of expected and actual output don't match")
+
+        correct_count = np.count_nonzero(expected_output == output)
+
+        return (output.size - correct_count) / (output.size)
