@@ -112,7 +112,7 @@ class NRZEncoder:
 
     def __call__(self, bitseq: "BitSequence") -> Signal:
         signal_duration = len(bitseq) / self.data_rate
-        time = np.arange(0, signal_duration, 1 / self.sampling_rate, dtype=np.float32)
+        time = np.linspace(0, signal_duration, int(self.sampling_rate * signal_duration), dtype=np.float32)
 
         samples = np.zeros(shape=time.shape, dtype=np.complex64)
 
@@ -173,7 +173,7 @@ class PAMEncoder:
             raise ValueError(f"bit sequence length must be a multiple of {self.order} bits")
 
         signal_duration = len(bitseq) / self.data_rate
-        time = np.arange(0, signal_duration, 1 / self.sampling_rate, dtype=np.float32)
+        time = np.linspace(0, signal_duration, int(self.sampling_rate * signal_duration), dtype=np.float32)
 
         pam_sequence = np.zeros(shape=(len(bitseq) // self.order,), dtype=np.complex64)
 
