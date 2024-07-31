@@ -453,27 +453,12 @@ class ElectricalLowPassFilter:
     #: Filter cutoff frequency in Hz
     cutoff_frequency: float
 
-    #: Number of samples of the FIR filter
-    samples: int
-
-    sampling_rate: float
-
-    def __init__(self, cutoff_frequency: float, samples: int, sampling_rate: float) -> None:
-        freqs = np.fft.rfftfreq(samples, 1.0 / sampling_rate)
-
-        # Frequency response of an ideal low-pass filter
-        H = np.zeros(freqs.shape, dtype=np.float32)
-        H[freqs <= cutoff_frequency] = 1.0
-
-        # Impulse response of an ideal low-pass filter
-        h = np.fft.irfft(H)
-        #h *= np.fft.ifftshift(np.blackman(h.size))
-
-        object.__setattr__(self, "_kernel", h.astype(np.float32))
-
     def __call__(self, signal: Signal) -> Signal:
-        kernel: npt.NDArray[np.float32] = self.__getattribute__("_kernel")
-        filtered_samples = np.convolve(signal.samples, kernel)[:len(signal.samples)]
+        fft = np.fft.fft(signal.samples)
+        freqs = np.fft.fftfreq(fft.size, 1.0 / signal.timing.sampling_rate)
+        fft[np.abs(freqs) > self.cutoff_frequency] = 0.0
+
+        filtered_samples = np.fft.ifft(fft)
 
         return Signal.electrical(
             timing=signal.timing,
@@ -517,7 +502,7 @@ class NRZDecoder:
         current = np.array(signal.samples)
         current[current > self.max_current] = self.max_current
 
-        max_current = max(np.max(signal.samples), self.threshold)
+        max_current = max(np.max(np.abs(signal.samples)), self.threshold)
 
         for i in range(output.size):
             average_current = np.average(np.abs(current[i * n:(i + 1) * n]))
@@ -568,7 +553,7 @@ class PAMDecoder:
         current = np.array(signal.samples)
         current[current > self.max_current] = self.max_current
 
-        max_current = max(np.max(signal.samples), self.threshold)
+        max_current = max(np.max(np.abs(signal.samples)), self.threshold)
 
         for i in range(symbols.size):
             average_current = np.average(np.abs(current[i * n:(i + 1) * n]))
