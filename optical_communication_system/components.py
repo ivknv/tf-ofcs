@@ -4,8 +4,6 @@ from collections.abc import Callable
 from typing import Any, Optional
 import numpy.typing as npt
 import numpy as np
-import scipy.signal
-import scipy as sp
 
 import itertools
 import math
@@ -455,20 +453,27 @@ class ElectricalLowPassFilter:
     #: Filter cutoff frequency in Hz
     cutoff_frequency: float
 
-    #: Filter order
-    order: int
+    #: Number of samples of the FIR filter
+    samples: int
+
+    sampling_rate: float
+
+    def __init__(self, cutoff_frequency: float, samples: int, sampling_rate: float) -> None:
+        freqs = np.fft.rfftfreq(samples, 1.0 / sampling_rate)
+
+        # Frequency response of an ideal low-pass filter
+        H = np.zeros(freqs.shape, dtype=np.float32)
+        H[freqs <= cutoff_frequency] = 1.0
+
+        # Impulse response of an ideal low-pass filter
+        h = np.fft.irfft(H)
+        #h *= np.fft.ifftshift(np.blackman(h.size))
+
+        object.__setattr__(self, "_kernel", h.astype(np.float32))
 
     def __call__(self, signal: Signal) -> Signal:
-        sos = sp.signal.bessel(
-            self.order,
-            self.cutoff_frequency,
-            "low",
-            fs=int(signal.timing.sampling_rate),
-            output="sos",
-            norm="delay"
-        )
-
-        filtered_samples = sp.signal.sosfilt(sos, signal.samples)
+        kernel: npt.NDArray[np.float32] = self.__getattribute__("_kernel")
+        filtered_samples = np.convolve(signal.samples, kernel)[:len(signal.samples)]
 
         return Signal.electrical(
             timing=signal.timing,
