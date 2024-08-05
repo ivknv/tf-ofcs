@@ -1,244 +1,259 @@
-# -*- coding: utf-8 -*-
-
-from collections.abc import Callable
-from typing import Any, Optional
-import numpy.typing as npt
-import numpy as np
-
-import itertools
+from collections.abc import Callable, Sequence
 import math
+from typing import Any, Optional
+import typing
 
-from dataclasses import dataclass
-from .types import *
+import tensorflow as tf
 
 __all__ = [
     "Timing",
-    "Signal",
+    "ElectricalSignal",
+    "OpticalSignal",
 
-    "NRZEncoder",
     "PAMEncoder",
-    "System",
     "Transmitter",
     "IntensityModulator",
-    "Identity",
-    "Fork",
-    "SignalCombination",
-    "AWGN",
-    "OpticalChannel",
-    "ChromaticDispersion",
+    "ElectricalAWGN",
+    "OpticalAWGN",
     "OpticalLoss",
+    "OpticalFiber",
     "ElectricalLowPassFilter",
     "Photodiode",
-    "NRZDecoder",
     "PAMDecoder",
-    "BERAnalyzer"
+    "BERAnalyzer",
+    "System"
 ]
 
 
 class Constants:
     #: Speed of light in vacuum in m/s
-    c: float = 2.99792458E8
+    c = tf.Variable(tf.constant(2.99792458E8))
+
+    pi = tf.Variable(tf.constant(math.pi))
+    e = tf.Variable(tf.constant(math.e))
 
 
-@dataclass(frozen=True)
-class Timing:
+class Timing(tf.experimental.ExtensionType):
     #: Time axis of the signal (in seconds)
-    time: npt.NDArray[np.float32]
+    time: tf.Tensor  # shape=[None]; dtype=tf.float32
 
     #: Sampling rate in Hz
-    sampling_rate: float
+    sampling_rate: tf.Tensor  # shape=[]; dtype=tf.float32
 
     #: Data rate in symbols/second
-    symbol_rate: float
+    symbol_rate: tf.Tensor  # shape=[]; dtype=tf.float32
 
 
-@dataclass(frozen=True)
-class Signal:
-    #: Type of the signal
-    type: "SignalType"
+timing_spec = Timing.Spec(
+    time=tf.TensorSpec(shape=[None], dtype=tf.float32),
+    sampling_rate=tf.TensorSpec(shape=[], dtype=tf.float32),
+    symbol_rate=tf.TensorSpec(shape=[], dtype=tf.float32)
+)
 
+
+class ElectricalSignal(tf.experimental.ExtensionType):
+    #: Signal's timing information
+    timing: Timing
+
+    #: Signal's samples
+    samples: tf.Tensor  # shape=[None]; dtype=tf.complex64
+
+
+electrical_signal_spec = ElectricalSignal.Spec(
+    timing=timing_spec,
+    samples=tf.TensorSpec(shape=[None], dtype=tf.complex64)
+)
+
+
+class OpticalSignal(tf.experimental.ExtensionType):
     #: Signal's timing information
     timing: Timing
 
     #: Signal's frequencies (in Hz), for every frequency there's an amplitude
-    frequencies: npt.NDArray[np.float32]
+    frequencies: tf.Tensor  # shape=[None]; dtype=tf.float32
 
     #: Signal's samples
-    samples: npt.NDArray
+    samples: tf.Tensor  # shape=[None]; dtype=tf.complex64
 
     #: Power (maximum) of the optical signal in watts
-    power: float = 0.0
+    power: tf.Tensor  # shape=[]; dtype=tf.float32
 
     #: Central frequency of the of the emitted light in Hz
-    central_frequency: float = 0.0
+    central_frequency: tf.Tensor  # shape=[]; dtype=tf.float32
 
-    @staticmethod
-    def electrical(*, timing: Timing, samples: npt.NDArray) -> "Signal":
-        return Signal(
-            type="electrical",
-            timing=timing,
-            frequencies=np.array([]),
-            samples=samples
-        )
 
-    @staticmethod
-    def optical(
+optical_signal_spec = OpticalSignal.Spec(
+    timing=timing_spec,
+    frequencies=tf.TensorSpec(shape=[None], dtype=tf.float32),
+    samples=tf.TensorSpec(shape=[None, None], dtype=tf.complex64),
+    power=tf.TensorSpec(shape=[], dtype=tf.float32),
+    central_frequency=tf.TensorSpec(shape=[], dtype=tf.float32)
+)
+
+bit_dtype = tf.int32
+bit_sequence_spec = tf.TensorSpec(shape=[None], dtype=bit_dtype)
+
+
+class PAMConstellation(tf.Module):
+    order: tf.Variable  # shape=(1,); dtype=int32
+    mapping: tf.Variable  # shape=(2 ** order,); dtype=complex64
+
+    def __init__(
+        self,
         *,
-        timing: Timing,
-        frequencies: npt.NDArray[np.float32],
-        samples: npt.NDArray,
-        central_frequency: float,
-        power: float
-    ) -> "Signal":
-        return Signal(
-            type="optical",
-            timing=timing,
-            frequencies=frequencies,
-            samples=samples,
-            central_frequency=central_frequency,
-            power=power
+        order: int,
+        mapping: Optional[Sequence[float]] = None,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.order = tf.Variable(tf.constant(order))
+
+        if mapping is None:
+            self.mapping = tf.Variable(
+                typing.cast(tf.Tensor, self._default_pam_constellation())
+            )
+        else:
+            self.mapping = tf.Variable(tf.constant(mapping))
+
+    @tf.function
+    def _default_pam_constellation(self) -> tf.Tensor:
+        return tf.vectorized_map(
+            fn=lambda i: tf.cast(i / (tf.math.pow(2, self.order) - 1), tf.complex64),
+            elems=tf.range(tf.math.pow(2, self.order))
         )
 
+    @tf.function(input_signature=(bit_sequence_spec,))
+    def encode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
+        symbol_index: Any = tf.reduce_sum(
+            symbol * 2 ** (self.order - tf.range(self.order) - 1)
+        )
 
-@dataclass(frozen=True)
-class NRZEncoder:
-    #: Sampling rate in Hz
-    sampling_rate: float
+        return self.mapping[symbol_index]
 
-    #: Data rate in bits/s
-    data_rate: float
+    @tf.function(input_signature=(tf.TensorSpec(shape=[], dtype=tf.complex64),))
+    def decode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
+        best_index = tf.cast(tf.argmin(tf.abs(self.mapping - symbol)), tf.int32)
 
-    def __call__(self, bitseq: "BitSequence") -> Signal:
-        signal_duration = len(bitseq) / self.data_rate
-        time = np.linspace(0, signal_duration, int(self.sampling_rate * signal_duration), dtype=np.float32)
-
-        samples = np.zeros(shape=time.shape, dtype=np.complex64)
-
-        # Oversample input signal if needed
-        samples = np.repeat(
-            bitseq.astype(np.complex64),
-            math.ceil(len(time) / len(bitseq))
-        )[:len(time)]
-
-        return Signal.electrical(
-            timing=Timing(
-                time=time,
-                sampling_rate=self.sampling_rate,
-                symbol_rate=self.data_rate
+        return tf.vectorized_map(
+            fn=lambda i: tf.cast(
+                tf.math.floormod(best_index / 2 ** (self.order - i - 1), 2),
+                bit_dtype
             ),
-            samples=samples
+            elems=tf.range(self.order)
         )
 
 
-def _default_pam_constellation(order: int) -> dict[tuple[int, ...], float]:
-    return {
-        key: sum(bit * 2 ** (order - i - 1) for i, bit in enumerate(key)) / (2 ** order - 1)
-        for key in itertools.product((0, 1), repeat=order)
-    }
-
-
-@dataclass(frozen=True)
-class PAMEncoder:
+class PAMEncoder(tf.Module):
     #: Sampling rate in Hz
-    sampling_rate: float
+    sampling_rate: tf.Variable  # shape=(1,); dtype=float64
 
     #: Data rate in bits/second
-    data_rate: float
+    data_rate: tf.Variable  # shape=(1,); dtype=float64
 
     #: Constellation used for encoding
-    constellation: dict[tuple[int, ...], float]
+    constellation: PAMConstellation
 
-    #: Modulation order (number of amplitude/power levels)
-    order: int = 1
+    #: Modulation order (number of bits per symbol)
+    order: tf.Variable  # shape=(1,); dtype=int32
 
     def __init__(
         self,
         sampling_rate: float,
         data_rate: float,
         order: int = 1,
-        constellation: Optional[dict[tuple[int, ...], float]] = None
+        constellation: Optional[PAMConstellation] = None,
+        name: Optional[str] = None
     ) -> None:
+        super().__init__(name=name)
+
         if constellation is None:
-            constellation = _default_pam_constellation(order)
+            constellation = PAMConstellation(order=order)
 
-        object.__setattr__(self, "sampling_rate", sampling_rate)
-        object.__setattr__(self, "data_rate", data_rate)
-        object.__setattr__(self, "order", order)
-        object.__setattr__(self, "constellation", constellation)
+        self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
+        self.data_rate = tf.Variable(tf.constant(data_rate))
+        self.order = tf.Variable(tf.constant(order))
+        self.constellation = constellation
 
-    def __call__(self, bitseq: "BitSequence") -> Signal:
-        if len(bitseq) % self.order != 0:
-            raise ValueError(f"bit sequence length must be a multiple of {self.order} bits")
+    @tf.function(input_signature=(bit_sequence_spec,))
+    def __call__(self, bitseq: tf.Tensor) -> ElectricalSignal:
+        tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), self.order), 0)
 
-        signal_duration = len(bitseq) / self.data_rate
-        time = np.linspace(0, signal_duration, int(self.sampling_rate * signal_duration), dtype=np.float32)
+        signal_duration = tf.divide(
+            tf.cast(tf.size(bitseq), tf.float32),
+            self.data_rate
+        )
 
-        pam_sequence = np.zeros(shape=(len(bitseq) // self.order,), dtype=np.complex64)
+        time = tf.linspace(
+            0.0,
+            signal_duration,
+            tf.cast(tf.round(self.sampling_rate * signal_duration), tf.int32)
+        )
 
-        for i in range(len(pam_sequence)):
-            input_symbol = bitseq[i * self.order:(i + 1) * self.order]
+        pam_sequence = tf.vectorized_map(
+            fn=lambda i: self.constellation.encode_symbol(bitseq[i * self.order:(i + 1) * self.order]),
+            elems=tf.range(tf.math.floordiv(tf.size(bitseq), self.order))
+        )
 
-            pam_sequence[i] = self.constellation[tuple(input_symbol)]
-
-        return Signal.electrical(
+        return ElectricalSignal(
             timing=Timing(
                 time=time,
                 sampling_rate=self.sampling_rate,
-                symbol_rate=self.data_rate / self.order
+                symbol_rate=tf.divide(self.data_rate, tf.cast(self.order, tf.float32))
             ),
-            samples=np.repeat(
+            samples=tf.repeat(
                 pam_sequence,
-                math.ceil(len(time) / len(pam_sequence))
-            )[:len(time)]
+                tf.cast(
+                    tf.math.ceil(tf.divide(tf.size(time), tf.size(pam_sequence))),
+                    tf.int32
+                )
+            )[:tf.size(time)]
         )
 
 
-@dataclass(frozen=True)
-class System:
-    #: System components
-    components: list["Callable"]
-
-    def __call__(self, inp: Any = None) -> Any:
-        result: Any = inp
-
-        for component in self.components:
-            if result is not None:
-                result = component(result)
-            else:
-                result = component()
-
-        return result
+@tf.function
+def gaussian_distribution(x: tf.Tensor, mean: tf.Tensor, variance: tf.Tensor) -> tf.Tensor:
+    return 1 / (
+        variance * tf.sqrt(tf.multiply(2.0, Constants.pi))
+    ) * Constants.e ** (-0.5 * tf.subtract(x, mean) ** 2 / variance ** 2)
 
 
-@dataclass(frozen=True)
-class Transmitter:
+class Transmitter(tf.Module):
     #: Output power in watts
-    power: float = 2e-3
-
-    #: Signal-to-noise ratio in dB
-    snr: float = 1000
+    power: tf.Variable  # shape=(1,); dtype=float32
 
     #: Central frequency of the of the emitted light in Hz
-    central_frequency: float = 193.414e12
+    central_frequency: tf.Variable  # shape=(1,); dtype=float32
 
     #: Line width of the signal, full width at half-maximum (FWHM), Hz
-    linewidth: float = 0.0
+    linewidth: tf.Variable  # shape=(1,); dtype=float32
 
     #: Number of frequency components in the signal
-    frequency_count: int = 64
+    frequency_count: tf.Variable  # shape=(1,); dtype=int32
 
-    def __call__(self, timing: Timing) -> Signal:
-        signal = np.ones(
-            shape=(len(timing.time), self.frequency_count),
-            dtype=np.complex64
-        )
-        signal *= self.power ** 0.5
+    def __init__(
+        self,
+        *,
+        power: float = 2e-3,
+        central_frequency: float = 193.414e12,
+        linewidth: float = 1e6,
+        frequency_count: int = 128,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
 
-        gauss_variance = 1 / (2 * math.log(2)) ** 0.5 * self.linewidth
+        self.power = tf.Variable(tf.constant(power))
+        self.central_frequency = tf.Variable(tf.constant(central_frequency))
+        self.linewidth = tf.Variable(tf.constant(linewidth))
+        self.frequency_count = tf.Variable(tf.constant(frequency_count))
 
-        frequencies = np.linspace(
-            self.central_frequency - self.linewidth * 10,
-            self.central_frequency + self.linewidth * 10,
+    @tf.function(input_signature=(timing_spec,))
+    def __call__(self, timing: Timing) -> OpticalSignal:
+        gauss_variance = 1.0 / (2.0 * tf.math.log(2.0)) ** 0.5 * self.linewidth
+
+        frequencies = tf.linspace(
+            self.central_frequency - tf.multiply(self.linewidth, 10.0),
+            self.central_frequency + tf.multiply(self.linewidth, 10.0),
             self.frequency_count
         )
 
@@ -247,35 +262,55 @@ class Transmitter:
             self.central_frequency,
             gauss_variance
         )
-        distribution /= np.sum(distribution)
+        distribution /= tf.reduce_sum(distribution)
 
-        signal[:,] *= distribution ** 0.5
+        samples = tf.reshape(
+            tf.tile(
+                tf.cast(tf.math.sqrt(self.power * distribution), tf.complex64),
+                [tf.size(timing.time)],
+            ),
+            [tf.size(timing.time), self.frequency_count]
+        )
 
-        return Signal.optical(
+        return OpticalSignal(
             timing=timing,
             frequencies=frequencies,
-            samples=signal,
+            samples=samples,
             central_frequency=self.central_frequency,
             power=self.power
         )
 
 
-@dataclass(frozen=True)
-class IntensityModulator:
+class IntensityModulator(tf.Module):
     #: Carrier signal source
-    carrier_source: Callable[[Timing], Signal]
+    carrier_source: Callable[[Timing], OpticalSignal]
 
-    def __call__(self, modulation_signal: Signal) -> Signal:
+    def __init__(self, carrier_source: Callable, name=None) -> None:
+        super().__init__(name=name)
+
+        self.carrier_source = carrier_source
+
+    @tf.function(input_signature=(electrical_signal_spec,))
+    def __call__(self, modulation_signal: ElectricalSignal) -> OpticalSignal:
         carrier_signal = self.carrier_source(modulation_signal.timing)
 
-        modulated_signal = np.array(carrier_signal.samples)
-        modulated_signal *= np.abs(
-            modulation_signal.samples.repeat(
-                len(carrier_signal.frequencies)
-            ).reshape(modulated_signal.shape)
-        ) ** 0.5
+        modulated_signal = tf.multiply(
+            carrier_signal.samples,
+            tf.cast(
+                tf.abs(
+                    tf.reshape(
+                        tf.repeat(
+                            modulation_signal.samples,
+                            tf.size(carrier_signal.frequencies)
+                        ),
+                        tf.shape(carrier_signal.samples)
+                    )
+                ) ** 0.5,
+                tf.complex64
+            )
+        )
 
-        return Signal.optical(
+        return OpticalSignal(
             timing=carrier_signal.timing,
             frequencies=carrier_signal.frequencies,
             samples=modulated_signal,
@@ -284,140 +319,110 @@ class IntensityModulator:
         )
 
 
-@dataclass(frozen=True)
-class Identity:
-    def __call__(self, inp: Any) -> Any:
-        return inp
+class ElectricalAWGN(tf.Module):
+    #: Noise level in dB relative to the input signal
+    level: tf.Variable  # shape=(1,); dtype=float32
 
+    #: Fixed amount of noise in watts that is independent of input signal
+    fixed_power: tf.Variable  # shape=(1,); dtype=float32
 
-@dataclass(frozen=True)
-class Fork:
-    #: Components that will process forked output. Every list item will get its
-    #: own copy of the forked output
-    components: list[Callable]
+    def __init__(self, level: float, fixed_power: float = 0.0, name=None) -> None:
+        super().__init__(name=name)
 
-    def __call__(self, inp: Any) -> tuple[Any, ...]:
-        return tuple(component(inp) for component in self.components)
+        self.level = tf.Variable(tf.constant(level))
+        self.fixed_power = tf.Variable(tf.constant(fixed_power))
 
+    @tf.function(input_signature=(electrical_signal_spec,))
+    def __call__(self, input_signal: ElectricalSignal) -> ElectricalSignal:
+        noise_amplitude = tf.add(
+            self.fixed_power,
+            input_signal.power * tf.math.pow(10.0, (self.level * 0.1))
+        ) ** 0.5
 
-@dataclass(frozen=True)
-class SignalCombination:
-    def __call__(self, signals: tuple[Signal, ...]) -> Signal:
-        first_signal = signals[0]
-        combined_signal_samples = np.array(first_signal.samples)
+        noise = tf.random.normal(
+            0.0,
+            noise_amplitude / (2 ** 0.5),
+            tf.size(input_signal.samples) * 2
+        ).astype(tf.float32).view(tf.complex64)
 
-        for signal in signals[1:]:
-            combined_signal_samples += signal.samples
-
-        return Signal(
-            type=first_signal.type,
-            timing=first_signal.timing,
-            frequencies=first_signal.frequencies,
-            samples=combined_signal_samples,
-            power=first_signal.power,
-            central_frequency=first_signal.central_frequency
+        return ElectricalSignal(
+            timing=input_signal.timing,
+            samples=tf.add(noise, input_signal.samples)
         )
 
 
-@dataclass(frozen=True)
-class AWGN:
+class OpticalAWGN(tf.Module):
     #: Noise level in dB relative to the input signal
-    level: float = 0.0
+    level: tf.Variable  # shape=(1,); dtype=float32
 
     #: Fixed amount of noise in watts that is independent of input signal
-    fixed_power: float = 0.0
+    fixed_power: tf.Variable  # shape=(1,); dtype=float32
 
-    def __call__(self, input_signal: Signal) -> Signal:
-        noise_amplitude = self.fixed_power
-        noise_amplitude += input_signal.power * 10 ** (self.level * 0.1)
+    def __init__(self, level: float, fixed_power: float = 0.0, name=None) -> None:
+        super().__init__(name=name)
 
-        if len(input_signal.frequencies):
-            noise_amplitude /= len(input_signal.frequencies)
+        self.level = tf.Variable(tf.constant(level))
+        self.fixed_power = tf.Variable(tf.constant(fixed_power))
 
-        noise_amplitude **= 0.5
+    @tf.function(input_signature=(optical_signal_spec,))
+    def __call__(self, input_signal: OpticalSignal) -> OpticalSignal:
+        noise_amplitude = tf.divide(
+            tf.add(
+                self.fixed_power,
+                input_signal.power * tf.math.pow(10.0, self.level * 0.1)
+            ) * 0.5,  # * 0.5 to account for two noise components
+            tf.cast(tf.size(input_signal.frequencies), tf.float32)
+        ) ** 0.5
 
-        noise = np.random.normal(
-            0.0,
-            noise_amplitude / (2 ** 0.5),
-            input_signal.samples.size * 2
-        ).astype(np.float32).view(np.complex64).reshape(input_signal.samples.shape)
+        noise_real = tf.random.normal(
+            shape=tf.shape(input_signal.samples),
+            mean=0.0,
+            stddev=noise_amplitude,
+            dtype=tf.float32
+        )
 
-        return Signal(
-            type=input_signal.type,
+        noise_imag = tf.random.normal(
+            shape=tf.shape(input_signal.samples),
+            mean=0.0,
+            stddev=noise_amplitude,
+            dtype=tf.float32
+        )
+
+        noise = tf.reshape(
+            tf.cast(
+                tf.dtypes.complex(noise_real, noise_imag),
+                tf.complex64
+            ),
+            tf.shape(input_signal.samples)
+        )
+
+        return OpticalSignal(
             timing=input_signal.timing,
+            samples=tf.add(noise, input_signal.samples),
             frequencies=input_signal.frequencies,
-            samples=noise + input_signal.samples,
             central_frequency=input_signal.central_frequency,
             power=input_signal.power
         )
 
 
-def gaussian_distribution(x: npt.NDArray, mean: float, variance: float) -> npt.NDArray:
-    return 1 / (variance * ((2 * math.pi) ** 0.5)) * math.e ** (-1/2 * ((x - mean) / variance) ** 2)
-
-
-@dataclass(frozen=True)
-class ChromaticDispersion:
-    #: Dispersion in ps/nm
-    amount: float
-
-    def __call__(self, signal: Signal) -> Signal:
-        wavelength_deltas = (Constants.c * 1e9 / signal.frequencies) - (Constants.c * 1e9 / signal.central_frequency)
-
-        # Each wavelength (or frequency) will be shifted in time by some number
-        # of samples
-        timeshifts = (
-            self.amount * 1e-12 * signal.timing.sampling_rate * wavelength_deltas
-        ).astype(np.int32)
-
-        min_shift = timeshifts.min()
-        max_shift = timeshifts.max()
-
-        # We have to pad samples from both sides
-        left_pad = max(-min_shift, 0)
-        right_pad = max(max_shift, 0)
-
-        new_signal = np.zeros(
-            (
-                signal.samples.shape[0] + left_pad + right_pad,
-                signal.samples.shape[1]
-            ),
-            dtype=signal.samples.dtype
-        )
-
-        for i, shift in enumerate(timeshifts):
-            last_index = -right_pad + shift
-            if last_index == 0:
-                last_index = len(new_signal)
-
-            new_signal[left_pad + shift:last_index,i] = signal.samples[:,i]
-
-        # Cut off the previosuly added padding
-        if right_pad != 0:
-            samples = new_signal[left_pad:-right_pad]
-        else:
-            samples = new_signal[left_pad:]
-
-        return Signal.optical(
-            timing=signal.timing,
-            frequencies=signal.frequencies,
-            samples=samples,
-            central_frequency=signal.central_frequency,
-            power=signal.power
-        )
-
-
-@dataclass(frozen=True)
-class OpticalLoss:
+class OpticalLoss(tf.Module):
     # Optical signal power loss in dB
-    loss: float
+    loss: tf.Variable  # shape=(1,); dtype=float32
 
-    def __call__(self, signal: Signal) -> Signal:
-        power_loss_coeff = 10 ** (self.loss * 0.1)
-        samples = np.array(signal.samples)
-        samples /= power_loss_coeff ** 0.5
+    def __init__(self, loss: float, name = None) -> None:
+        super().__init__(name=name)
 
-        return Signal.optical(
+        self.loss = tf.Variable(tf.constant(loss))
+
+    @tf.function(input_signature=(optical_signal_spec,))
+    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
+        power_loss_coeff = tf.math.pow(10.0, self.loss * 0.1)
+        samples = tf.divide(
+            signal.samples,
+            tf.cast(tf.sqrt(power_loss_coeff), tf.complex64)
+        )
+
+        return OpticalSignal(
             timing=signal.timing,
             frequencies=signal.frequencies,
             samples=samples,
@@ -426,166 +431,208 @@ class OpticalLoss:
         )
 
 
-@dataclass(frozen=True)
-class OpticalChannel:
-    #: Attenuation in the channel in dB/km
-    attenuation: float
+class OpticalFiber(tf.Module):
+    def __init__(
+        self,
+        attenuation: float,
+        chromatic_dispersion: float,
+        length: float,
+        name = None
+    ) -> None:
+        super().__init__(name=name)
 
-    #: Chromatic dispersion coefficient in ps/(nm * km)
-    chromatic_dispersion: float
+        self._optical_loss = OpticalLoss(attenuation * length)
 
-    #: Transmission distance in km
-    length: float
-
-    def __call__(self, signal: Signal) -> Signal:
-        attenuated_signal = OpticalLoss(self.attenuation * self.length)(signal)
-
-        if abs(self.chromatic_dispersion) >= 1e-6:
-            return ChromaticDispersion(
-                self.chromatic_dispersion * self.length
-            )(attenuated_signal)
+    @tf.function(input_signature=(optical_signal_spec,))
+    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
+        attenuated_signal = self._optical_loss(signal)
 
         return attenuated_signal
 
 
-@dataclass(frozen=True)
-class ElectricalLowPassFilter:
+@tf.function(input_signature=(
+    tf.TensorSpec(shape=[], dtype=tf.int32),
+    tf.TensorSpec(shape=[], dtype=tf.float32)
+))
+def fftfreq(n: tf.Tensor, d: tf.Tensor) -> tf.Tensor:
+    if tf.math.floormod(n, 2) == 0:  # type: ignore
+        return tf.cast(
+            tf.concat([
+                tf.range(tf.cast(tf.math.floordiv(n, 2), tf.int32)),
+                tf.range(tf.cast(-tf.math.floordiv(n + 1, 2), tf.int32), 0)
+            ], 0),
+            tf.float32
+        ) / (d * tf.cast(n, tf.float32))
+    else:
+        return tf.cast(
+            tf.concat([
+                tf.range(tf.cast(tf.math.floordiv(n + 1, 2), tf.int32)),
+                tf.range(tf.cast(-tf.math.floordiv(n - 1, 2), tf.int32), 0)
+            ], 0),
+            tf.float32
+        ) / (d * tf.cast(n, tf.float32))
+
+
+class ElectricalLowPassFilter(tf.Module):
     #: Filter cutoff frequency in Hz
-    cutoff_frequency: float
+    cutoff_frequency: tf.Variable  # shape=(1,); dtype=float32
 
-    def __call__(self, signal: Signal) -> Signal:
-        fft = np.fft.fft(signal.samples)
-        freqs = np.fft.fftfreq(fft.size, 1.0 / signal.timing.sampling_rate)
-        fft[np.abs(freqs) > self.cutoff_frequency] = 0.0
+    def __init__(self, cutoff_frequency: float, name = None) -> None:
+        super().__init__(name=name)
 
-        filtered_samples = np.fft.ifft(fft)
+        self.cutoff_frequency = tf.Variable(tf.constant(cutoff_frequency))
 
-        return Signal.electrical(
+    @tf.function(input_signature=(tf.TensorSpec(shape=[2], dtype=tf.complex64),))
+    def _transfer_function(self, fft_and_freq: tf.Tensor) -> tf.Tensor:
+        fft = fft_and_freq[0]
+        freq = tf.cast(tf.abs(fft_and_freq[1]), tf.float32)
+
+        if tf.greater(freq, self.cutoff_frequency):  # type: ignore
+            return tf.cast(tf.constant(0.0), tf.complex64)
+        else:
+            return fft
+
+    @tf.function(input_signature=(electrical_signal_spec,))
+    def __call__(self, signal: ElectricalSignal) -> ElectricalSignal:
+        fft = tf.signal.fft(tf.cast(signal.samples, tf.complex64))
+        freqs = fftfreq(tf.size(fft), 1.0 / signal.timing.sampling_rate)
+
+        filtered_fft = tf.vectorized_map(
+            fn=self._transfer_function,
+            elems=tf.transpose(tf.stack([fft, tf.cast(freqs, tf.complex64)]))
+        )
+
+        filtered_samples = tf.signal.ifft(filtered_fft)
+
+        return ElectricalSignal(
             timing=signal.timing,
             samples=filtered_samples
         )
 
 
-@dataclass(frozen=True)
-class Photodiode:
+class Photodiode(tf.Module):
     #: Minimum power (in watts) that can be converted into a current
-    sensitivity: float = 1e-5
+    sensitivity: tf.Variable  # shape=(1,); dtype=float32
 
     #: Maximum power the diode can convert (anything above will be clipped)
-    maximum_power: float = 2e-3
+    maximum_power: tf.Variable  # shape=(1,); dtype=float32
 
-    def __call__(self, signal: Signal) -> Signal:
-        electrical_signal = np.sum(np.abs(signal.samples)**2, axis=1)
-        electrical_signal = electrical_signal.clip(self.sensitivity, self.maximum_power)
+    def __init__(
+        self,
+        sensitivity: float = 1e-5,
+        maximum_power: float = 2e-3,
+        name = None
+    ) -> None:
+        super().__init__(name=name)
 
-        return Signal.electrical(
+        self.sensitivity = tf.Variable(tf.constant(sensitivity))
+        self.maximum_power = tf.Variable(tf.constant(maximum_power))
+
+    @tf.function(input_signature=(optical_signal_spec,))
+    def __call__(self, signal: OpticalSignal) -> ElectricalSignal:
+        samples = tf.cast(
+            tf.clip_by_value(
+                tf.reduce_sum(tf.abs(signal.samples)**2, axis=1),
+                self.sensitivity,
+                self.maximum_power
+            ),
+            tf.complex64
+        )
+
+        return ElectricalSignal(
             timing=signal.timing,
-            samples=electrical_signal
+            samples=samples
         )
 
 
-@dataclass(frozen=True)
-class NRZDecoder:
-    #: Data rate in bits/s
-    data_rate: float
-
-    #: Minimum current (or power in watts) recognized as a 1
-    threshold: float = 1e-5
-
-    #: Currents above this value will be clipped
-    max_current: float = 2e-3
-
-    def __call__(self, signal: Signal) -> "BitSequence":
-        n = int(round(signal.timing.sampling_rate / self.data_rate))
-        output = np.zeros((signal.samples.size // n,), dtype=np.bool)
-
-        current = np.array(signal.samples)
-        current[current > self.max_current] = self.max_current
-
-        max_current = max(np.max(np.abs(signal.samples)), self.threshold)
-
-        for i in range(output.size):
-            average_current = np.average(np.abs(current[i * n:(i + 1) * n]))
-
-            output[i] = average_current >= (max_current * 0.5)
-
-        return output
-
-
-@dataclass(frozen=True)
-class PAMDecoder:
+class PAMDecoder(tf.Module):
     #: Data rate in bits/second
-    data_rate: float
+    data_rate: tf.Variable  # shape=(1,); dtype=float32
 
     #: Constellation used for encoding
-    constellation: dict[tuple[int, ...], float]
+    constellation: PAMConstellation
 
-    #: Modulation order (number of amplitude/power levels)
-    order: int = 1
+    #: Modulation order (number bits per symbol)
+    order: tf.Variable  # shape=(1,); dtype=int32
 
     #: Minimum current (or power in watts) recognized as non-zero
-    threshold: float = 1e-5
+    threshold: tf.Variable  # shape=(1,); dtype=float32
 
     #: Currents above this value will be clipped
-    max_current: float = 2e-3
+    max_current: tf.Variable  # shape=(1,); dtype=float32
 
     def __init__(
         self,
         data_rate: float,
         order: int = 1,
-        constellation: Optional[dict[tuple[int, ...], float]] = None,
+        constellation: Optional[PAMConstellation] = None,
         threshold: float = 1e-5,
         max_current: float = 2e-3
     ) -> None:
         if constellation is None:
-            constellation = _default_pam_constellation(order)
+            constellation = PAMConstellation(order=order)
 
-        object.__setattr__(self, "data_rate", data_rate)
-        object.__setattr__(self, "order", order)
-        object.__setattr__(self, "constellation", constellation)
-        object.__setattr__(self, "threshold", threshold)
-        object.__setattr__(self, "max_current", max_current)
+        self.data_rate = tf.Variable(tf.constant(data_rate))
+        self.order = tf.Variable(tf.constant(order))
+        self.constellation = constellation
+        self.threshold = tf.Variable(tf.constant(threshold))
+        self.max_current = tf.Variable(tf.constant(max_current))
 
-    def __call__(self, signal: Signal) -> "BitSequence":
-        n = int(round(signal.timing.sampling_rate / (self.data_rate / self.order)))
-        symbols = np.zeros((signal.samples.size // n,), dtype=np.float32)
+    @tf.function(input_signature=(electrical_signal_spec,))
+    def __call__(self, signal: ElectricalSignal) -> tf.Tensor:
+        n = tf.cast(
+            tf.round(signal.timing.sampling_rate / self.data_rate * tf.cast(self.order, tf.float32)),
+            tf.int32
+        )
 
-        current = np.array(signal.samples)
-        current[current > self.max_current] = self.max_current
+        current = tf.clip_by_value(tf.abs(signal.samples), 0, self.max_current)
+        max_current = tf.math.maximum(tf.reduce_max(current), self.threshold)
 
-        max_current = max(np.max(np.abs(signal.samples)), self.threshold)
+        symbols = tf.vectorized_map(
+            fn=lambda i: tf.cast(
+                tf.reduce_mean(current[i * n:(i + 1) * n]) / max_current,
+                tf.complex64
+            ),
+            elems=tf.range(tf.cast(tf.size(current) / n, tf.int32))
+        )
 
-        for i in range(symbols.size):
-            average_current = np.average(np.abs(current[i * n:(i + 1) * n]))
-
-            symbols[i] = average_current / max_current
-
-        output = np.zeros(shape=(symbols.size * self.order,), dtype=np.bool)
-        symbol_map = sorted(self.constellation.items(), key=lambda item: item[1])
-
-        for i, symbol in enumerate(symbols):
-            found_mapping: tuple[tuple, float] = (tuple(), float("inf"))
-
-            for sequence, value in symbol_map:
-                if abs(symbol - value) < abs(symbol - found_mapping[1]):
-                    found_mapping = (sequence, value)
-                else:
-                    break
-
-            sequence = found_mapping[0]
-
-            if sequence:
-                output[i * self.order:(i + 1) * self.order] = sequence
-
-        return output
+        return tf.reshape(
+            tf.vectorized_map(
+                fn=self.constellation.decode_symbol,
+                elems=symbols
+            ),
+            (tf.size(symbols) * self.order,)
+        )
 
 
-@dataclass(frozen=True)
-class BERAnalyzer:
-    def __call__(self, expected_output: "BitSequence", output: "BitSequence") -> float:
-        if output.size != expected_output.size:
-            raise ValueError("shapes of expected and actual output don't match")
+class BERAnalyzer(tf.Module):
+    @tf.function(input_signature=(
+        bit_sequence_spec,
+        bit_sequence_spec
+    ))
+    def __call__(self, expected_output: tf.Tensor, output: tf.Tensor) -> tf.Tensor:
+        tf.debugging.assert_equal(tf.size(output), tf.size(expected_output))
 
-        correct_count = np.count_nonzero(expected_output == output)
+        correct_count = tf.cast(tf.math.count_nonzero(expected_output == output), tf.float32)
+        total_bits = tf.cast(tf.size(output), tf.float32)
 
-        return (output.size - correct_count) / (output.size)
+        return (total_bits - correct_count) / total_bits
+
+
+class System(tf.Module):
+    #: System components
+    components: list[Callable]
+
+    def __init__(self, components: list[Callable], name = None) -> None:
+        super().__init__(name=name)
+
+        self.components = components
+
+    @tf.function
+    def __call__(self, inp: Any = None) -> Any:
+        result: Any = inp
+
+        for component in self.components:
+            result = component(result)
+
+        return result
