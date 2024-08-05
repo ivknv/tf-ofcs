@@ -21,6 +21,7 @@ __all__ = [
     "Photodiode",
     "PAMDecoder",
     "BERAnalyzer",
+    "BERTester",
     "System"
 ]
 
@@ -326,24 +327,49 @@ class ElectricalAWGN(tf.Module):
     #: Fixed amount of noise in watts that is independent of input signal
     fixed_power: tf.Variable  # shape=(1,); dtype=float32
 
-    def __init__(self, level: float, fixed_power: float = 0.0, name=None) -> None:
+    #: Random number generator
+    rng: tf.random.Generator
+
+    def __init__(
+        self,
+        *,
+        level: float,
+        fixed_power: float = 0.0,
+        rng: Optional[tf.random.Generator] = None,
+        name: Optional[str] = None
+    ) -> None:
         super().__init__(name=name)
 
         self.level = tf.Variable(tf.constant(level))
         self.fixed_power = tf.Variable(tf.constant(fixed_power))
 
+        if rng is None:
+            self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
+        else:
+            self.rng = rng
+
     @tf.function(input_signature=(electrical_signal_spec,))
     def __call__(self, input_signal: ElectricalSignal) -> ElectricalSignal:
-        noise_amplitude = tf.add(
+        noise_amplitude = (tf.add(
             self.fixed_power,
-            input_signal.power * tf.math.pow(10.0, (self.level * 0.1))
-        ) ** 0.5
+            input_signal.power * tf.math.pow(10.0, self.level * 0.1)
+        ) * 0.5) ** 0.5  # * 0.5 to account for two noise components
 
-        noise = tf.random.normal(
-            0.0,
-            noise_amplitude / (2 ** 0.5),
-            tf.size(input_signal.samples) * 2
-        ).astype(tf.float32).view(tf.complex64)
+        noise_real = self.rng.normal(
+            shape=tf.shape(input_signal.samples),
+            mean=0.0,
+            stddev=noise_amplitude,
+            dtype=tf.float32
+        )
+
+        noise_imag = self.rng.normal(
+            shape=tf.shape(input_signal.samples),
+            mean=0.0,
+            stddev=noise_amplitude,
+            dtype=tf.float32
+        )
+
+        noise = tf.dtypes.complex(noise_real, noise_imag)
 
         return ElectricalSignal(
             timing=input_signal.timing,
@@ -358,11 +384,26 @@ class OpticalAWGN(tf.Module):
     #: Fixed amount of noise in watts that is independent of input signal
     fixed_power: tf.Variable  # shape=(1,); dtype=float32
 
-    def __init__(self, level: float, fixed_power: float = 0.0, name=None) -> None:
+    #: Random number generator
+    rng: tf.random.Generator
+
+    def __init__(
+        self,
+        *,
+        level: float,
+        fixed_power: float = 0.0,
+        rng: Optional[tf.random.Generator] = None,
+        name: Optional[str] = None
+    ) -> None:
         super().__init__(name=name)
 
         self.level = tf.Variable(tf.constant(level))
         self.fixed_power = tf.Variable(tf.constant(fixed_power))
+
+        if rng is None:
+            self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
+        else:
+            self.rng = rng
 
     @tf.function(input_signature=(optical_signal_spec,))
     def __call__(self, input_signal: OpticalSignal) -> OpticalSignal:
@@ -374,14 +415,14 @@ class OpticalAWGN(tf.Module):
             tf.cast(tf.size(input_signal.frequencies), tf.float32)
         ) ** 0.5
 
-        noise_real = tf.random.normal(
+        noise_real = self.rng.normal(
             shape=tf.shape(input_signal.samples),
             mean=0.0,
             stddev=noise_amplitude,
             dtype=tf.float32
         )
 
-        noise_imag = tf.random.normal(
+        noise_imag = self.rng.normal(
             shape=tf.shape(input_signal.samples),
             mean=0.0,
             stddev=noise_amplitude,
@@ -389,10 +430,7 @@ class OpticalAWGN(tf.Module):
         )
 
         noise = tf.reshape(
-            tf.cast(
-                tf.dtypes.complex(noise_real, noise_imag),
-                tf.complex64
-            ),
+            tf.dtypes.complex(noise_real, noise_imag),
             tf.shape(input_signal.samples)
         )
 
@@ -409,7 +447,7 @@ class OpticalLoss(tf.Module):
     # Optical signal power loss in dB
     loss: tf.Variable  # shape=(1,); dtype=float32
 
-    def __init__(self, loss: float, name = None) -> None:
+    def __init__(self, loss: float, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.loss = tf.Variable(tf.constant(loss))
@@ -437,7 +475,7 @@ class OpticalFiber(tf.Module):
         attenuation: float,
         chromatic_dispersion: float,
         length: float,
-        name = None
+        name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
@@ -477,7 +515,7 @@ class ElectricalLowPassFilter(tf.Module):
     #: Filter cutoff frequency in Hz
     cutoff_frequency: tf.Variable  # shape=(1,); dtype=float32
 
-    def __init__(self, cutoff_frequency: float, name = None) -> None:
+    def __init__(self, cutoff_frequency: float, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.cutoff_frequency = tf.Variable(tf.constant(cutoff_frequency))
@@ -521,7 +559,7 @@ class Photodiode(tf.Module):
         self,
         sensitivity: float = 1e-5,
         maximum_power: float = 2e-3,
-        name = None
+        name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
@@ -567,8 +605,11 @@ class PAMDecoder(tf.Module):
         order: int = 1,
         constellation: Optional[PAMConstellation] = None,
         threshold: float = 1e-5,
-        max_current: float = 2e-3
+        max_current: float = 2e-3,
+        name: Optional[str] = None
     ) -> None:
+        super().__init__(name=name)
+
         if constellation is None:
             constellation = PAMConstellation(order=order)
 
@@ -619,11 +660,62 @@ class BERAnalyzer(tf.Module):
         return (total_bits - correct_count) / total_bits
 
 
+class BERTester(tf.Module):
+    #: System to test
+    systems: list[Callable]
+
+    #: Random number generator
+    rng: tf.random.Generator
+
+    def __init__(
+        self,
+        systems: Sequence[Callable],
+        rng: Optional[tf.random.Generator] = None,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.systems = list(systems)
+
+        if rng is None:
+            self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
+        else:
+            self.rng = rng
+
+        self.ber_analyzer = BERAnalyzer()
+
+    @tf.function(input_signature=(
+        tf.TensorSpec(shape=[], dtype=tf.int32),
+        tf.TensorSpec(shape=[], dtype=tf.int32)
+    ))
+    def __call__(self, sequence_length: tf.Tensor, n_iterations: tf.Tensor) -> tf.Tensor:
+        inputs = tf.map_fn(
+            fn=lambda i: self.rng.uniform(shape=(sequence_length,), minval=0, maxval=2, dtype=tf.int32),
+            elems=tf.range(n_iterations)
+        )
+
+        bers = tf.constant([], dtype=tf.float32)
+
+        for system in self.systems:
+            def fn(system):
+                return lambda inp: self.ber_analyzer(inp, system(inp))
+
+            bers = tf.concat(
+                [
+                    bers,
+                    [tf.reduce_sum(tf.vectorized_map(fn(system), inputs))]
+                ],
+                0
+            )
+
+        return bers / tf.cast(n_iterations, tf.float32)
+
+
 class System(tf.Module):
     #: System components
     components: list[Callable]
 
-    def __init__(self, components: list[Callable], name = None) -> None:
+    def __init__(self, components: list[Callable], name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.components = components
