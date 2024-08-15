@@ -16,6 +16,7 @@ __all__ = [
     "ElectricalAWGN",
     "OpticalAWGN",
     "OpticalLoss",
+    "ChromaticDispersion",
     "OpticalFiber",
     "ElectricalLowPassFilter",
     "Photodiode",
@@ -444,10 +445,10 @@ class OpticalAWGN(tf.Module):
 
 
 class OpticalLoss(tf.Module):
-    # Optical signal power loss in dB
+    #: Optical signal power loss in dB
     loss: tf.Variable  # shape=(1,); dtype=float32
 
-    def __init__(self, loss: float, name: Optional[str] = None) -> None:
+    def __init__(self, *, loss: float, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.loss = tf.Variable(tf.constant(loss))
@@ -469,6 +470,119 @@ class OpticalLoss(tf.Module):
         )
 
 
+class ChromaticDispersion(tf.Module):
+    #: Chromatic dispersion coefficient (ps / (nm * km))
+    coefficient: tf.Variable  # shape=(1,); dtype=float32
+    distance: tf.Variable  # shape=(1,); dtype=float32
+
+    def __init__(
+        self,
+        *,
+        coefficient: float,
+        distance: float,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.coefficient = tf.Variable(tf.constant(coefficient))
+        self.distance = tf.Variable(tf.constant(distance))
+
+    @tf.function(input_signature=(optical_signal_spec,))
+    def _apply_pulse_dispersion(self, signal: OpticalSignal) -> OpticalSignal:
+        wavelengths = Constants.c / signal.frequencies # m
+
+        # Convert the dispersion coefficient from ps / (nm * km) to s / (m * m)
+        D = self.coefficient * 1e-6  # s / m**2
+
+        beta_2 = wavelengths ** 2 / (-2.0 * Constants.pi * Constants.c) * D
+
+        fs = signal.timing.sampling_rate
+
+        samples = signal.samples
+
+        fft = tf.signal.fft(tf.transpose(samples))  # shape=(F, T)
+        freqs = 2 * Constants.pi * tf.abs(fftfreq(tf.shape(fft)[1], 1.0 / fs))  # shape=(T,)
+
+        phase_shifts = tf.reshape(
+            tf.repeat(beta_2, tf.size(freqs)),
+            [tf.size(beta_2), tf.size(freqs)]
+        ) * 0.5 * self.distance * 1e3 * freqs ** 2
+
+        new_signal = tf.transpose(
+            tf.signal.ifft(
+                tf.multiply(
+                    fft,
+                    tf.math.pow(
+                        tf.cast(Constants.e, tf.complex64),
+                        1j * tf.cast(phase_shifts, tf.complex64)  # type: ignore
+                    )
+                )
+            )
+        )
+
+        return OpticalSignal(
+            timing=signal.timing,
+            frequencies=signal.frequencies,
+            samples=new_signal,
+            central_frequency=signal.central_frequency,
+            power=signal.power
+        )
+
+    @tf.function(input_signature=(optical_signal_spec,))
+    def _apply_linewidth_dispersion(self, signal: OpticalSignal) -> OpticalSignal:
+        wavelength_deltas = (Constants.c * 1e9 / signal.frequencies) - (Constants.c * 1e9 / signal.central_frequency)
+
+        amount = self.coefficient * self.distance
+
+        # Each wavelength (or frequency) will be shifted in time by some number
+        # of samples
+        timeshifts = tf.cast(
+            amount * 1e-12 * signal.timing.sampling_rate * wavelength_deltas,
+            tf.int32
+        )
+
+        min_shift = tf.reduce_min(timeshifts)
+        max_shift = tf.reduce_max(timeshifts)
+
+        # We have to pad samples from both sides
+        left_pad = tf.math.maximum(max_shift, 0)
+        right_pad = tf.math.maximum(-min_shift, 0)
+
+        padded_samples = tf.concat([
+            tf.zeros(shape=[left_pad, tf.shape(signal.samples)[1]], dtype=tf.complex64),
+            signal.samples,
+            tf.zeros(shape=[right_pad, tf.shape(signal.samples)[1]], dtype=tf.complex64)
+        ], 0)
+
+        new_signal = tf.map_fn(
+            lambda i: tf.map_fn(
+                lambda j: padded_samples[left_pad + i - timeshifts[j], j],
+                tf.range(tf.shape(signal.samples)[1]),
+                fn_output_signature=tf.complex64
+            ),
+            tf.range(tf.shape(signal.samples)[0]),
+            fn_output_signature=tf.complex64
+        )
+
+        return OpticalSignal(
+            timing=signal.timing,
+            frequencies=signal.frequencies,
+            samples=new_signal,
+            central_frequency=signal.central_frequency,
+            power=signal.power
+        )
+
+    @tf.function(input_signature=(optical_signal_spec,))
+    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
+        if tf.abs(self.coefficient) <= 1e-6:  # type: ignore
+            return signal
+
+        signal = self._apply_pulse_dispersion(signal)
+        signal = self._apply_linewidth_dispersion(signal)
+
+        return signal
+
+
 class OpticalFiber(tf.Module):
     def __init__(
         self,
@@ -479,13 +593,12 @@ class OpticalFiber(tf.Module):
     ) -> None:
         super().__init__(name=name)
 
-        self._optical_loss = OpticalLoss(attenuation * length)
+        self._optical_loss = OpticalLoss(loss=attenuation * length)
+        self._chromatic_dispersion = ChromaticDispersion(coefficient=chromatic_dispersion, distance=length)
 
     @tf.function(input_signature=(optical_signal_spec,))
     def __call__(self, signal: OpticalSignal) -> OpticalSignal:
-        attenuated_signal = self._optical_loss(signal)
-
-        return attenuated_signal
+        return self._chromatic_dispersion(self._optical_loss(signal))
 
 
 @tf.function(input_signature=(
@@ -694,7 +807,7 @@ class BERTester(tf.Module):
             elems=tf.range(n_iterations)
         )
 
-        bers = tf.constant([], dtype=tf.float32)
+        bers = tf.zeros(shape=(0,), dtype=tf.float32)
 
         for system in self.systems:
             def fn(system):
