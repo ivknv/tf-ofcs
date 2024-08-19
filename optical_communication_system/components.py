@@ -67,6 +67,17 @@ electrical_signal_spec = ElectricalSignal.Spec(
 )
 
 
+class IQSignal(tf.experimental.ExtensionType):
+    i: ElectricalSignal
+    q: ElectricalSignal
+
+
+iq_signal_spec = IQSignal.Spec(
+    i=electrical_signal_spec,
+    q=electrical_signal_spec
+)
+
+
 class OpticalSignal(tf.experimental.ExtensionType):
     #: Signal's timing information
     timing: Timing
@@ -148,10 +159,10 @@ class PAMConstellation(tf.Module):
 
 class PAMEncoder(tf.Module):
     #: Sampling rate in Hz
-    sampling_rate: tf.Variable  # shape=(1,); dtype=float64
+    sampling_rate: tf.Variable  # shape=(1,); dtype=float32
 
     #: Data rate in bits/second
-    data_rate: tf.Variable  # shape=(1,); dtype=float64
+    data_rate: tf.Variable  # shape=(1,); dtype=float32
 
     #: Constellation used for encoding
     constellation: PAMConstellation
@@ -210,6 +221,126 @@ class PAMEncoder(tf.Module):
                     tf.int32
                 )
             )[:tf.size(time)]
+        )
+
+
+class IQConstellation(tf.Module):
+    order: tf.Variable  # shape=(1,); dtype=int32
+    mapping: tf.Variable  # shape=(2 ** order,2); dtype=complex64
+
+    def __init__(
+        self,
+        *,
+        order: int,
+        mapping: Sequence[Sequence[float]],
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.order = tf.Variable(tf.constant(order))
+        self.mapping = tf.Variable(tf.constant(mapping))
+
+    @tf.function(input_signature=(bit_sequence_spec,))
+    def encode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
+        symbol_index: Any = tf.reduce_sum(
+            symbol * 2 ** (self.order - tf.range(self.order) - 1)
+        )
+
+        return self.mapping[symbol_index]
+
+    @tf.function(input_signature=(tf.TensorSpec(shape=[None], dtype=tf.float32),))
+    def decode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
+        best_index = tf.cast(
+            tf.argmin(
+                tf.reduce_sum(
+                    tf.abs(self.mapping - symbol),
+                    axis=1
+                )
+            ),
+            tf.int32
+        )
+
+        return tf.vectorized_map(
+            fn=lambda i: tf.cast(
+                tf.math.floormod(best_index / 2 ** (self.order - i - 1), 2),
+                bit_dtype
+            ),
+            elems=tf.range(self.order)
+        )
+
+
+class IQEncoder(tf.Module):
+    #: Sampling rate in Hz
+    sampling_rate: tf.Variable  # shape=(1,); dtype=float32
+
+    #: Data rate in bits/second
+    data_rate: tf.Variable  # shape=(1,); dtype=float32
+
+    #: Constellation used for encoding
+    constellation: IQConstellation
+
+    #: Modulation order (number of bits per symbol)
+    order: tf.Variable  # shape=(1,); dtype=int32
+
+    def __init__(
+        self,
+        *,
+        sampling_rate: float,
+        data_rate: float,
+        constellation: IQConstellation,
+        order: int = 1,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
+        self.data_rate = tf.Variable(tf.constant(data_rate))
+        self.order = tf.Variable(tf.constant(order))
+        self.constellation = constellation
+
+    @tf.function(input_signature=(bit_sequence_spec,))
+    def __call__(self, bitseq: tf.Tensor) -> IQSignal:
+        tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), self.order), 0)
+
+        signal_duration = tf.divide(
+            tf.cast(tf.size(bitseq), tf.float32),
+            self.data_rate
+        )
+
+        time = tf.linspace(
+            0.0,
+            signal_duration,
+            tf.cast(tf.round(self.sampling_rate * signal_duration), tf.int32)
+        )
+
+        iq_sequence = tf.vectorized_map(
+            fn=lambda i: self.constellation.encode_symbol(bitseq[i * self.order:(i + 1) * self.order]),
+            elems=tf.range(tf.math.floordiv(tf.size(bitseq), self.order))
+        )
+
+        timing = Timing(
+            time=time,
+            sampling_rate=self.sampling_rate,
+            symbol_rate=tf.divide(self.data_rate, tf.cast(self.order, tf.float32))
+        )
+
+        repeat_count = tf.cast(
+            tf.math.ceil(tf.divide(tf.size(time), tf.shape(iq_sequence)[0])),
+            tf.int32
+        )
+
+        i_samples = tf.repeat(iq_sequence[:,0], repeat_count)[:tf.size(time)]
+        q_samples = tf.repeat(iq_sequence[:,1], repeat_count)[:tf.size(time)]
+
+        return IQSignal(
+            i=ElectricalSignal(
+                timing=timing,
+                samples=i_samples
+            ),
+            q=ElectricalSignal(
+                timing=timing,
+                samples=q_samples
+            ),
         )
 
 
@@ -318,6 +449,55 @@ class IntensityModulator(tf.Module):
             samples=modulated_signal,
             central_frequency=carrier_signal.central_frequency,
             power=carrier_signal.power
+        )
+
+
+class OpticalPhaseShifter(tf.Module):
+    phase_shift: tf.Variable  # shape=(1,); dtype=float32
+
+    def __init__(self, *, phase_shift: float, name: Optional[str] = None) -> None:
+        super().__init__(name=name)
+
+        self.phase_shift = tf.Variable(tf.constant(phase_shift))
+
+    @tf.function(input_signature=(optical_signal_spec,))
+    def __call__(self, input_signal: OpticalSignal) -> OpticalSignal:
+        shifted_samples = input_signal.samples * tf.math.exp(tf.complex(0.0, self.phase_shift))
+
+        return OpticalSignal(
+            timing=input_signal.timing,
+            frequencies=input_signal.frequencies,
+            samples=shifted_samples,
+            central_frequency=input_signal.central_frequency,
+            power=input_signal.power
+        )
+
+
+class IQModulator(tf.Module):
+    def __init__(self, carrier_source: Callable, name=None) -> None:
+        super().__init__(name=name)
+
+        self.i_modulator = IntensityModulator(carrier_source)
+        self.q_modulator = IntensityModulator(
+            carrier_source=System(components=[
+                carrier_source,
+                OpticalPhaseShifter(phase_shift=0.5 * math.pi)
+            ])
+        )
+
+    @tf.function(input_signature=(iq_signal_spec,))
+    def __call__(self, iq_signal: IQSignal) -> OpticalSignal:
+        i_signal = self.i_modulator(iq_signal.i)
+        q_signal = self.q_modulator(iq_signal.q)
+
+        combined_samples = (i_signal.samples + q_signal.samples) * (0.5 ** 0.5)
+
+        return OpticalSignal(
+            timing=iq_signal.timing,
+            frequencies=iq_signal.frequencies,
+            samples=combined_samples,
+            central_frequency=iq_signal.central_frequency,
+            power=iq_signal.power
         )
 
 
