@@ -1,18 +1,27 @@
 # -*- coding: utf-8 -*-
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Optional
+import math
 
 import tensorflow as tf
 
 from .datatypes import (
-    bit_dtype, bit_sequence_spec, ElectricalSignal, IQSignal, Timing
+    bit_dtype, bit_sequence_spec,
+    ElectricalSignal,
+    OpticalSignal, optical_signal_spec,
+    IQSignal, iq_signal_spec,
+    Timing
 )
 
-__all__ = ["QAMConstellation", "QAMEncoder"]
+from .pam import AmplitudeModulator
+from .passive import OpticalPhaseShifter
+from .utils import System, normalize_signal
+
+__all__ = ["QAMConstellation", "QAMEncoder", "QAMModulator", "QAMReceiver"]
 
 
-class QAMConstellation(tf.Module):
+class QAMConstellation:
     order: tf.Variable  # shape=(1,); dtype=int32
     mapping: tf.Variable  # shape=(2 ** order,2); dtype=complex64
 
@@ -20,11 +29,8 @@ class QAMConstellation(tf.Module):
         self,
         *,
         order: int,
-        mapping: Sequence[Sequence[float]],
-        name: Optional[str] = None
+        mapping: Sequence[Sequence[float]]
     ) -> None:
-        super().__init__(name=name)
-
         self.order = tf.Variable(tf.constant(order))
         self.mapping = tf.Variable(tf.constant(mapping))
 
@@ -67,9 +73,6 @@ class QAMEncoder(tf.Module):
     #: Constellation used for encoding
     constellation: QAMConstellation
 
-    #: Modulation order (number of bits per symbol)
-    order: tf.Variable  # shape=(1,); dtype=int32
-
     def __init__(
         self,
         *,
@@ -83,12 +86,13 @@ class QAMEncoder(tf.Module):
 
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
         self.data_rate = tf.Variable(tf.constant(data_rate))
-        self.order = tf.Variable(tf.constant(order))
         self.constellation = constellation
 
     @tf.function(input_signature=(bit_sequence_spec,))
     def __call__(self, bitseq: tf.Tensor) -> IQSignal:
-        tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), self.order), 0)
+        order = self.constellation.order
+
+        tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), order), 0)
 
         signal_duration = tf.divide(
             tf.cast(tf.size(bitseq), tf.float32),
@@ -102,14 +106,14 @@ class QAMEncoder(tf.Module):
         )
 
         iq_sequence = tf.vectorized_map(
-            fn=lambda i: self.constellation.encode_symbol(bitseq[i * self.order:(i + 1) * self.order]),
-            elems=tf.range(tf.math.floordiv(tf.size(bitseq), self.order))
+            fn=lambda i: self.constellation.encode_symbol(bitseq[i * order:(i + 1) * order]),
+            elems=tf.range(tf.math.floordiv(tf.size(bitseq), order))
         )
 
         timing = Timing(
             time=time,
             sampling_rate=self.sampling_rate,
-            symbol_rate=tf.divide(self.data_rate, tf.cast(self.order, tf.float32))
+            symbol_rate=tf.divide(self.data_rate, tf.cast(order, tf.float32))
         )
 
         repeat_count = tf.cast(
@@ -117,16 +121,143 @@ class QAMEncoder(tf.Module):
             tf.int32
         )
 
-        i_samples = tf.repeat(iq_sequence[:,0], repeat_count)[:tf.size(time)]
-        q_samples = tf.repeat(iq_sequence[:,1], repeat_count)[:tf.size(time)]
+        i_samples = tf.cast(
+            tf.repeat(iq_sequence[:,0], repeat_count)[:tf.size(time)],
+            tf.complex64
+        )
+        q_samples = tf.cast(
+            tf.repeat(iq_sequence[:,1], repeat_count)[:tf.size(time)],
+            tf.complex64
+        )
 
-        return IQSignal(
-            i=ElectricalSignal(
+        return (
+            ElectricalSignal(
                 timing=timing,
                 samples=i_samples
             ),
-            q=ElectricalSignal(
+            ElectricalSignal(
                 timing=timing,
                 samples=q_samples
+            )
+        )
+
+
+class QAMModulator(tf.Module):
+    def __init__(self, carrier_source: Callable, name=None) -> None:
+        super().__init__(name=name)
+
+        self.i_modulator = AmplitudeModulator(carrier_source)
+        self.q_modulator = AmplitudeModulator(
+            carrier_source=System(components=[
+                carrier_source,
+                OpticalPhaseShifter(phase_shift=0.5 * math.pi)
+            ])
+        )
+
+    @tf.function(input_signature=(iq_signal_spec,))
+    def __call__(self, iq_signal: IQSignal) -> OpticalSignal:
+        i_signal = self.i_modulator(iq_signal[0])
+        q_signal = self.q_modulator(iq_signal[1])
+
+        combined_samples = (i_signal.samples + q_signal.samples) * 0.5
+
+        return OpticalSignal(
+            timing=i_signal.timing,
+            frequencies=i_signal.frequencies,
+            samples=combined_samples,
+            central_frequency=i_signal.central_frequency,
+            power=i_signal.power
+        )
+
+
+class QAMReceiver(tf.Module):
+    #: Photodiode for optical-to-electrical (O-E) conversion
+    photodiode: Callable[[OpticalSignal], ElectricalSignal]
+
+    #: Currents above this value will be clipped
+    max_current: tf.Variable  # shape=(1,); dtype=float32
+
+    def __init__(
+        self,
+        *,
+        photodiode: Callable[[OpticalSignal], ElectricalSignal],
+        max_current: float = 2e-3,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.photodiode = photodiode
+        self.max_current = tf.Variable(tf.constant(max_current))
+
+    @tf.function(input_signature=(optical_signal_spec,))
+    def __call__(self, input_signal: OpticalSignal) -> IQSignal:
+        i_current = tf.cast(
+            tf.math.real(tf.reduce_sum(input_signal.samples, axis=1)),
+            tf.complex64
+        )
+        q_current = tf.cast(
+            tf.math.imag(tf.reduce_sum(input_signal.samples, axis=1)),
+            tf.complex64
+        )
+
+        return (
+            ElectricalSignal(timing=input_signal.timing, samples=i_current),
+            ElectricalSignal(timing=input_signal.timing, samples=q_current)
+        )
+
+
+class QAMDecoder(tf.Module):
+    #: Data rate in bits/second
+    data_rate: tf.Variable  # shape=(1,); dtype=float32
+
+    #: Constellation used for encoding
+    constellation: QAMConstellation
+
+    #: Minimum current (or power in watts) recognized as non-zero
+    threshold: tf.Variable  # shape=(1,); dtype=float32
+
+    def __init__(
+        self,
+        *,
+        data_rate: float,
+        constellation: QAMConstellation,
+        threshold: float = 1e-5,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.data_rate = tf.Variable(tf.constant(data_rate))
+        self.constellation = constellation
+        self.threshold = tf.Variable(tf.constant(threshold))
+
+    @tf.function(input_signature=(iq_signal_spec,))
+    def __call__(self, iq_signal: IQSignal) -> tf.Tensor:
+        i_current = normalize_signal(tf.math.real(iq_signal[0].samples))
+        q_current = normalize_signal(tf.math.real(iq_signal[1].samples))
+
+        sampling_rate = iq_signal[0].timing.sampling_rate
+
+        order = self.constellation.order
+
+        n = tf.cast(
+            tf.round(sampling_rate / self.data_rate * tf.cast(order, tf.float32)),
+            tf.int32
+        )
+
+        iq_symbols = tf.transpose(
+            tf.vectorized_map(
+                fn=lambda i: [
+                    tf.reduce_mean(i_current[i * n:(i + 1) * n]),
+                    tf.reduce_mean(q_current[i * n:(i + 1) * n])
+                ],
+                elems=tf.range(tf.cast(tf.size(i_current) / n, tf.int32))
+            )
+        )
+
+        return tf.reshape(
+            tf.vectorized_map(
+                fn=self.constellation.decode_symbol,
+                elems=iq_symbols
             ),
+            (tf.shape(iq_symbols)[0] * order,)
         )

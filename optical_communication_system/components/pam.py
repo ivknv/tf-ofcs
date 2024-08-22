@@ -12,10 +12,16 @@ from .datatypes import (
     OpticalSignal
 )
 
-__all__ = ["PAMConstellation", "PAMEncoder", "PAMDecoder", "IntensityModulator"]
+__all__ = [
+    "PAMConstellation",
+    "PAMEncoder",
+    "PAMDecoder",
+    "IntensityModulator",
+    "AmplitudeModulator"
+]
 
 
-class PAMConstellation(tf.Module):
+class PAMConstellation:
     order: tf.Variable  # shape=(1,); dtype=int32
     mapping: tf.Variable  # shape=(2 ** order,); dtype=complex64
 
@@ -23,11 +29,8 @@ class PAMConstellation(tf.Module):
         self,
         *,
         order: int,
-        mapping: Optional[Sequence[float]] = None,
-        name: Optional[str] = None
+        mapping: Optional[Sequence[float]] = None
     ) -> None:
-        super().__init__(name=name)
-
         self.order = tf.Variable(tf.constant(order))
 
         if mapping is None:
@@ -139,7 +142,7 @@ class PAMDecoder(tf.Module):
     #: Constellation used for encoding
     constellation: PAMConstellation
 
-    #: Modulation order (number bits per symbol)
+    #: Modulation order (number of bits per symbol)
     order: tf.Variable  # shape=(1,); dtype=int32
 
     #: Minimum current (or power in watts) recognized as non-zero
@@ -221,6 +224,39 @@ class IntensityModulator(tf.Module):
                     )
                 ) ** 0.5,
                 tf.complex64
+            )
+        )
+
+        return OpticalSignal(
+            timing=carrier_signal.timing,
+            frequencies=carrier_signal.frequencies,
+            samples=modulated_signal,
+            central_frequency=carrier_signal.central_frequency,
+            power=carrier_signal.power
+        )
+
+
+class AmplitudeModulator(tf.Module):
+    #: Carrier signal source
+    carrier_source: Callable[[Timing], OpticalSignal]
+
+    def __init__(self, carrier_source: Callable, name=None) -> None:
+        super().__init__(name=name)
+
+        self.carrier_source = carrier_source
+
+    @tf.function(input_signature=(electrical_signal_spec,))
+    def __call__(self, modulation_signal: ElectricalSignal) -> OpticalSignal:
+        carrier_signal = self.carrier_source(modulation_signal.timing)
+
+        modulated_signal = tf.multiply(
+            carrier_signal.samples,
+            tf.reshape(
+                tf.repeat(
+                    modulation_signal.samples,
+                    tf.size(carrier_signal.frequencies)
+                ),
+                tf.shape(carrier_signal.samples)
             )
         )
 

@@ -7,12 +7,12 @@ __all__ = [
     "timing_spec",
     "ElectricalSignal",
     "electrical_signal_spec",
-    "IQSignal",
-    "iq_signal_spec",
     "OpticalSignal",
     "optical_signal_spec",
     "bit_dtype",
-    "bit_sequence_spec"
+    "bit_sequence_spec",
+    "IQSignal",
+    "iq_signal_spec"
 ]
 
 
@@ -48,17 +48,6 @@ electrical_signal_spec = ElectricalSignal.Spec(
 )
 
 
-class IQSignal(tf.experimental.ExtensionType):
-    i: ElectricalSignal
-    q: ElectricalSignal
-
-
-iq_signal_spec = IQSignal.Spec(
-    i=electrical_signal_spec,
-    q=electrical_signal_spec
-)
-
-
 class OpticalSignal(tf.experimental.ExtensionType):
     #: Signal's timing information
     timing: Timing
@@ -86,3 +75,6 @@ optical_signal_spec = OpticalSignal.Spec(
 
 bit_dtype = tf.int32
 bit_sequence_spec = tf.TensorSpec(shape=[None], dtype=bit_dtype)
+
+IQSignal = tuple[ElectricalSignal, ElectricalSignal]
+iq_signal_spec = (electrical_signal_spec, electrical_signal_spec)
