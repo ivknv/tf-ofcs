@@ -39,12 +39,12 @@ class ElectricalSignal(tf.experimental.ExtensionType):
     timing: Timing
 
     #: Signal's samples
-    samples: tf.Tensor  # shape=[None]; dtype=tf.complex64
+    samples: tf.Tensor  # shape=[None]; dtype=tf.float32
 
 
 electrical_signal_spec = ElectricalSignal.Spec(
     timing=timing_spec,
-    samples=tf.TensorSpec(shape=[None], dtype=tf.complex64)
+    samples=tf.TensorSpec(shape=[None], dtype=tf.float32)
 )
 
 

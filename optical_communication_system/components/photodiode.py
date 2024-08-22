@@ -33,7 +33,7 @@ class Photodiode(tf.Module):
                 self.sensitivity,
                 self.maximum_power
             ),
-            tf.complex64
+            tf.float32
         )
 
         return ElectricalSignal(

@@ -46,21 +46,12 @@ class ElectricalAWGN(tf.Module):
             input_signal.power * tf.math.pow(10.0, self.level * 0.1)
         ) * 0.5) ** 0.5  # * 0.5 to account for two noise components
 
-        noise_real = self.rng.normal(
+        noise = self.rng.normal(
             shape=tf.shape(input_signal.samples),
             mean=0.0,
             stddev=noise_amplitude,
             dtype=tf.float32
         )
-
-        noise_imag = self.rng.normal(
-            shape=tf.shape(input_signal.samples),
-            mean=0.0,
-            stddev=noise_amplitude,
-            dtype=tf.float32
-        )
-
-        noise = tf.dtypes.complex(noise_real, noise_imag)
 
         return ElectricalSignal(
             timing=input_signal.timing,

@@ -23,7 +23,7 @@ __all__ = [
 
 class PAMConstellation:
     order: tf.Variable  # shape=(1,); dtype=int32
-    mapping: tf.Variable  # shape=(2 ** order,); dtype=complex64
+    mapping: tf.Variable  # shape=(2 ** order,); dtype=float32
 
     def __init__(
         self,
@@ -43,7 +43,7 @@ class PAMConstellation:
     @tf.function
     def _default_pam_constellation(self) -> tf.Tensor:
         return tf.vectorized_map(
-            fn=lambda i: tf.cast(i / (tf.math.pow(2, self.order) - 1), tf.complex64),
+            fn=lambda i: tf.cast(i / (tf.math.pow(2, self.order) - 1), tf.float32),
             elems=tf.range(tf.math.pow(2, self.order))
         )
 
@@ -253,7 +253,7 @@ class AmplitudeModulator(tf.Module):
             carrier_signal.samples,
             tf.reshape(
                 tf.repeat(
-                    modulation_signal.samples,
+                    tf.cast(modulation_signal.samples, tf.complex64),
                     tf.size(carrier_signal.frequencies)
                 ),
                 tf.shape(carrier_signal.samples)

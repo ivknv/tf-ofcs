@@ -23,7 +23,7 @@ __all__ = ["QAMConstellation", "QAMEncoder", "QAMModulator", "QAMReceiver"]
 
 class QAMConstellation:
     order: tf.Variable  # shape=(1,); dtype=int32
-    mapping: tf.Variable  # shape=(2 ** order,2); dtype=complex64
+    mapping: tf.Variable  # shape=(2 ** order,2); dtype=float32
 
     def __init__(
         self,
@@ -121,14 +121,8 @@ class QAMEncoder(tf.Module):
             tf.int32
         )
 
-        i_samples = tf.cast(
-            tf.repeat(iq_sequence[:,0], repeat_count)[:tf.size(time)],
-            tf.complex64
-        )
-        q_samples = tf.cast(
-            tf.repeat(iq_sequence[:,1], repeat_count)[:tf.size(time)],
-            tf.complex64
-        )
+        i_samples = tf.repeat(iq_sequence[:,0], repeat_count)[:tf.size(time)]
+        q_samples = tf.repeat(iq_sequence[:,1], repeat_count)[:tf.size(time)]
 
         return (
             ElectricalSignal(
@@ -191,14 +185,8 @@ class QAMReceiver(tf.Module):
 
     @tf.function(input_signature=(optical_signal_spec,))
     def __call__(self, input_signal: OpticalSignal) -> IQSignal:
-        i_current = tf.cast(
-            tf.math.real(tf.reduce_sum(input_signal.samples, axis=1)),
-            tf.complex64
-        )
-        q_current = tf.cast(
-            tf.math.imag(tf.reduce_sum(input_signal.samples, axis=1)),
-            tf.complex64
-        )
+        i_current = tf.math.real(tf.reduce_sum(input_signal.samples, axis=1))
+        q_current = tf.math.imag(tf.reduce_sum(input_signal.samples, axis=1))
 
         return (
             ElectricalSignal(timing=input_signal.timing, samples=i_current),

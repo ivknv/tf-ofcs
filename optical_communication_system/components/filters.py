@@ -24,24 +24,27 @@ class ElectricalLowPassFilter(tf.Module):
     @tf.function(input_signature=(tf.TensorSpec(shape=[2], dtype=tf.complex64),))
     def _transfer_function(self, fft_and_freq: tf.Tensor) -> tf.Tensor:
         fft = fft_and_freq[0]
-        freq = tf.cast(tf.abs(fft_and_freq[1]), tf.float32)
+        freq = tf.abs(fft_and_freq[1])
 
         if tf.greater(freq, self.cutoff_frequency):  # type: ignore
-            return tf.cast(tf.constant(0.0), tf.complex64)
+            return tf.complex(0.0, 0.0)
         else:
             return fft
 
     @tf.function(input_signature=(electrical_signal_spec,))
     def __call__(self, signal: ElectricalSignal) -> ElectricalSignal:
         fft = tf.signal.fft(tf.cast(signal.samples, tf.complex64))
-        freqs = fftfreq(tf.size(fft), 1.0 / signal.timing.sampling_rate)
+        freqs = tf.cast(
+            fftfreq(tf.size(fft), 1.0 / signal.timing.sampling_rate),
+            tf.complex64
+        )
 
         filtered_fft = tf.vectorized_map(
             fn=self._transfer_function,
-            elems=tf.transpose(tf.stack([fft, tf.cast(freqs, tf.complex64)]))
+            elems=tf.transpose(tf.stack([fft, freqs]))
         )
 
-        filtered_samples = tf.signal.ifft(filtered_fft)
+        filtered_samples = tf.cast(tf.math.real(tf.signal.ifft(filtered_fft)), tf.float32)
 
         return ElectricalSignal(
             timing=signal.timing,
