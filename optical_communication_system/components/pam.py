@@ -1,23 +1,22 @@
 # -*- coding: utf-8 -*-
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 import typing
 from typing import Any, Optional
 import tensorflow as tf
+
+from . import constants
 
 from .datatypes import (
     bit_sequence_spec, bit_dtype,
     Timing,
     ElectricalSignal, electrical_signal_spec,
-    OpticalSignal
 )
 
 __all__ = [
     "PAMConstellation",
     "PAMEncoder",
-    "PAMDecoder",
-    "IntensityModulator",
-    "AmplitudeModulator"
+    "PAMDecoder"
 ]
 
 
@@ -25,11 +24,16 @@ class PAMConstellation:
     order: tf.Variable  # shape=(1,); dtype=int32
     mapping: tf.Variable  # shape=(2 ** order,); dtype=float32
 
+    #: If true, the constellation will be adjusted (during symbol encoding)
+    #: for the Mach-Zehnder modulator to counteract the distortions due to cosine scaling
+    adjust_for_mzm: tf.Variable  # shape=(1,); dtype=bool
+
     def __init__(
         self,
         *,
         order: int,
-        mapping: Optional[Sequence[float]] = None
+        mapping: Optional[Sequence[float]] = None,
+        adjust_for_mzm: bool = False
     ) -> None:
         self.order = tf.Variable(tf.constant(order))
 
@@ -39,6 +43,8 @@ class PAMConstellation:
             )
         else:
             self.mapping = tf.Variable(tf.constant(mapping))
+
+        self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
 
     @tf.function
     def _default_pam_constellation(self) -> tf.Tensor:
@@ -53,7 +59,10 @@ class PAMConstellation:
             symbol * 2 ** (self.order - tf.range(self.order) - 1)
         )
 
-        return self.mapping[symbol_index]
+        if self.adjust_for_mzm:  # type: ignore
+            return tf.math.acos(self.mapping[symbol_index]) / constants.pi
+        else:
+            return self.mapping[symbol_index]
 
     @tf.function(input_signature=(tf.TensorSpec(shape=[], dtype=tf.complex64),))
     def decode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
@@ -195,75 +204,4 @@ class PAMDecoder(tf.Module):
                 elems=symbols
             ),
             (tf.size(symbols) * self.order,)
-        )
-
-
-class IntensityModulator(tf.Module):
-    #: Carrier signal source
-    carrier_source: Callable[[Timing], OpticalSignal]
-
-    def __init__(self, carrier_source: Callable, name=None) -> None:
-        super().__init__(name=name)
-
-        self.carrier_source = carrier_source
-
-    @tf.function(input_signature=(electrical_signal_spec,))
-    def __call__(self, modulation_signal: ElectricalSignal) -> OpticalSignal:
-        carrier_signal = self.carrier_source(modulation_signal.timing)
-
-        modulated_signal = tf.multiply(
-            carrier_signal.samples,
-            tf.cast(
-                tf.abs(
-                    tf.reshape(
-                        tf.repeat(
-                            modulation_signal.samples,
-                            tf.size(carrier_signal.frequencies)
-                        ),
-                        tf.shape(carrier_signal.samples)
-                    )
-                ) ** 0.5,
-                tf.complex64
-            )
-        )
-
-        return OpticalSignal(
-            timing=carrier_signal.timing,
-            frequencies=carrier_signal.frequencies,
-            samples=modulated_signal,
-            central_frequency=carrier_signal.central_frequency,
-            power=carrier_signal.power
-        )
-
-
-class AmplitudeModulator(tf.Module):
-    #: Carrier signal source
-    carrier_source: Callable[[Timing], OpticalSignal]
-
-    def __init__(self, carrier_source: Callable, name=None) -> None:
-        super().__init__(name=name)
-
-        self.carrier_source = carrier_source
-
-    @tf.function(input_signature=(electrical_signal_spec,))
-    def __call__(self, modulation_signal: ElectricalSignal) -> OpticalSignal:
-        carrier_signal = self.carrier_source(modulation_signal.timing)
-
-        modulated_signal = tf.multiply(
-            carrier_signal.samples,
-            tf.reshape(
-                tf.repeat(
-                    tf.cast(modulation_signal.samples, tf.complex64),
-                    tf.size(carrier_signal.frequencies)
-                ),
-                tf.shape(carrier_signal.samples)
-            )
-        )
-
-        return OpticalSignal(
-            timing=carrier_signal.timing,
-            frequencies=carrier_signal.frequencies,
-            samples=modulated_signal,
-            central_frequency=carrier_signal.central_frequency,
-            power=carrier_signal.power
         )

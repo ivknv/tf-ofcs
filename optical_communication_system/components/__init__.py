@@ -3,7 +3,8 @@
 from . import datatypes
 from .transmitter import Transmitter
 from .photodiode import Photodiode
-from .pam import PAMConstellation, PAMEncoder, PAMDecoder, IntensityModulator, AmplitudeModulator
+from .mzm import MachZehnderModulator
+from .pam import PAMConstellation, PAMEncoder, PAMDecoder
 from .qam import QAMConstellation, QAMEncoder, QAMModulator, QAMReceiver, QAMDecoder
 from .noise import ElectricalAWGN, OpticalAWGN
 from .passive import OpticalFiber
@@ -22,8 +23,7 @@ __all__ = [
     "QAMModulator",
     "QAMReceiver",
     "QAMDecoder",
-    "IntensityModulator",
-    "AmplitudeModulator",
+    "MachZehnderModulator",
     "ElectricalAWGN",
     "OpticalAWGN",
     "OpticalFiber",

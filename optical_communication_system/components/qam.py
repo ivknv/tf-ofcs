@@ -6,6 +6,8 @@ import math
 
 import tensorflow as tf
 
+from . import constants
+
 from .datatypes import (
     bit_dtype, bit_sequence_spec,
     ElectricalSignal,
@@ -14,7 +16,7 @@ from .datatypes import (
     Timing
 )
 
-from .pam import AmplitudeModulator
+from .mzm import MachZehnderModulator
 from .passive import OpticalPhaseShifter
 from .utils import System, normalize_signal
 
@@ -25,14 +27,20 @@ class QAMConstellation:
     order: tf.Variable  # shape=(1,); dtype=int32
     mapping: tf.Variable  # shape=(2 ** order,2); dtype=float32
 
+    #: If true, the constellation will be adjusted (during symbol encoding)
+    #: for the Mach-Zehnder modulator to counteract the distortions due to cosine scaling
+    adjust_for_mzm: tf.Variable  # shape=(1,); dtype=bool
+
     def __init__(
         self,
         *,
         order: int,
-        mapping: Sequence[Sequence[float]]
+        mapping: Sequence[Sequence[float]],
+        adjust_for_mzm: bool = False
     ) -> None:
         self.order = tf.Variable(tf.constant(order))
         self.mapping = tf.Variable(tf.constant(mapping))
+        self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
 
     @tf.function(input_signature=(bit_sequence_spec,))
     def encode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
@@ -40,7 +48,10 @@ class QAMConstellation:
             symbol * 2 ** (self.order - tf.range(self.order) - 1)
         )
 
-        return self.mapping[symbol_index]
+        if self.adjust_for_mzm:  # type: ignore
+            return tf.math.acos(self.mapping[symbol_index]) / constants.pi
+        else:
+            return self.mapping[symbol_index]
 
     @tf.function(input_signature=(tf.TensorSpec(shape=[None], dtype=tf.float32),))
     def decode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
@@ -140,8 +151,8 @@ class QAMModulator(tf.Module):
     def __init__(self, carrier_source: Callable, name=None) -> None:
         super().__init__(name=name)
 
-        self.i_modulator = AmplitudeModulator(carrier_source)
-        self.q_modulator = AmplitudeModulator(
+        self.i_modulator = MachZehnderModulator(carrier_source=carrier_source)
+        self.q_modulator = MachZehnderModulator(
             carrier_source=System(components=[
                 carrier_source,
                 OpticalPhaseShifter(phase_shift=0.5 * math.pi)
@@ -153,7 +164,7 @@ class QAMModulator(tf.Module):
         i_signal = self.i_modulator(iq_signal[0])
         q_signal = self.q_modulator(iq_signal[1])
 
-        combined_samples = (i_signal.samples + q_signal.samples) * 0.5
+        combined_samples = (i_signal.samples + q_signal.samples) * 0.5 ** 0.5
 
         return OpticalSignal(
             timing=i_signal.timing,
@@ -185,8 +196,10 @@ class QAMReceiver(tf.Module):
 
     @tf.function(input_signature=(optical_signal_spec,))
     def __call__(self, input_signal: OpticalSignal) -> IQSignal:
-        i_current = tf.math.real(tf.reduce_sum(input_signal.samples, axis=1))
-        q_current = tf.math.imag(tf.reduce_sum(input_signal.samples, axis=1))
+        total = tf.reduce_sum(input_signal.samples, axis=1)
+
+        i_current = tf.math.real(total)
+        q_current = tf.math.imag(total)
 
         return (
             ElectricalSignal(timing=input_signal.timing, samples=i_current),
