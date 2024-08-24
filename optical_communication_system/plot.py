@@ -15,7 +15,8 @@ __all__ = [
     "plot_phase",
     "plot_bitseq",
     "plot_spectrum",
-    "plot_iq_constellation"
+    "plot_iq_constellation",
+    "plot_eye_diagram"
 ]
 
 
@@ -237,3 +238,23 @@ def plot_iq_constellation(
 
     _set_xlabel(ax, f"I, {iq_units[1]}")
     _set_ylabel(ax, f"Q, {iq_units[1]}")
+
+
+def plot_eye_diagram(
+    signal: ElectricalSignal,
+    ax: Optional[Axes] = None,
+    time_units: tuple[float, str] = (1e9, "ns"),
+    label: str = "Signal eye diagram",
+    **kwargs
+) -> None:
+    T_sym = int((signal.timing.sampling_rate / signal.timing.symbol_rate).numpy())
+
+    pattern: list[np.ndarray] = []
+
+    samples = signal.samples.numpy()
+
+    for i in range(samples.size // (T_sym * 2)):
+        wave = samples[i * T_sym * 2:(i + 1) * T_sym * 2]
+        pattern.append(wave)
+
+    _plot(ax, np.linspace(-1.0, 1.0, T_sym * 2), np.array(pattern).T, **kwargs)
