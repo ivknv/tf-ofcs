@@ -5,7 +5,7 @@ import typing
 from typing import Any, Optional
 import tensorflow as tf
 
-from . import constants
+from .utils import adjust_symbol_for_mzm
 
 from .datatypes import (
     bit_sequence_spec, bit_dtype,
@@ -20,22 +20,25 @@ __all__ = [
 ]
 
 
-class PAMConstellation:
-    order: tf.Variable  # shape=(1,); dtype=int32
-    mapping: tf.Variable  # shape=(2 ** order,); dtype=float32
+class PAMConstellation(tf.Module):
+    #: Number of bits per symbol
+    bits_per_symbol: tf.Variable  # shape=(1,); dtype=int32
+    mapping: tf.Variable  # shape=(2 ** bits_per_symbol,); dtype=float32
 
-    #: If true, the constellation will be adjusted (during symbol encoding)
-    #: for the Mach-Zehnder modulator to counteract the distortions due to cosine scaling
+    #: If true, the constellation will be adjusted for MZM
     adjust_for_mzm: tf.Variable  # shape=(1,); dtype=bool
 
     def __init__(
         self,
         *,
-        order: int,
-        mapping: Optional[Sequence[float]] = None,
-        adjust_for_mzm: bool = False
+        bits_per_symbol: int,
+        mapping: Sequence[Sequence[float]],
+        adjust_for_mzm: bool = False,
+        name: Optional[str] = None
     ) -> None:
-        self.order = tf.Variable(tf.constant(order))
+        super().__init__(name=name)
+
+        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
 
         if mapping is None:
             self.mapping = tf.Variable(
@@ -49,18 +52,18 @@ class PAMConstellation:
     @tf.function
     def _default_pam_constellation(self) -> tf.Tensor:
         return tf.vectorized_map(
-            fn=lambda i: tf.cast(i / (tf.math.pow(2, self.order) - 1), tf.float32),
-            elems=tf.range(tf.math.pow(2, self.order))
+            fn=lambda i: tf.cast(i / (tf.math.pow(2, self.bits_per_symbol) - 1), tf.float32),
+            elems=tf.range(tf.math.pow(2, self.bits_per_symbol))
         )
 
     @tf.function(input_signature=(bit_sequence_spec,))
     def encode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
         symbol_index: Any = tf.reduce_sum(
-            symbol * 2 ** (self.order - tf.range(self.order) - 1)
+            symbol * 2 ** (self.bits_per_symbol - tf.range(self.bits_per_symbol) - 1)
         )
 
         if self.adjust_for_mzm:  # type: ignore
-            return tf.math.acos(self.mapping[symbol_index]) / constants.pi
+            return adjust_symbol_for_mzm(self.mapping[symbol_index])
         else:
             return self.mapping[symbol_index]
 
@@ -70,10 +73,10 @@ class PAMConstellation:
 
         return tf.vectorized_map(
             fn=lambda i: tf.cast(
-                tf.math.floormod(best_index / 2 ** (self.order - i - 1), 2),
+                tf.math.floormod(best_index / 2 ** (self.bits_per_symbol - i - 1), 2),
                 bit_dtype
             ),
-            elems=tf.range(self.order)
+            elems=tf.range(self.bits_per_symbol)
         )
 
 
@@ -87,30 +90,24 @@ class PAMEncoder(tf.Module):
     #: Constellation used for encoding
     constellation: PAMConstellation
 
-    #: Modulation order (number of bits per symbol)
-    order: tf.Variable  # shape=(1,); dtype=int32
-
     def __init__(
         self,
         sampling_rate: float,
         data_rate: float,
-        order: int = 1,
-        constellation: Optional[PAMConstellation] = None,
+        constellation: PAMConstellation,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        if constellation is None:
-            constellation = PAMConstellation(order=order)
-
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
         self.data_rate = tf.Variable(tf.constant(data_rate))
-        self.order = tf.Variable(tf.constant(order))
         self.constellation = constellation
 
     @tf.function(input_signature=(bit_sequence_spec,))
     def __call__(self, bitseq: tf.Tensor) -> ElectricalSignal:
-        tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), self.order), 0)
+        bits_per_symbol = self.constellation.bits_per_symbol
+
+        tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), bits_per_symbol), 0)
 
         signal_duration = tf.divide(
             tf.cast(tf.size(bitseq), tf.float32),
@@ -124,15 +121,17 @@ class PAMEncoder(tf.Module):
         )
 
         pam_sequence = tf.vectorized_map(
-            fn=lambda i: self.constellation.encode_symbol(bitseq[i * self.order:(i + 1) * self.order]),
-            elems=tf.range(tf.math.floordiv(tf.size(bitseq), self.order))
+            fn=lambda i: self.constellation.encode_symbol(
+                bitseq[i * bits_per_symbol:(i + 1) * bits_per_symbol]
+            ),
+            elems=tf.range(tf.math.floordiv(tf.size(bitseq), bits_per_symbol))
         )
 
         return ElectricalSignal(
             timing=Timing(
                 time=time,
                 sampling_rate=self.sampling_rate,
-                symbol_rate=tf.divide(self.data_rate, tf.cast(self.order, tf.float32))
+                symbol_rate=tf.divide(self.data_rate, tf.cast(bits_per_symbol, tf.float32))
             ),
             samples=tf.repeat(
                 pam_sequence,
@@ -151,9 +150,6 @@ class PAMDecoder(tf.Module):
     #: Constellation used for encoding
     constellation: PAMConstellation
 
-    #: Modulation order (number of bits per symbol)
-    order: tf.Variable  # shape=(1,); dtype=int32
-
     #: Minimum current (or power in watts) recognized as non-zero
     threshold: tf.Variable  # shape=(1,); dtype=float32
 
@@ -163,27 +159,24 @@ class PAMDecoder(tf.Module):
     def __init__(
         self,
         data_rate: float,
-        order: int = 1,
-        constellation: Optional[PAMConstellation] = None,
+        constellation: PAMConstellation,
         threshold: float = 1e-5,
         max_current: float = 2e-3,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        if constellation is None:
-            constellation = PAMConstellation(order=order)
-
         self.data_rate = tf.Variable(tf.constant(data_rate))
-        self.order = tf.Variable(tf.constant(order))
         self.constellation = constellation
         self.threshold = tf.Variable(tf.constant(threshold))
         self.max_current = tf.Variable(tf.constant(max_current))
 
     @tf.function(input_signature=(electrical_signal_spec,))
     def __call__(self, signal: ElectricalSignal) -> tf.Tensor:
+        bits_per_symbol = self.constellation.bits_per_symbol
+
         n = tf.cast(
-            tf.round(signal.timing.sampling_rate / self.data_rate * tf.cast(self.order, tf.float32)),
+            tf.round(signal.timing.sampling_rate / self.data_rate * tf.cast(bits_per_symbol, tf.float32)),
             tf.int32
         )
 
@@ -203,5 +196,5 @@ class PAMDecoder(tf.Module):
                 fn=self.constellation.decode_symbol,
                 elems=symbols
             ),
-            (tf.size(symbols) * self.order,)
+            (tf.size(symbols) * bits_per_symbol,)
         )

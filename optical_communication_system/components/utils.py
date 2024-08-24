@@ -10,6 +10,7 @@ __all__ = [
     "fftfreq",
     "gaussian_distribution",
     "normalize_signal",
+    "adjust_symbol_for_mzm",
     "System",
     "MapComponent",
     "MapComponents",
@@ -52,6 +53,11 @@ def normalize_signal(samples: tf.Tensor) -> tf.Tensor:
     max_amplitude = tf.reduce_max(tf.abs(samples))
 
     return samples / max_amplitude
+
+
+@tf.function
+def adjust_symbol_for_mzm(symbol: tf.Tensor) -> tf.Tensor:
+    return tf.math.acos(symbol) / constants.pi
 
 
 class System(tf.Module):

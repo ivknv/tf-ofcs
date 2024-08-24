@@ -52,9 +52,11 @@ class BERTester(tf.Module):
         tf.TensorSpec(shape=[], dtype=tf.int32)
     ))
     def __call__(self, sequence_length: tf.Tensor, n_iterations: tf.Tensor) -> tf.Tensor:
-        inputs = tf.map_fn(
-            fn=lambda i: self.rng.uniform(shape=(sequence_length,), minval=0, maxval=2, dtype=tf.int32),
-            elems=tf.range(n_iterations)
+        inputs = self.rng.uniform(
+            (n_iterations, sequence_length,),
+            minval=0,
+            maxval=2,
+            dtype=tf.int32
         )
 
         bers = tf.zeros(shape=(0,), dtype=tf.float32)

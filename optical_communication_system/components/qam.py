@@ -6,8 +6,6 @@ import math
 
 import tensorflow as tf
 
-from . import constants
-
 from .datatypes import (
     bit_dtype, bit_sequence_spec,
     ElectricalSignal,
@@ -18,38 +16,41 @@ from .datatypes import (
 
 from .mzm import MachZehnderModulator
 from .passive import OpticalPhaseShifter
-from .utils import System, normalize_signal
+from .utils import System, adjust_symbol_for_mzm, normalize_signal
 
 __all__ = ["QAMConstellation", "QAMEncoder", "QAMModulator", "QAMReceiver"]
 
 
-class QAMConstellation:
-    order: tf.Variable  # shape=(1,); dtype=int32
-    mapping: tf.Variable  # shape=(2 ** order,2); dtype=float32
+class QAMConstellation(tf.Module):
+    #: Number of bits per symbol
+    bits_per_symbol: tf.Variable  # shape=(1,); dtype=int32
+    mapping: tf.Variable  # shape=(2 ** bits_per_symbol,2); dtype=float32
 
-    #: If true, the constellation will be adjusted (during symbol encoding)
-    #: for the Mach-Zehnder modulator to counteract the distortions due to cosine scaling
+    #: If true, the constellation will be adjusted for MZM
     adjust_for_mzm: tf.Variable  # shape=(1,); dtype=bool
 
     def __init__(
         self,
         *,
-        order: int,
+        bits_per_symbol: int,
         mapping: Sequence[Sequence[float]],
-        adjust_for_mzm: bool = False
+        adjust_for_mzm: bool = False,
+        name: Optional[str] = None
     ) -> None:
-        self.order = tf.Variable(tf.constant(order))
+        super().__init__(name=name)
+
+        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
         self.mapping = tf.Variable(tf.constant(mapping))
         self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
 
     @tf.function(input_signature=(bit_sequence_spec,))
     def encode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
         symbol_index: Any = tf.reduce_sum(
-            symbol * 2 ** (self.order - tf.range(self.order) - 1)
+            symbol * 2 ** (self.bits_per_symbol - tf.range(self.bits_per_symbol) - 1)
         )
 
         if self.adjust_for_mzm:  # type: ignore
-            return tf.math.acos(self.mapping[symbol_index]) / constants.pi
+            return adjust_symbol_for_mzm(self.mapping[symbol_index])
         else:
             return self.mapping[symbol_index]
 
@@ -67,10 +68,10 @@ class QAMConstellation:
 
         return tf.vectorized_map(
             fn=lambda i: tf.cast(
-                tf.math.floormod(best_index / 2 ** (self.order - i - 1), 2),
+                tf.math.floormod(best_index / 2 ** (self.bits_per_symbol - i - 1), 2),
                 bit_dtype
             ),
-            elems=tf.range(self.order)
+            elems=tf.range(self.bits_per_symbol)
         )
 
 
@@ -90,7 +91,6 @@ class QAMEncoder(tf.Module):
         sampling_rate: float,
         data_rate: float,
         constellation: QAMConstellation,
-        order: int = 1,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -101,9 +101,9 @@ class QAMEncoder(tf.Module):
 
     @tf.function(input_signature=(bit_sequence_spec,))
     def __call__(self, bitseq: tf.Tensor) -> IQSignal:
-        order = self.constellation.order
+        bits_per_symbol = self.constellation.bits_per_symbol
 
-        tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), order), 0)
+        tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), bits_per_symbol), 0)
 
         signal_duration = tf.divide(
             tf.cast(tf.size(bitseq), tf.float32),
@@ -117,14 +117,16 @@ class QAMEncoder(tf.Module):
         )
 
         iq_sequence = tf.vectorized_map(
-            fn=lambda i: self.constellation.encode_symbol(bitseq[i * order:(i + 1) * order]),
-            elems=tf.range(tf.math.floordiv(tf.size(bitseq), order))
+            fn=lambda i: self.constellation.encode_symbol(
+                bitseq[i * bits_per_symbol:(i + 1) * bits_per_symbol]
+            ),
+            elems=tf.range(tf.math.floordiv(tf.size(bitseq), bits_per_symbol))
         )
 
         timing = Timing(
             time=time,
             sampling_rate=self.sampling_rate,
-            symbol_rate=tf.divide(self.data_rate, tf.cast(order, tf.float32))
+            symbol_rate=tf.divide(self.data_rate, tf.cast(bits_per_symbol, tf.float32))
         )
 
         repeat_count = tf.cast(
@@ -238,10 +240,10 @@ class QAMDecoder(tf.Module):
 
         sampling_rate = iq_signal[0].timing.sampling_rate
 
-        order = self.constellation.order
+        bits_per_symbol = self.constellation.bits_per_symbol
 
         n = tf.cast(
-            tf.round(sampling_rate / self.data_rate * tf.cast(order, tf.float32)),
+            tf.round(sampling_rate / self.data_rate * tf.cast(bits_per_symbol, tf.float32)),
             tf.int32
         )
 
@@ -260,5 +262,5 @@ class QAMDecoder(tf.Module):
                 fn=self.constellation.decode_symbol,
                 elems=iq_symbols
             ),
-            (tf.shape(iq_symbols)[0] * order,)
+            (tf.shape(iq_symbols)[0] * bits_per_symbol,)
         )

@@ -97,22 +97,16 @@ class OpticalAWGN(tf.Module):
             tf.cast(tf.size(input_signal.frequencies), tf.float32)
         ) ** 0.5
 
-        noise_real = self.rng.normal(
-            shape=tf.shape(input_signal.samples),
-            mean=0.0,
-            stddev=noise_amplitude,
-            dtype=tf.float32
-        )
-
-        noise_imag = self.rng.normal(
-            shape=tf.shape(input_signal.samples),
+        # We have to generate the double amount of noise samples since they must be complex
+        noise_components = self.rng.normal(
+            shape=tf.concat([[2], tf.shape(input_signal.samples)], 0),
             mean=0.0,
             stddev=noise_amplitude,
             dtype=tf.float32
         )
 
         noise = tf.reshape(
-            tf.dtypes.complex(noise_real, noise_imag),
+            tf.dtypes.complex(noise_components[0], noise_components[1]),
             tf.shape(input_signal.samples)
         )
 
