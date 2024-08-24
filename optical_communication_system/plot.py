@@ -12,6 +12,7 @@ from .components import QAMConstellation
 __all__ = [
     "plot_power",
     "plot_envelope",
+    "plot_phase",
     "plot_bitseq",
     "plot_spectrum",
     "plot_iq_constellation"
@@ -128,6 +129,30 @@ def plot_envelope(
 
     _set_xlabel(ax, f"Time, {time_units[1]}")
     _set_ylabel(ax, f"Envelope, {envelope_units[1]}")
+
+
+def plot_phase(
+    signal: OpticalSignal | tuple[ElectricalSignal, ElectricalSignal],
+    ax: Optional[Axes] = None,
+    time_units: tuple[float, str] = (1e9, "ns"),
+    label: str = "Signal phase",
+    **kwargs
+) -> None:
+    if isinstance(signal, OpticalSignal):
+        time = signal.timing.time.numpy() * time_units[0]
+        samples = np.sum(signal.samples.numpy(), axis=1)
+
+        phase = np.arctan2(np.real(samples), np.imag(samples))
+    else:
+        time = signal[0].timing.time.numpy() * time_units[0]
+        phase = np.arctan2(signal[0].samples.numpy(), signal[1].samples.numpy())
+
+    phase /= np.pi / 180.0
+
+    _plot(ax, time, phase, label=label, **kwargs)
+
+    _set_xlabel(ax, f"Time, {time_units[1]}")
+    _set_ylabel(ax, "Phase, degrees")
 
 
 def plot_bitseq(
