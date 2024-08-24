@@ -223,18 +223,14 @@ def plot_iq_constellation(
 ) -> None:
     if isinstance(signal_or_constellation, QAMConstellation):
         constellation = signal_or_constellation
-        mapping = constellation.mapping.numpy()
-
-        _scatter(ax, mapping[:,0], mapping[:,1], label=label, **kwargs)
+        iq_symbols = constellation.mapping.numpy()
     else:
         signal = signal_or_constellation
-        _scatter(
-            ax,
-            signal[0].samples.numpy() * iq_units[0],
-            signal[1].samples.numpy() * iq_units[0],
-            label=label,
-            **kwargs
-        )
+        iq_symbols = np.array([signal[0].samples.numpy(), signal[1].samples.numpy()]).T
+
+    iq_symbols *= iq_units[0]
+
+    _scatter(ax, iq_symbols[:,0], iq_symbols[:,1], label=label, **kwargs)
 
     _set_xlabel(ax, f"I, {iq_units[1]}")
     _set_ylabel(ax, f"Q, {iq_units[1]}")
