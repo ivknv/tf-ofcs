@@ -4,19 +4,13 @@ import tensorflow as tf
 
 from typing import Optional
 from .datatypes import Timing, timing_spec, OpticalSignal
-from . import constants
 
-__all__ = ["Transmitter"]
+from .utils import gaussian_distribution
 
-
-@tf.function
-def gaussian_distribution(x: tf.Tensor, mean: tf.Tensor, variance: tf.Tensor) -> tf.Tensor:
-    return 1 / (
-        variance * tf.sqrt(tf.multiply(2.0, constants.pi))
-    ) * tf.math.exp(-0.5 * tf.subtract(x, mean) ** 2 / variance ** 2)
+__all__ = ["Laser"]
 
 
-class Transmitter(tf.Module):
+class Laser(tf.Module):
     #: Output power in watts
     power: tf.Variable  # shape=(1,); dtype=float32
 

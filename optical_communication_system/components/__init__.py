@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from . import datatypes
-from .transmitter import Transmitter
+from .laser import Laser
 from .photodiode import Photodiode
 from .mzm import MachZehnderModulator
 from .pam import PAMConstellation, PAMEncoder, PAMDecoder
@@ -13,7 +13,7 @@ from .ber import BERTester
 from .utils import System, MapComponent, MapComponents, Identity
 
 __all__ = [
-    "Transmitter",
+    "Laser",
     "Photodiode",
     "PAMConstellation",
     "PAMEncoder",
