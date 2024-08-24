@@ -251,10 +251,10 @@ def plot_eye_diagram(
 
     pattern: list[np.ndarray] = []
 
-    samples = signal.samples.numpy()
+    samples = signal.samples.numpy()[T_sym // 2:]
 
     for i in range(samples.size // (T_sym * 2)):
         wave = samples[i * T_sym * 2:(i + 1) * T_sym * 2]
         pattern.append(wave)
 
-    _plot(ax, np.linspace(-1.0, 1.0, T_sym * 2), np.array(pattern).T, **kwargs)
+    _plot(ax, np.linspace(0.0, 2.0, T_sym * 2), np.array(pattern).T, **kwargs)
