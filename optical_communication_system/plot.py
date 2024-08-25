@@ -7,7 +7,7 @@ import tensorflow as tf
 
 from typing import Optional
 from .components.datatypes import OpticalSignal, ElectricalSignal
-from .components import QAMConstellation
+from .components import IQConstellation
 
 __all__ = [
     "plot_power",
@@ -215,13 +215,13 @@ def plot_spectrum(
 
 
 def plot_iq_constellation(
-    signal_or_constellation: tuple[ElectricalSignal, ElectricalSignal] | QAMConstellation,
+    signal_or_constellation: tuple[ElectricalSignal, ElectricalSignal] | IQConstellation,
     ax: Optional[Axes] = None,
     iq_units: tuple[float, str] = (1.0, "AU"),
     label: str = "IQ signal constellation",
     **kwargs
 ) -> None:
-    if isinstance(signal_or_constellation, QAMConstellation):
+    if isinstance(signal_or_constellation, IQConstellation):
         constellation = signal_or_constellation
         iq_symbols = constellation.mapping.numpy()
     else:

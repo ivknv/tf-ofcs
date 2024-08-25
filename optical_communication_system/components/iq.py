@@ -18,10 +18,10 @@ from .mzm import MachZehnderModulator
 from .passive import OpticalPhaseShifter
 from .utils import System, adjust_symbol_for_mzm, normalize_signal
 
-__all__ = ["QAMConstellation", "QAMEncoder", "QAMModulator", "QAMReceiver"]
+__all__ = ["IQConstellation", "IQEncoder", "IQModulator", "IQReceiver"]
 
 
-class QAMConstellation(tf.Module):
+class IQConstellation(tf.Module):
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=(1,); dtype=int32
     mapping: tf.Variable  # shape=(2 ** bits_per_symbol,2); dtype=float32
@@ -75,7 +75,7 @@ class QAMConstellation(tf.Module):
         )
 
 
-class QAMEncoder(tf.Module):
+class IQEncoder(tf.Module):
     #: Sampling rate in Hz
     sampling_rate: tf.Variable  # shape=(1,); dtype=float32
 
@@ -83,14 +83,14 @@ class QAMEncoder(tf.Module):
     data_rate: tf.Variable  # shape=(1,); dtype=float32
 
     #: Constellation used for encoding
-    constellation: QAMConstellation
+    constellation: IQConstellation
 
     def __init__(
         self,
         *,
         sampling_rate: float,
         data_rate: float,
-        constellation: QAMConstellation,
+        constellation: IQConstellation,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -149,7 +149,7 @@ class QAMEncoder(tf.Module):
         )
 
 
-class QAMModulator(tf.Module):
+class IQModulator(tf.Module):
     def __init__(self, carrier_source: Callable, name=None) -> None:
         super().__init__(name=name)
 
@@ -177,7 +177,7 @@ class QAMModulator(tf.Module):
         )
 
 
-class QAMReceiver(tf.Module):
+class IQReceiver(tf.Module):
     #: Photodiode for optical-to-electrical (O-E) conversion
     photodiode: Callable[[OpticalSignal], ElectricalSignal]
 
@@ -209,12 +209,12 @@ class QAMReceiver(tf.Module):
         )
 
 
-class QAMDecoder(tf.Module):
+class IQDecoder(tf.Module):
     #: Data rate in bits/second
     data_rate: tf.Variable  # shape=(1,); dtype=float32
 
     #: Constellation used for encoding
-    constellation: QAMConstellation
+    constellation: IQConstellation
 
     #: Minimum current (or power in watts) recognized as non-zero
     threshold: tf.Variable  # shape=(1,); dtype=float32
@@ -223,7 +223,7 @@ class QAMDecoder(tf.Module):
         self,
         *,
         data_rate: float,
-        constellation: QAMConstellation,
+        constellation: IQConstellation,
         threshold: float = 1e-5,
         name: Optional[str] = None
     ) -> None:

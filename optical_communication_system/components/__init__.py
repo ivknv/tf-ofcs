@@ -5,7 +5,7 @@ from .laser import Laser
 from .photodiode import Photodiode
 from .mzm import MachZehnderModulator
 from .pam import PAMConstellation, PAMEncoder, PAMDecoder
-from .qam import QAMConstellation, QAMEncoder, QAMModulator, QAMReceiver, QAMDecoder
+from .iq import IQConstellation, IQEncoder, IQModulator, IQReceiver, IQDecoder
 from .noise import ElectricalAWGN, OpticalAWGN
 from .passive import OpticalFiber
 from .filters import ElectricalLowPassFilter
@@ -18,11 +18,11 @@ __all__ = [
     "PAMConstellation",
     "PAMEncoder",
     "PAMDecoder",
-    "QAMConstellation",
-    "QAMEncoder",
-    "QAMModulator",
-    "QAMReceiver",
-    "QAMDecoder",
+    "IQConstellation",
+    "IQEncoder",
+    "IQModulator",
+    "IQReceiver",
+    "IQDecoder",
     "MachZehnderModulator",
     "ElectricalAWGN",
     "OpticalAWGN",
