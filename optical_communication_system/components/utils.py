@@ -14,7 +14,8 @@ __all__ = [
     "System",
     "MapComponent",
     "MapComponents",
-    "Identity"
+    "Identity",
+    "Reindex"
 ]
 
 
@@ -70,7 +71,7 @@ class System(tf.Module):
         self.components = components
 
     @tf.function
-    def __call__(self, inp: Any = None) -> Any:
+    def __call__(self, inp: Any) -> Any:
         result: Any = inp
 
         for component in self.components:
@@ -109,3 +110,34 @@ class Identity(tf.Module):
     @tf.function
     def __call__(self, inp: Any) -> Any:
         return inp
+
+
+class Reindex(tf.Module):
+    indices: list[list | tuple[int, ...]]
+
+    def __init__(
+        self,
+        indices: list[list | tuple[int, ...]],
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.indices = indices
+
+    def _get_tuple_index(self, inputs: tuple, index: tuple[int, ...]) -> Any:
+        current = inputs
+
+        for i in index:
+            current = current[i]
+
+        return current
+
+    def _reindex(self, inputs: tuple, index: list | tuple[int, ...]) -> Any:
+        if isinstance(index, tuple):
+            return self._get_tuple_index(inputs, index)
+        else:
+            return tuple(self._reindex(inputs, i) for i in index)
+
+    @tf.function
+    def __call__(self, inputs: tuple) -> tuple:
+        return self._reindex(inputs, self.indices)

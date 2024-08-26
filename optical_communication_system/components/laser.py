@@ -58,7 +58,7 @@ class Laser(tf.Module):
 
         samples = tf.reshape(
             tf.tile(
-                tf.cast(tf.math.sqrt(self.power * distribution), tf.complex64),
+                tf.cast(tf.math.sqrt(self.power) * distribution, tf.complex64),
                 [tf.size(timing.time)],
             ),
             [tf.size(timing.time), self.frequency_count]

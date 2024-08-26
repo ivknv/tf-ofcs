@@ -7,7 +7,12 @@ from .datatypes import OpticalSignal, optical_signal_spec
 from . import constants
 from .utils import fftfreq
 
-__all__ = ["OpticalPhaseShifter"]
+__all__ = [
+    "OpticalPhaseShifter",
+    "OpticalCoupler1x2",
+    "OpticalCoupler2x2",
+    "OpticalCoupler2x1"
+]
 
 
 class OpticalPhaseShifter(tf.Module):
@@ -138,15 +143,14 @@ class ChromaticDispersion(tf.Module):
             tf.zeros(shape=[right_pad, tf.shape(signal.samples)[1]], dtype=tf.complex64)
         ], 0)
 
-        new_signal = tf.map_fn(
-            lambda i: tf.map_fn(
-                lambda j: padded_samples[left_pad + i - timeshifts[j], j],
-                tf.range(tf.shape(signal.samples)[1]),
-                fn_output_signature=tf.complex64
+        transposed_samples = tf.transpose(padded_samples)
+        new_signal = tf.transpose(tf.vectorized_map(
+            lambda j: tf.gather(
+                transposed_samples[j],
+                left_pad + tf.range(tf.shape(signal.samples)[0]) - timeshifts[j]
             ),
-            tf.range(tf.shape(signal.samples)[0]),
-            fn_output_signature=tf.complex64
-        )
+            tf.range(tf.shape(signal.samples)[1])
+        ))
 
         return OpticalSignal(
             timing=signal.timing,
@@ -183,3 +187,86 @@ class OpticalFiber(tf.Module):
     @tf.function(input_signature=(optical_signal_spec,))
     def __call__(self, signal: OpticalSignal) -> OpticalSignal:
         return self._chromatic_dispersion(self._optical_loss(signal))
+
+
+class OpticalCoupler1x2(tf.Module):
+    @tf.function(input_signature=(optical_signal_spec,))
+    def __call__(self, input_signal: OpticalSignal) -> tuple[OpticalSignal, OpticalSignal]:
+        split_samples = input_signal.samples * 0.5 ** 0.5
+
+        return (
+            OpticalSignal(
+                timing=input_signal.timing,
+                samples=split_samples,
+                frequencies=input_signal.frequencies,
+                central_frequency=input_signal.central_frequency,
+                power=input_signal.power * 0.5
+            ),
+            OpticalSignal(
+                timing=input_signal.timing,
+                samples=split_samples,
+                frequencies=input_signal.frequencies,
+                central_frequency=input_signal.central_frequency,
+                power=input_signal.power * 0.5
+            )
+        )
+
+
+class OpticalCoupler2x2(tf.Module):
+    #: If true, the second output will contain the difference of the two input signals
+    flip: tf.Variable  # shape=(1,); dtype=bool
+
+    def __init__(self, flip: bool = False, name: Optional[str] = None) -> None:
+        super().__init__(name=name)
+
+        self.flip = tf.Variable(tf.constant(flip))
+
+    @tf.function(input_signature=((optical_signal_spec, optical_signal_spec),))
+    def __call__(self, input_signals: tuple[OpticalSignal, OpticalSignal]) -> tuple[OpticalSignal, OpticalSignal]:
+        mixed_samples1 = (input_signals[0].samples + input_signals[1].samples) * 0.5 ** 0.5
+
+        if self.flip:  # type: ignore
+            mixed_samples2 = (input_signals[0].samples - input_signals[1].samples) * 0.5 ** 0.5
+        else:
+            mixed_samples2 = mixed_samples1
+
+        timing = input_signals[0].timing
+        frequencies = input_signals[0].frequencies
+        central_frequency = input_signals[0].central_frequency
+        power = (input_signals[0].power + input_signals[1].power) * 0.5
+
+        return (
+            OpticalSignal(
+                timing=timing,
+                samples=mixed_samples1,
+                frequencies=frequencies,
+                central_frequency=central_frequency,
+                power=power
+            ),
+            OpticalSignal(
+                timing=timing,
+                samples=mixed_samples2,
+                frequencies=frequencies,
+                central_frequency=central_frequency,
+                power=power
+            )
+        )
+
+
+class OpticalCoupler2x1(tf.Module):
+    @tf.function(input_signature=((optical_signal_spec, optical_signal_spec),))
+    def __call__(self, input_signals: tuple[OpticalSignal, OpticalSignal]) -> OpticalSignal:
+        mixed_samples = (input_signals[0].samples + input_signals[1].samples) * 0.5 ** 0.5
+
+        timing = input_signals[0].timing
+        frequencies = input_signals[0].frequencies
+        central_frequency = input_signals[0].central_frequency
+        power = input_signals[0].power + input_signals[1].power
+
+        return OpticalSignal(
+            timing=timing,
+            samples=mixed_samples,
+            frequencies=frequencies,
+            central_frequency=central_frequency,
+            power=power
+        )

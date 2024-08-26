@@ -56,7 +56,7 @@ def plot_power(
         _plot(
             ax,
             signal.timing.time.numpy() * time_units[0],
-            np.sum(np.abs(signal.samples.numpy()) ** 2, axis=1) * power_units[0],
+            np.abs(np.sum(signal.samples.numpy(), axis=1) ** 2) * power_units[0],
             label=label,
             **kwargs
         )
