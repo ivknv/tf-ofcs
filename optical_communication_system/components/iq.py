@@ -250,10 +250,10 @@ class IQDecoder(tf.Module):
         iq_symbols = tf.transpose(
             tf.vectorized_map(
                 fn=lambda i: [
-                    tf.reduce_mean(i_current[i * n:(i + 1) * n]),
-                    tf.reduce_mean(q_current[i * n:(i + 1) * n])
+                    i_current[i * n + n // 2],
+                    q_current[i * n + n // 2]
                 ],
-                elems=tf.range(tf.cast(tf.size(i_current) / n, tf.int32))
+                elems=tf.range(tf.cast(tf.size(i_current) // n, tf.int32))
             )
         )
 

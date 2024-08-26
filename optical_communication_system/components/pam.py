@@ -185,10 +185,10 @@ class PAMDecoder(tf.Module):
 
         symbols = tf.vectorized_map(
             fn=lambda i: tf.cast(
-                tf.reduce_mean(current[i * n:(i + 1) * n]) / max_current,
+                current[i * n + n // 2] / max_current,
                 tf.complex64
             ),
-            elems=tf.range(tf.cast(tf.size(current) / n, tf.int32))
+            elems=tf.range(tf.cast(tf.size(current) // n, tf.int32))
         )
 
         return tf.reshape(
