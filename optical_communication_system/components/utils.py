@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from collections.abc import Callable
+from collections.abc import Sequence
 from typing import Any, Optional
 
 import tensorflow as tf
@@ -16,7 +16,8 @@ __all__ = [
     "MapComponent",
     "MapComponents",
     "Identity",
-    "Reindex"
+    "Reindex",
+    "Fork"
 ]
 
 
@@ -80,13 +81,16 @@ class System(Component):
 
         return result
 
-    def capture(self, inp: Any) -> Any:
+    def trace(self, inp: Any, level: int = 0) -> Any:
+        self.trace_call(inp, level)
+
         result: Any = inp
 
         for component in self.components:
-            result = component.capture(result)
+            result = component.trace(result, level + 1)
 
         self.output = result
+        self.trace_return_value(self.output, level + 1)
 
         return result
 
@@ -103,8 +107,12 @@ class MapComponent(Component):
     def __call__(self, inputs: tuple) -> tuple:
         return tuple(self.component(input) for input in inputs)
 
-    def capture(self, inp: tuple) -> tuple:
-        return tuple(self.component.capture(input) for input in inp)
+    def trace(self, inp: tuple, level: int = 0) -> tuple:
+        self.trace_call(inp, level)
+        self.output = tuple(self.component.trace(input, level + 1) for input in inp)
+        self.trace_return_value(self.output, level + 1)
+
+        return self.output
 
 
 class MapComponents(Component):
@@ -119,10 +127,17 @@ class MapComponents(Component):
     def __call__(self, inputs: tuple) -> tuple:
         return tuple(component(input) for component, input in zip(self.components, inputs, strict=True))
 
-    def capture(self, inp: tuple) -> tuple:
-        return super().capture(
-            tuple(component.capture(input) for component, input in zip(self.components, inp, strict=True))
+    def trace(self, inp: tuple, level: int = 0) -> tuple:
+        self.trace_call(inp, level)
+
+        self.output = tuple(
+            component.trace(input, level + 1)
+            for component, input in zip(self.components, inp, strict=True)
         )
+
+        self.trace_return_value(self.output, level + 1)
+
+        return self.output
 
 
 class Identity(Component):
@@ -132,11 +147,11 @@ class Identity(Component):
 
 
 class Reindex(Component):
-    indices: list[list | tuple[int, ...]]
+    indices: list | tuple[int, ...]
 
     def __init__(
         self,
-        indices: list[list | tuple[int, ...]],
+        indices: list | tuple[int, ...],
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -158,5 +173,23 @@ class Reindex(Component):
             return tuple(self._reindex(inputs, i) for i in index)
 
     @tf.function
-    def __call__(self, inputs: tuple) -> tuple:
+    def __call__(self, inputs: tuple) -> Any:
         return self._reindex(inputs, self.indices)
+
+
+class Fork(Component):
+    shape: Sequence[int]
+
+    def __init__(self, shape: Sequence[int], name: Optional[str] = None) -> None:
+        super().__init__(name=name)
+
+        self.shape = shape
+
+    @tf.function
+    def __call__(self, inp: Any) -> tuple:
+        result = inp
+
+        for i in self.shape:
+            result = (result,) * i
+
+        return result

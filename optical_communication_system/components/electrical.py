@@ -2,10 +2,10 @@
 
 import tensorflow as tf
 
-from .datatypes import ElectricalSignal, electrical_signal_spec
+from .datatypes import ElectricalSignal, electrical_signal_spec, Timing
 from .component import Component
 
-__all__ = ["ElectricalAdder", "ElectricalSubtractor"]
+__all__ = ["ElectricalAdder", "ElectricalSubtractor", "ExtractTiming"]
 
 
 class ElectricalAdder(Component):
@@ -24,3 +24,9 @@ class ElectricalSubtractor(Component):
             timing=input_signals[0].timing,
             samples=input_signals[0].samples - input_signals[1].samples
         )
+
+
+class ExtractTiming(Component):
+    @tf.function(input_signature=(electrical_signal_spec,))
+    def __call__(self, signal: ElectricalSignal) -> Timing:
+        return signal.timing
