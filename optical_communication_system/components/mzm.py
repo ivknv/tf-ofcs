@@ -5,6 +5,7 @@ from typing import Optional
 import tensorflow as tf
 
 from . import constants
+from .component import Component
 
 from .datatypes import (
     Timing, ElectricalSignal, electrical_signal_spec, OpticalSignal
@@ -13,7 +14,7 @@ from .datatypes import (
 __all__ = ["MachZehnderModulator"]
 
 
-class MachZehnderModulator(tf.Module):
+class MachZehnderModulator(Component):
     carrier_source: Callable[[Timing], OpticalSignal]
     extinction_ratio: tf.Variable  # shape=[]; dtype=float32
 

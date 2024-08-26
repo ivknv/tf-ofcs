@@ -6,11 +6,12 @@ from typing import Optional
 from .datatypes import Timing, timing_spec, OpticalSignal
 
 from .utils import gaussian_distribution
+from .component import Component
 
 __all__ = ["Laser"]
 
 
-class Laser(tf.Module):
+class Laser(Component):
     #: Output power in watts
     power: tf.Variable  # shape=(1,); dtype=float32
 

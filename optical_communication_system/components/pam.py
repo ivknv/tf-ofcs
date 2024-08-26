@@ -6,6 +6,7 @@ from typing import Any, Optional
 import tensorflow as tf
 
 from .utils import adjust_symbol_for_mzm
+from .component import Component
 
 from .datatypes import (
     bit_sequence_spec, bit_dtype,
@@ -20,7 +21,7 @@ __all__ = [
 ]
 
 
-class PAMConstellation(tf.Module):
+class PAMConstellation(Component):
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=(1,); dtype=int32
     mapping: tf.Variable  # shape=(2 ** bits_per_symbol,); dtype=float32
@@ -80,7 +81,7 @@ class PAMConstellation(tf.Module):
         )
 
 
-class PAMEncoder(tf.Module):
+class PAMEncoder(Component):
     #: Sampling rate in Hz
     sampling_rate: tf.Variable  # shape=(1,); dtype=float32
 
@@ -143,7 +144,7 @@ class PAMEncoder(tf.Module):
         )
 
 
-class PAMDecoder(tf.Module):
+class PAMDecoder(Component):
     #: Data rate in bits/second
     data_rate: tf.Variable  # shape=(1,); dtype=float32
 

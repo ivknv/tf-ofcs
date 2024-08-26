@@ -3,11 +3,12 @@
 from typing import Optional
 import tensorflow as tf
 from .datatypes import ElectricalSignal, OpticalSignal, optical_signal_spec
+from .component import Component
 
 __all__ = ["Photodiode"]
 
 
-class Photodiode(tf.Module):
+class Photodiode(Component):
     #: Minimum power (in watts) that can be converted into a current
     sensitivity: tf.Variable  # shape=(1,); dtype=float32
 

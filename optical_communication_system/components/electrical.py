@@ -3,11 +3,12 @@
 import tensorflow as tf
 
 from .datatypes import ElectricalSignal, electrical_signal_spec
+from .component import Component
 
 __all__ = ["ElectricalAdder", "ElectricalSubtractor"]
 
 
-class ElectricalAdder(tf.Module):
+class ElectricalAdder(Component):
     @tf.function(input_signature=((electrical_signal_spec, electrical_signal_spec),))
     def __call__(self, input_signals: tuple[ElectricalSignal, ElectricalSignal]) -> ElectricalSignal:
         return ElectricalSignal(
@@ -16,7 +17,7 @@ class ElectricalAdder(tf.Module):
         )
 
 
-class ElectricalSubtractor(tf.Module):
+class ElectricalSubtractor(Component):
     @tf.function(input_signature=((electrical_signal_spec, electrical_signal_spec),))
     def __call__(self, input_signals: tuple[ElectricalSignal, ElectricalSignal]) -> ElectricalSignal:
         return ElectricalSignal(

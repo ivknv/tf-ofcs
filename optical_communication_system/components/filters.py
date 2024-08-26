@@ -4,6 +4,7 @@ from typing import Optional
 import tensorflow as tf
 
 from .utils import fftfreq
+from .component import Component
 
 from .datatypes import (
     ElectricalSignal, electrical_signal_spec
@@ -12,7 +13,7 @@ from .datatypes import (
 __all__ = ["ElectricalLowPassFilter"]
 
 
-class ElectricalLowPassFilter(tf.Module):
+class ElectricalLowPassFilter(Component):
     #: Filter cutoff frequency in Hz
     cutoff_frequency: tf.Variable  # shape=(1,); dtype=float32
 

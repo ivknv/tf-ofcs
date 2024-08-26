@@ -7,11 +7,12 @@ from .datatypes import (
     ElectricalSignal, electrical_signal_spec,
     OpticalSignal, optical_signal_spec
 )
+from .component import Component
 
 __all__ = ["ElectricalAWGN", "OpticalAWGN"]
 
 
-class ElectricalAWGN(tf.Module):
+class ElectricalAWGN(Component):
     #: Noise level in dB relative to the input signal
     level: tf.Variable  # shape=(1,); dtype=float32
 
@@ -59,7 +60,7 @@ class ElectricalAWGN(tf.Module):
         )
 
 
-class OpticalAWGN(tf.Module):
+class OpticalAWGN(Component):
     #: Noise level in dB relative to the input signal
     level: tf.Variable  # shape=(1,); dtype=float32
 

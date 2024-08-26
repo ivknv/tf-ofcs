@@ -14,6 +14,7 @@ from .datatypes import (
     Timing
 )
 
+from .component import Component
 from .mzm import MachZehnderModulator
 from .passive import OpticalPhaseShifter
 from .utils import System, adjust_symbol_for_mzm, normalize_signal
@@ -21,7 +22,7 @@ from .utils import System, adjust_symbol_for_mzm, normalize_signal
 __all__ = ["IQConstellation", "IQEncoder", "IQModulator", "IQReceiver"]
 
 
-class IQConstellation(tf.Module):
+class IQConstellation(Component):
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=(1,); dtype=int32
     mapping: tf.Variable  # shape=(2 ** bits_per_symbol,2); dtype=float32
@@ -75,7 +76,7 @@ class IQConstellation(tf.Module):
         )
 
 
-class IQEncoder(tf.Module):
+class IQEncoder(Component):
     #: Sampling rate in Hz
     sampling_rate: tf.Variable  # shape=(1,); dtype=float32
 
@@ -149,8 +150,8 @@ class IQEncoder(tf.Module):
         )
 
 
-class IQModulator(tf.Module):
-    def __init__(self, carrier_source: Callable, name=None) -> None:
+class IQModulator(Component):
+    def __init__(self, carrier_source: Component, name=None) -> None:
         super().__init__(name=name)
 
         self.i_modulator = MachZehnderModulator(carrier_source=carrier_source)
@@ -177,7 +178,7 @@ class IQModulator(tf.Module):
         )
 
 
-class IQReceiver(tf.Module):
+class IQReceiver(Component):
     #: Photodiode for optical-to-electrical (O-E) conversion
     photodiode: Callable[[OpticalSignal], ElectricalSignal]
 
@@ -209,7 +210,7 @@ class IQReceiver(tf.Module):
         )
 
 
-class IQDecoder(tf.Module):
+class IQDecoder(Component):
     #: Data rate in bits/second
     data_rate: tf.Variable  # shape=(1,); dtype=float32
 

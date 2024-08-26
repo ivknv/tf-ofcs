@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 import tensorflow as tf
 from . import constants
+from .component import Component
 
 __all__ = [
     "fftfreq",
@@ -61,11 +62,11 @@ def adjust_symbol_for_mzm(symbol: tf.Tensor) -> tf.Tensor:
     return tf.math.acos(symbol) / constants.pi
 
 
-class System(tf.Module):
+class System(Component):
     #: System components
-    components: list[Callable]
+    components: list[Component]
 
-    def __init__(self, components: list[Callable], name: Optional[str] = None) -> None:
+    def __init__(self, components: list[Component], name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.components = components
@@ -79,11 +80,21 @@ class System(tf.Module):
 
         return result
 
+    def capture(self, inp: Any) -> Any:
+        result: Any = inp
 
-class MapComponent(tf.Module):
-    component: Callable
+        for component in self.components:
+            result = component.capture(result)
 
-    def __init__(self, *, component: Callable, name: Optional[str] = None) -> None:
+        self.output = result
+
+        return result
+
+
+class MapComponent(Component):
+    component: Component
+
+    def __init__(self, *, component: Component, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.component = component
@@ -92,11 +103,14 @@ class MapComponent(tf.Module):
     def __call__(self, inputs: tuple) -> tuple:
         return tuple(self.component(input) for input in inputs)
 
+    def capture(self, inp: tuple) -> tuple:
+        return tuple(self.component.capture(input) for input in inp)
 
-class MapComponents(tf.Module):
-    components: list[Callable]
 
-    def __init__(self, *, components: list[Callable], name: Optional[str] = None) -> None:
+class MapComponents(Component):
+    components: list[Component]
+
+    def __init__(self, *, components: list[Component], name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.components = components
@@ -105,14 +119,19 @@ class MapComponents(tf.Module):
     def __call__(self, inputs: tuple) -> tuple:
         return tuple(component(input) for component, input in zip(self.components, inputs, strict=True))
 
+    def capture(self, inp: tuple) -> tuple:
+        return super().capture(
+            tuple(component.capture(input) for component, input in zip(self.components, inp, strict=True))
+        )
 
-class Identity(tf.Module):
+
+class Identity(Component):
     @tf.function
     def __call__(self, inp: Any) -> Any:
         return inp
 
 
-class Reindex(tf.Module):
+class Reindex(Component):
     indices: list[list | tuple[int, ...]]
 
     def __init__(

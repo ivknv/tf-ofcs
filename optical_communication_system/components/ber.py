@@ -5,11 +5,12 @@ from typing import Optional
 
 import tensorflow as tf
 from .datatypes import bit_sequence_spec
+from .component import Component
 
 __all__ = ["BERAnalyzer", "BERTester"]
 
 
-class BERAnalyzer(tf.Module):
+class BERAnalyzer(Component):
     @tf.function(input_signature=(
         bit_sequence_spec,
         bit_sequence_spec
@@ -23,7 +24,7 @@ class BERAnalyzer(tf.Module):
         return (total_bits - correct_count) / total_bits
 
 
-class BERTester(tf.Module):
+class BERTester(Component):
     #: System to test
     systems: list[Callable]
 

@@ -6,6 +6,7 @@ import tensorflow as tf
 from .datatypes import OpticalSignal, optical_signal_spec
 from . import constants
 from .utils import fftfreq
+from .component import Component
 
 __all__ = [
     "OpticalPhaseShifter",
@@ -15,7 +16,7 @@ __all__ = [
 ]
 
 
-class OpticalPhaseShifter(tf.Module):
+class OpticalPhaseShifter(Component):
     phase_shift: tf.Variable  # shape=(1,); dtype=float32
 
     def __init__(self, *, phase_shift: float, name: Optional[str] = None) -> None:
@@ -36,7 +37,7 @@ class OpticalPhaseShifter(tf.Module):
         )
 
 
-class OpticalLoss(tf.Module):
+class OpticalLoss(Component):
     #: Optical signal power loss in dB
     loss: tf.Variable  # shape=(1,); dtype=float32
 
@@ -62,7 +63,7 @@ class OpticalLoss(tf.Module):
         )
 
 
-class ChromaticDispersion(tf.Module):
+class ChromaticDispersion(Component):
     #: Chromatic dispersion coefficient (ps / (nm * km))
     coefficient: tf.Variable  # shape=(1,); dtype=float32
     distance: tf.Variable  # shape=(1,); dtype=float32
@@ -171,7 +172,7 @@ class ChromaticDispersion(tf.Module):
         return signal
 
 
-class OpticalFiber(tf.Module):
+class OpticalFiber(Component):
     def __init__(
         self,
         attenuation: float,
@@ -189,7 +190,7 @@ class OpticalFiber(tf.Module):
         return self._chromatic_dispersion(self._optical_loss(signal))
 
 
-class OpticalCoupler1x2(tf.Module):
+class OpticalCoupler1x2(Component):
     @tf.function(input_signature=(optical_signal_spec,))
     def __call__(self, input_signal: OpticalSignal) -> tuple[OpticalSignal, OpticalSignal]:
         split_samples = input_signal.samples * 0.5 ** 0.5
@@ -212,7 +213,7 @@ class OpticalCoupler1x2(tf.Module):
         )
 
 
-class OpticalCoupler2x2(tf.Module):
+class OpticalCoupler2x2(Component):
     #: If true, the second output will contain the difference of the two input signals
     flip: tf.Variable  # shape=(1,); dtype=bool
 
@@ -253,7 +254,7 @@ class OpticalCoupler2x2(tf.Module):
         )
 
 
-class OpticalCoupler2x1(tf.Module):
+class OpticalCoupler2x1(Component):
     @tf.function(input_signature=((optical_signal_spec, optical_signal_spec),))
     def __call__(self, input_signals: tuple[OpticalSignal, OpticalSignal]) -> OpticalSignal:
         mixed_samples = (input_signals[0].samples + input_signals[1].samples) * 0.5 ** 0.5

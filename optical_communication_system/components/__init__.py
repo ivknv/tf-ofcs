@@ -15,6 +15,7 @@ from .filters import ElectricalLowPassFilter
 from .ber import BERTester
 from .utils import System, MapComponent, MapComponents, Identity, Reindex
 from .electrical import ElectricalAdder, ElectricalSubtractor
+from .component import Component
 
 __all__ = [
     "Laser",
@@ -43,5 +44,6 @@ __all__ = [
     "Identity",
     "Reindex",
     "ElectricalAdder",
-    "ElectricalSubtractor"
+    "ElectricalSubtractor",
+    "Component"
 ]
