@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Any, Optional
 import math
 
@@ -9,15 +9,19 @@ import tensorflow as tf
 from .datatypes import (
     bit_dtype, bit_sequence_spec,
     ElectricalSignal,
-    OpticalSignal, optical_signal_spec,
+    OpticalSignal,
     IQSignal, iq_signal_spec,
     Timing
 )
 
 from .component import Component
 from .mzm import MachZehnderModulator
-from .passive import OpticalPhaseShifter
-from .utils import Composition, adjust_symbol_for_mzm, normalize_signal
+from .passive import OpticalCoupler1x2, OpticalCoupler2x2, OpticalPhaseShifter
+from .utils import (
+    Composition, ExtractTiming, Fork, Identity, MapComponent, MapComponents,
+    Reindex, adjust_symbol_for_mzm, normalize_signal
+)
+from .electrical import ElectricalSubtractor
 
 __all__ = ["IQConstellation", "IQEncoder", "IQModulator", "IQReceiver"]
 
@@ -176,36 +180,51 @@ class IQModulator(Component):
         )
 
 
-class IQReceiver(Component):
-    #: Photodiode for optical-to-electrical (O-E) conversion
-    photodiode: Callable[[OpticalSignal], ElectricalSignal]
+class IQReceiver(Composition):
+    #: Photodiode for the coherent receiver
+    photodiode: Component
 
-    #: Currents above this value will be clipped
-    max_current: tf.Variable  # shape=(1,); dtype=float32
+    #: Local oscillator (laser) for the coherent receiver
+    local_oscillator: Component
 
     def __init__(
         self,
-        *,
-        photodiode: Callable[[OpticalSignal], ElectricalSignal],
-        max_current: float = 2e-3,
+        photodiode: Component,
+        local_oscillator: Component,
         name: Optional[str] = None
     ) -> None:
-        super().__init__(name=name)
-
         self.photodiode = photodiode
-        self.max_current = tf.Variable(tf.constant(max_current))
+        self.local_oscillator = local_oscillator
 
-    @tf.function(input_signature=(optical_signal_spec,))
-    def __call__(self, input_signal: OpticalSignal) -> IQSignal:
-        total = tf.reduce_sum(input_signal.samples, axis=1)
+        coupler1x2 = OpticalCoupler1x2()
+        identity = Identity()
 
-        i_current = tf.math.real(total)
-        q_current = tf.math.imag(total)
-
-        return (
-            ElectricalSignal(timing=input_signal.timing, samples=i_current),
-            ElectricalSignal(timing=input_signal.timing, samples=q_current)
-        )
+        # This is a coherent IQ receiver
+        super().__init__(components=[
+            coupler1x2,  # (OpticalSignal, OpticalSignal)
+            Fork(shape=[2]),  # 2 * ((OpticalSignal, OpticalSignal))
+            MapComponents(components=[
+                identity,  # (OpticalSignal, OpticalSignal)
+                Composition(components=[
+                    Reindex(indices=(0,)),  # OpticalSignal
+                    ExtractTiming(),  # Timing
+                    local_oscillator,  # OpticalSignal
+                    coupler1x2,  # (OpticalSignal, OpticalSignal)
+                    MapComponents(components=[
+                        OpticalPhaseShifter(phase_shift=math.pi / 2),  # OpticalSignal
+                        identity  # OpticalSignal
+                    ])  # (OpticalSignal, OpticalSignal)
+                ])
+            ]),  # 2 * ((OpticalSignal, OpticalSignal))
+            Reindex(indices=[[(1, 1), (0, 0)], [(0, 1), (1, 0)]]),  # 2 * ((OpticalSignal, OpticalSignal),)
+            MapComponent(
+                component=Composition(components=[
+                    OpticalCoupler2x2(flip=True),  # (OpticalSignal, OpticalSignal)
+                    MapComponent(component=photodiode),  # (ElectricalSignal, ElectricalSignal)
+                    ElectricalSubtractor()  # ElectricalSignal
+                ])
+            ),  # (ElectricalSignal, ElectricalSignal)
+        ], name=name)
 
 
 class IQDecoder(Component):
