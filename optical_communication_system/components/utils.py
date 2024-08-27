@@ -7,6 +7,8 @@ import tensorflow as tf
 from . import constants
 from .component import Component
 
+from .datatypes import ElectricalSignal, OpticalSignal, Timing
+
 __all__ = [
     "fftfreq",
     "gaussian_distribution",
@@ -17,7 +19,8 @@ __all__ = [
     "MapComponents",
     "Identity",
     "Reindex",
-    "Fork"
+    "Fork",
+    "ExtractTiming"
 ]
 
 
@@ -193,3 +196,9 @@ class Fork(Component):
             result = (result,) * i
 
         return result
+
+
+class ExtractTiming(Component):
+    @tf.function
+    def __call__(self, signal: ElectricalSignal | OpticalSignal) -> Timing:
+        return signal.timing
