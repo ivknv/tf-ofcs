@@ -68,17 +68,22 @@ class ChromaticDispersion(Component):
     coefficient: tf.Variable  # shape=(1,); dtype=float32
     distance: tf.Variable  # shape=(1,); dtype=float32
 
+    #: Central frequency at which light travels at normal speed (without delay)
+    central_frequency: tf.Variable  # shape=(1,); dtype=float32
+
     def __init__(
         self,
         *,
         coefficient: float,
         distance: float,
+        central_frequency: float,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.coefficient = tf.Variable(tf.constant(coefficient))
         self.distance = tf.Variable(tf.constant(distance))
+        self.central_frequency = tf.Variable(tf.constant(central_frequency))
 
     @tf.function(input_signature=(optical_signal_spec,))
     def _apply_pulse_dispersion(self, signal: OpticalSignal) -> OpticalSignal:
@@ -120,7 +125,7 @@ class ChromaticDispersion(Component):
 
     @tf.function(input_signature=(optical_signal_spec,))
     def _apply_linewidth_dispersion(self, signal: OpticalSignal) -> OpticalSignal:
-        wavelength_deltas = (constants.c * 1e9 / signal.frequencies) - (constants.c * 1e9 / signal.central_frequency)
+        wavelength_deltas = (constants.c * 1e9 / signal.frequencies) - (constants.c * 1e9 / self.central_frequency)
 
         amount = self.coefficient * self.distance
 
@@ -178,12 +183,17 @@ class OpticalFiber(Component):
         attenuation: float,
         chromatic_dispersion: float,
         length: float,
+        central_frequency: float,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self._optical_loss = OpticalLoss(loss=attenuation * length)
-        self._chromatic_dispersion = ChromaticDispersion(coefficient=chromatic_dispersion, distance=length)
+        self._chromatic_dispersion = ChromaticDispersion(
+            coefficient=chromatic_dispersion,
+            distance=length,
+            central_frequency=central_frequency
+        )
 
     @tf.function(input_signature=(optical_signal_spec,))
     def __call__(self, signal: OpticalSignal) -> OpticalSignal:
