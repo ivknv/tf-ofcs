@@ -12,7 +12,7 @@ __all__ = [
     "gaussian_distribution",
     "normalize_signal",
     "adjust_symbol_for_mzm",
-    "System",
+    "Composition",
     "MapComponent",
     "MapComponents",
     "Identity",
@@ -63,7 +63,7 @@ def adjust_symbol_for_mzm(symbol: tf.Tensor) -> tf.Tensor:
     return tf.math.acos(symbol) / constants.pi
 
 
-class System(Component):
+class Composition(Component):
     #: System components
     components: list[Component]
 

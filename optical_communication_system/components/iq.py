@@ -17,7 +17,7 @@ from .datatypes import (
 from .component import Component
 from .mzm import MachZehnderModulator
 from .passive import OpticalPhaseShifter
-from .utils import System, adjust_symbol_for_mzm, normalize_signal
+from .utils import Composition, adjust_symbol_for_mzm, normalize_signal
 
 __all__ = ["IQConstellation", "IQEncoder", "IQModulator", "IQReceiver"]
 
@@ -156,7 +156,7 @@ class IQModulator(Component):
 
         self.i_modulator = MachZehnderModulator(carrier_source=carrier_source)
         self.q_modulator = MachZehnderModulator(
-            carrier_source=System(components=[
+            carrier_source=Composition(components=[
                 carrier_source,
                 OpticalPhaseShifter(phase_shift=0.5 * math.pi)
             ])

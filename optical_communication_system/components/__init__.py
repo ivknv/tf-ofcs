@@ -13,7 +13,7 @@ from .passive import (
 )
 from .filters import ElectricalLowPassFilter
 from .ber import BERTester
-from .utils import System, MapComponent, MapComponents, Identity, Reindex, Fork
+from .utils import Composition, MapComponent, MapComponents, Identity, Reindex, Fork
 from .electrical import ElectricalAdder, ElectricalSubtractor, ExtractTiming
 from .component import Component
 
@@ -38,7 +38,7 @@ __all__ = [
     "OpticalCoupler2x1",
     "ElectricalLowPassFilter",
     "BERTester",
-    "System",
+    "Composition",
     "MapComponent",
     "MapComponents",
     "Identity",
