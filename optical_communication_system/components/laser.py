@@ -21,16 +21,16 @@ class Laser(Component):
     #: Line width of the signal, full width at half-maximum (FWHM), Hz
     linewidth: tf.Variable  # shape=(1,); dtype=float32
 
-    #: Number of frequency components in the signal
-    frequency_count: tf.Variable  # shape=(1,); dtype=int32
+    #: Frequency components of the signal
+    frequencies: tf.Variable  # shape=(None,); dtype=float32
 
     def __init__(
         self,
         *,
+        frequencies: tf.Tensor,
         power: float = 2e-3,
         central_frequency: float = 193.414e12,
         linewidth: float = 1e6,
-        frequency_count: int = 128,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -38,20 +38,16 @@ class Laser(Component):
         self.power = tf.Variable(tf.constant(power))
         self.central_frequency = tf.Variable(tf.constant(central_frequency))
         self.linewidth = tf.Variable(tf.constant(linewidth))
-        self.frequency_count = tf.Variable(tf.constant(frequency_count))
+        self.frequencies = tf.Variable(tf.constant(frequencies))
 
     @tf.function(input_signature=(timing_spec,))
     def __call__(self, timing: Timing) -> OpticalSignal:
         gauss_variance = 1.0 / (2.0 * tf.math.log(2.0)) ** 0.5 * self.linewidth
 
-        frequencies = tf.linspace(
-            self.central_frequency - tf.multiply(self.linewidth, 10.0),
-            self.central_frequency + tf.multiply(self.linewidth, 10.0),
-            self.frequency_count
-        )
+        frequency_count = tf.size(self.frequencies)
 
         distribution = gaussian_distribution(
-            frequencies,
+            self.frequencies,
             self.central_frequency,
             gauss_variance
         )
@@ -62,11 +58,11 @@ class Laser(Component):
                 tf.cast(tf.math.sqrt(self.power) * distribution, tf.complex64),
                 [tf.size(timing.time)],
             ),
-            [tf.size(timing.time), self.frequency_count]
+            [tf.size(timing.time), frequency_count]
         )
 
         return OpticalSignal(
             timing=timing,
-            frequencies=frequencies,
+            frequencies=self.frequencies,
             samples=samples
         )
