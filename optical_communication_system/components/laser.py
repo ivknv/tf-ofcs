@@ -68,7 +68,5 @@ class Laser(Component):
         return OpticalSignal(
             timing=timing,
             frequencies=frequencies,
-            samples=samples,
-            central_frequency=self.central_frequency,
-            power=self.power
+            samples=samples
         )

@@ -54,7 +54,5 @@ class MachZehnderModulator(Component):
         return OpticalSignal(
             timing=carrier_signal.timing,
             frequencies=carrier_signal.frequencies,
-            samples=modulated_signal,
-            central_frequency=carrier_signal.central_frequency,
-            power=carrier_signal.power
+            samples=modulated_signal
         )

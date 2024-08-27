@@ -190,9 +190,6 @@ def _plot_spectrum(
     fft = np.fft.fftshift(np.fft.fft(samples)) * amplitude_scale
     freqs = np.fft.fftshift(np.fft.fftfreq(fft.size, 1 / sampling_rate)) * frequency_scale
 
-    if isinstance(signal, OpticalSignal):
-        freqs += signal.central_frequency * frequency_scale
-
     _plot(ax, freqs, np.abs(fft), label=label, **kwargs)
 
 

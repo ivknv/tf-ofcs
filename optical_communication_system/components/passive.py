@@ -31,9 +31,7 @@ class OpticalPhaseShifter(Component):
         return OpticalSignal(
             timing=input_signal.timing,
             frequencies=input_signal.frequencies,
-            samples=shifted_samples,
-            central_frequency=input_signal.central_frequency,
-            power=input_signal.power
+            samples=shifted_samples
         )
 
 
@@ -57,9 +55,7 @@ class OpticalLoss(Component):
         return OpticalSignal(
             timing=signal.timing,
             frequencies=signal.frequencies,
-            samples=samples,
-            central_frequency=signal.central_frequency,
-            power=signal.power / power_loss_coeff
+            samples=samples
         )
 
 
@@ -118,13 +114,11 @@ class ChromaticDispersion(Component):
         return OpticalSignal(
             timing=signal.timing,
             frequencies=signal.frequencies,
-            samples=new_signal,
-            central_frequency=signal.central_frequency,
-            power=signal.power
+            samples=new_signal
         )
 
     @tf.function(input_signature=(optical_signal_spec,))
-    def _apply_linewidth_dispersion(self, signal: OpticalSignal) -> OpticalSignal:
+    def _apply_carrier_dispersion(self, signal: OpticalSignal) -> OpticalSignal:
         wavelength_deltas = (constants.c * 1e9 / signal.frequencies) - (constants.c * 1e9 / self.central_frequency)
 
         amount = self.coefficient * self.distance
@@ -161,9 +155,7 @@ class ChromaticDispersion(Component):
         return OpticalSignal(
             timing=signal.timing,
             frequencies=signal.frequencies,
-            samples=new_signal,
-            central_frequency=signal.central_frequency,
-            power=signal.power
+            samples=new_signal
         )
 
     @tf.function(input_signature=(optical_signal_spec,))
@@ -172,7 +164,7 @@ class ChromaticDispersion(Component):
             return signal
 
         signal = self._apply_pulse_dispersion(signal)
-        signal = self._apply_linewidth_dispersion(signal)
+        signal = self._apply_carrier_dispersion(signal)
 
         return signal
 
@@ -209,16 +201,12 @@ class OpticalCoupler1x2(Component):
             OpticalSignal(
                 timing=input_signal.timing,
                 samples=split_samples,
-                frequencies=input_signal.frequencies,
-                central_frequency=input_signal.central_frequency,
-                power=input_signal.power * 0.5
+                frequencies=input_signal.frequencies
             ),
             OpticalSignal(
                 timing=input_signal.timing,
                 samples=split_samples,
-                frequencies=input_signal.frequencies,
-                central_frequency=input_signal.central_frequency,
-                power=input_signal.power * 0.5
+                frequencies=input_signal.frequencies
             )
         )
 
@@ -243,23 +231,17 @@ class OpticalCoupler2x2(Component):
 
         timing = input_signals[0].timing
         frequencies = input_signals[0].frequencies
-        central_frequency = input_signals[0].central_frequency
-        power = (input_signals[0].power + input_signals[1].power) * 0.5
 
         return (
             OpticalSignal(
                 timing=timing,
                 samples=mixed_samples1,
                 frequencies=frequencies,
-                central_frequency=central_frequency,
-                power=power
             ),
             OpticalSignal(
                 timing=timing,
                 samples=mixed_samples2,
                 frequencies=frequencies,
-                central_frequency=central_frequency,
-                power=power
             )
         )
 
@@ -271,13 +253,9 @@ class OpticalCoupler2x1(Component):
 
         timing = input_signals[0].timing
         frequencies = input_signals[0].frequencies
-        central_frequency = input_signals[0].central_frequency
-        power = input_signals[0].power + input_signals[1].power
 
         return OpticalSignal(
             timing=timing,
             samples=mixed_samples,
             frequencies=frequencies,
-            central_frequency=central_frequency,
-            power=power
         )

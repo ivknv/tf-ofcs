@@ -13,11 +13,8 @@ __all__ = ["ElectricalAWGN", "OpticalAWGN"]
 
 
 class ElectricalAWGN(Component):
-    #: Noise level in dB relative to the input signal
-    level: tf.Variable  # shape=(1,); dtype=float32
-
     #: Fixed amount of noise in watts that is independent of input signal
-    fixed_power: tf.Variable  # shape=(1,); dtype=float32
+    power: tf.Variable  # shape=(1,); dtype=float32
 
     #: Random number generator
     rng: tf.random.Generator
@@ -25,15 +22,13 @@ class ElectricalAWGN(Component):
     def __init__(
         self,
         *,
-        level: float,
-        fixed_power: float = 0.0,
+        power: float,
         rng: Optional[tf.random.Generator] = None,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.level = tf.Variable(tf.constant(level))
-        self.fixed_power = tf.Variable(tf.constant(fixed_power))
+        self.power = tf.Variable(tf.constant(power))
 
         if rng is None:
             self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
@@ -42,10 +37,8 @@ class ElectricalAWGN(Component):
 
     @tf.function(input_signature=(electrical_signal_spec,))
     def __call__(self, input_signal: ElectricalSignal) -> ElectricalSignal:
-        noise_amplitude = (tf.add(
-            self.fixed_power,
-            input_signal.power * tf.math.pow(10.0, self.level * 0.1)
-        ) * 0.5) ** 0.5  # * 0.5 to account for two noise components
+        # * 0.5 to account for two noise components
+        noise_amplitude = (self.power * 0.5) ** 0.5
 
         noise = self.rng.normal(
             shape=tf.shape(input_signal.samples),
@@ -61,11 +54,8 @@ class ElectricalAWGN(Component):
 
 
 class OpticalAWGN(Component):
-    #: Noise level in dB relative to the input signal
-    level: tf.Variable  # shape=(1,); dtype=float32
-
     #: Fixed amount of noise in watts that is independent of input signal
-    fixed_power: tf.Variable  # shape=(1,); dtype=float32
+    power: tf.Variable  # shape=(1,); dtype=float32
 
     #: Random number generator
     rng: tf.random.Generator
@@ -73,15 +63,13 @@ class OpticalAWGN(Component):
     def __init__(
         self,
         *,
-        level: float,
-        fixed_power: float = 0.0,
+        power: float,
         rng: Optional[tf.random.Generator] = None,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.level = tf.Variable(tf.constant(level))
-        self.fixed_power = tf.Variable(tf.constant(fixed_power))
+        self.power = tf.Variable(tf.constant(power))
 
         if rng is None:
             self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
@@ -90,13 +78,10 @@ class OpticalAWGN(Component):
 
     @tf.function(input_signature=(optical_signal_spec,))
     def __call__(self, input_signal: OpticalSignal) -> OpticalSignal:
-        noise_amplitude = tf.divide(
-            tf.add(
-                self.fixed_power,
-                input_signal.power * tf.math.pow(10.0, self.level * 0.1)
-            ) * 0.5,  # * 0.5 to account for two noise components
-            tf.cast(tf.size(input_signal.frequencies), tf.float32)
-        ) ** 0.5
+        frequency_count = tf.cast(tf.size(input_signal.frequencies), tf.float32)
+
+        # * 0.5 to account for two noise components
+        noise_amplitude = (self.power * 0.5 / frequency_count) ** 0.5
 
         # We have to generate the double amount of noise samples since they must be complex
         noise_components = self.rng.normal(
@@ -114,7 +99,5 @@ class OpticalAWGN(Component):
         return OpticalSignal(
             timing=input_signal.timing,
             samples=tf.add(noise, input_signal.samples),
-            frequencies=input_signal.frequencies,
-            central_frequency=input_signal.central_frequency,
-            power=input_signal.power
+            frequencies=input_signal.frequencies
         )

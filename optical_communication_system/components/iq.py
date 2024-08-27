@@ -172,9 +172,7 @@ class IQModulator(Component):
         return OpticalSignal(
             timing=i_signal.timing,
             frequencies=i_signal.frequencies,
-            samples=combined_samples,
-            central_frequency=i_signal.central_frequency,
-            power=i_signal.power
+            samples=combined_samples
         )
 
 

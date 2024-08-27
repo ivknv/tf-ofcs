@@ -58,19 +58,11 @@ class OpticalSignal(tf.experimental.ExtensionType):
     #: Signal's samples
     samples: tf.Tensor  # shape=[None]; dtype=tf.complex64
 
-    #: Power (maximum) of the optical signal in watts
-    power: tf.Tensor  # shape=[]; dtype=tf.float32
-
-    #: Central frequency of the of the emitted light in Hz
-    central_frequency: tf.Tensor  # shape=[]; dtype=tf.float32
-
 
 optical_signal_spec = OpticalSignal.Spec(
     timing=timing_spec,
     frequencies=tf.TensorSpec(shape=[None], dtype=tf.float32),
-    samples=tf.TensorSpec(shape=[None, None], dtype=tf.complex64),
-    power=tf.TensorSpec(shape=[], dtype=tf.float32),
-    central_frequency=tf.TensorSpec(shape=[], dtype=tf.float32)
+    samples=tf.TensorSpec(shape=[None, None], dtype=tf.complex64)
 )
 
 bit_dtype = tf.int32
