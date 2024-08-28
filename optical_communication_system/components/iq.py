@@ -59,6 +59,32 @@ class IQConstellation(Component):
         self.mapping = tf.Variable(tf.constant(mapping))
         self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
 
+    @staticmethod
+    def from_psk(
+        *,
+        bits_per_symbol: int,
+        psk_mapping: Optional[Sequence[float]] = None,
+        adjust_for_mzm: bool = False,
+        transform_to_gray: bool = False,
+        name: Optional[str] = None
+    ) -> "IQConstellation":
+        if psk_mapping is None:
+            symbol_count = 2 ** bits_per_symbol
+            psk_mapping = [
+                2 * math.pi * (-i) / symbol_count + math.pi * 1.25
+                for i in range(symbol_count)
+            ]
+
+        iq_mapping = [[math.cos(phase), math.sin(phase)] for phase in psk_mapping]
+
+        return IQConstellation(
+            bits_per_symbol=bits_per_symbol,
+            mapping=iq_mapping,
+            adjust_for_mzm=adjust_for_mzm,
+            transform_to_gray=transform_to_gray,
+            name=name
+        )
+
     @tf.function(input_signature=(bit_sequence_spec,))
     def encode_symbol(self, bitseq: tf.Tensor) -> tf.Tensor:
         symbol_index: Any = bits_to_index(bitseq)
