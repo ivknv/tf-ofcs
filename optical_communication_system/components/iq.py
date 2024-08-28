@@ -19,7 +19,7 @@ from .mzm import MachZehnderModulator
 from .passive import OpticalCoupler1x2, OpticalCoupler2x2, OpticalPhaseShifter
 from .utils import (
     Composition, ExtractTiming, Fork, Identity, MapComponent, MapComponents,
-    Reindex, adjust_symbol_for_mzm, normalize_signal
+    Reindex, adjust_symbol_for_mzm, normalize_signal, index_to_bits, bits_to_index
 )
 from .electrical import ElectricalSubtractor
 
@@ -49,10 +49,8 @@ class IQConstellation(Component):
         self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
 
     @tf.function(input_signature=(bit_sequence_spec,))
-    def encode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
-        symbol_index: Any = tf.reduce_sum(
-            symbol * 2 ** (self.bits_per_symbol - tf.range(self.bits_per_symbol) - 1)
-        )
+    def encode_symbol(self, bitseq: tf.Tensor) -> tf.Tensor:
+        symbol_index: Any = bits_to_index(bitseq)
 
         if self.adjust_for_mzm:  # type: ignore
             return adjust_symbol_for_mzm(self.mapping[symbol_index])
@@ -71,13 +69,7 @@ class IQConstellation(Component):
             tf.int32
         )
 
-        return tf.vectorized_map(
-            fn=lambda i: tf.cast(
-                tf.math.floormod(best_index / 2 ** (self.bits_per_symbol - i - 1), 2),
-                bit_dtype
-            ),
-            elems=tf.range(self.bits_per_symbol)
-        )
+        return index_to_bits(best_index, self.bits_per_symbol)
 
 
 class IQEncoder(Component):

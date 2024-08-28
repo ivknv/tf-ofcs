@@ -5,7 +5,7 @@ import typing
 from typing import Any, Optional
 import tensorflow as tf
 
-from .utils import adjust_symbol_for_mzm
+from .utils import adjust_symbol_for_mzm, index_to_bits, bits_to_index
 from .component import Component
 
 from .datatypes import (
@@ -58,10 +58,8 @@ class PAMConstellation(Component):
         )
 
     @tf.function(input_signature=(bit_sequence_spec,))
-    def encode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
-        symbol_index: Any = tf.reduce_sum(
-            symbol * 2 ** (self.bits_per_symbol - tf.range(self.bits_per_symbol) - 1)
-        )
+    def encode_symbol(self, bitseq: tf.Tensor) -> tf.Tensor:
+        symbol_index: Any = bits_to_index(bitseq)
 
         if self.adjust_for_mzm:  # type: ignore
             return adjust_symbol_for_mzm(self.mapping[symbol_index])
@@ -72,13 +70,7 @@ class PAMConstellation(Component):
     def decode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
         best_index = tf.cast(tf.argmin(tf.abs(self.mapping - symbol)), tf.int32)
 
-        return tf.vectorized_map(
-            fn=lambda i: tf.cast(
-                tf.math.floormod(best_index / 2 ** (self.bits_per_symbol - i - 1), 2),
-                bit_dtype
-            ),
-            elems=tf.range(self.bits_per_symbol)
-        )
+        return index_to_bits(best_index, self.bits_per_symbol)
 
 
 class PAMEncoder(Component):

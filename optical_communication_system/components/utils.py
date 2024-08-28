@@ -7,13 +7,17 @@ import tensorflow as tf
 from . import constants
 from .component import Component
 
-from .datatypes import ElectricalSignal, OpticalSignal, Timing
+from .datatypes import (
+    ElectricalSignal, OpticalSignal, Timing, bit_dtype, bit_sequence_spec
+)
 
 __all__ = [
     "fftfreq",
     "gaussian_distribution",
     "normalize_signal",
     "adjust_symbol_for_mzm",
+    "bits_to_index",
+    "index_to_bits",
     "Composition",
     "MapComponent",
     "MapComponents",
@@ -64,6 +68,23 @@ def normalize_signal(samples: tf.Tensor) -> tf.Tensor:
 @tf.function
 def adjust_symbol_for_mzm(symbol: tf.Tensor) -> tf.Tensor:
     return tf.math.acos(symbol) / constants.pi
+
+
+@tf.function(input_signature=(bit_sequence_spec,))
+def bits_to_index(bits: tf.Tensor) -> tf.Tensor:
+    n = tf.size(bits)
+    return tf.reduce_sum(bits * 2 ** (n - tf.range(n) - 1))
+
+
+@tf.function(input_signature=2 * (tf.TensorSpec(shape=[], dtype=tf.int32),))
+def index_to_bits(index: tf.Tensor, bit_count: tf.Tensor) -> tf.Tensor:
+    return tf.vectorized_map(
+        fn=lambda i: tf.cast(
+            tf.math.floormod(index / 2 ** (bit_count - i - 1), 2),
+            bit_dtype
+        ),
+        elems=tf.range(bit_count)
+    )
 
 
 class Composition(Component):
