@@ -87,6 +87,11 @@ def index_to_bits(index: tf.Tensor, bit_count: tf.Tensor) -> tf.Tensor:
     )
 
 
+@tf.function
+def index_to_gray(index: tf.Tensor) -> tf.Tensor:
+    return index ^ tf.bitwise.right_shift(index, 1)
+
+
 class Composition(Component):
     #: System components
     components: list[Component]

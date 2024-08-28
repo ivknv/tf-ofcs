@@ -7,7 +7,7 @@ import math
 import tensorflow as tf
 
 from .datatypes import (
-    bit_dtype, bit_sequence_spec,
+    bit_sequence_spec,
     ElectricalSignal,
     OpticalSignal,
     IQSignal, iq_signal_spec,
@@ -19,7 +19,8 @@ from .mzm import MachZehnderModulator
 from .passive import OpticalCoupler1x2, OpticalCoupler2x2, OpticalPhaseShifter
 from .utils import (
     Composition, ExtractTiming, Fork, Identity, MapComponent, MapComponents,
-    Reindex, adjust_symbol_for_mzm, normalize_signal, index_to_bits, bits_to_index
+    Reindex, adjust_symbol_for_mzm, normalize_signal, index_to_gray,
+    index_to_bits, bits_to_index
 )
 from .electrical import ElectricalSubtractor
 
@@ -40,11 +41,21 @@ class IQConstellation(Component):
         bits_per_symbol: int,
         mapping: Sequence[Sequence[float]],
         adjust_for_mzm: bool = False,
+        transform_to_gray: bool = False,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
+
+        if transform_to_gray:
+            gray_mapping = list(mapping)
+
+            for i, symbol in enumerate(mapping):
+                gray_mapping[index_to_gray(tf.constant(i))] = symbol
+
+            mapping = gray_mapping
+
         self.mapping = tf.Variable(tf.constant(mapping))
         self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
 

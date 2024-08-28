@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 
 from collections.abc import Sequence
-import typing
 from typing import Any, Optional
 import tensorflow as tf
 
-from .utils import adjust_symbol_for_mzm, index_to_bits, bits_to_index
+from .utils import adjust_symbol_for_mzm, index_to_bits, bits_to_index, index_to_gray
 from .component import Component
 
 from .datatypes import (
-    bit_sequence_spec, bit_dtype,
+    bit_sequence_spec,
     Timing,
     ElectricalSignal, electrical_signal_spec,
 )
@@ -35,6 +34,7 @@ class PAMConstellation(Component):
         bits_per_symbol: int,
         mapping: Sequence[Sequence[float]],
         adjust_for_mzm: bool = False,
+        transform_to_gray: bool = False,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -42,12 +42,17 @@ class PAMConstellation(Component):
         self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
 
         if mapping is None:
-            self.mapping = tf.Variable(
-                typing.cast(tf.Tensor, self._default_pam_constellation())
-            )
-        else:
-            self.mapping = tf.Variable(tf.constant(mapping))
+            mapping = self._default_pam_constellation()
 
+        if transform_to_gray:
+            gray_mapping = list(mapping)
+
+            for i, symbol in enumerate(mapping):
+                gray_mapping[index_to_gray(tf.constant(i))] = symbol
+
+            mapping = gray_mapping
+
+        self.mapping = tf.Variable(tf.constant(mapping))
         self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
 
     @tf.function
