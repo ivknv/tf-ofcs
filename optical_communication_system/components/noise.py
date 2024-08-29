@@ -78,10 +78,8 @@ class OpticalAWGN(Component):
 
     @tf.function(input_signature=(optical_signal_spec,))
     def __call__(self, input_signal: OpticalSignal) -> OpticalSignal:
-        frequency_count = tf.cast(tf.size(input_signal.frequencies), tf.float32)
-
         # * 0.5 to account for two noise components
-        noise_amplitude = (self.power * 0.5 / frequency_count) ** 0.5
+        noise_amplitude = (self.power * 0.5) ** 0.5
 
         # We have to generate the double amount of noise samples since they must be complex
         noise_components = self.rng.normal(
@@ -98,6 +96,5 @@ class OpticalAWGN(Component):
 
         return OpticalSignal(
             timing=input_signal.timing,
-            samples=tf.add(noise, input_signal.samples),
-            frequencies=input_signal.frequencies
+            samples=tf.add(noise, input_signal.samples)
         )

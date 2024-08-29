@@ -52,17 +52,13 @@ class OpticalSignal(tf.experimental.ExtensionType):
     #: Signal's timing information
     timing: Timing
 
-    #: Signal's frequencies (in Hz), for every frequency there's an amplitude
-    frequencies: tf.Tensor  # shape=[None]; dtype=tf.float32
-
     #: Signal's samples
     samples: tf.Tensor  # shape=[None]; dtype=tf.complex64
 
 
 optical_signal_spec = OpticalSignal.Spec(
     timing=timing_spec,
-    frequencies=tf.TensorSpec(shape=[None], dtype=tf.float32),
-    samples=tf.TensorSpec(shape=[None, None], dtype=tf.complex64)
+    samples=tf.TensorSpec(shape=[None], dtype=tf.complex64)
 )
 
 bit_dtype = tf.int32

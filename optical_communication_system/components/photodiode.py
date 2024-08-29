@@ -30,7 +30,7 @@ class Photodiode(Component):
     def __call__(self, signal: OpticalSignal) -> ElectricalSignal:
         samples = tf.cast(
             tf.clip_by_value(
-                tf.reduce_sum(tf.abs(signal.samples)**2, axis=1),
+                tf.abs(signal.samples)**2,
                 self.sensitivity,
                 self.maximum_power
             ),

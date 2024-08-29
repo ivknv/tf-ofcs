@@ -5,7 +5,7 @@ import tensorflow as tf
 from typing import Optional
 from .datatypes import Timing, timing_spec, OpticalSignal
 
-from .utils import gaussian_distribution
+from .utils import fftfreq, gaussian_distribution
 from .component import Component
 
 __all__ = ["Laser"]
@@ -15,54 +15,18 @@ class Laser(Component):
     #: Output power in watts
     power: tf.Variable  # shape=(1,); dtype=float32
 
-    #: Central frequency of the of the emitted light in Hz
-    central_frequency: tf.Variable  # shape=(1,); dtype=float32
-
-    #: Line width of the signal, full width at half-maximum (FWHM), Hz
-    linewidth: tf.Variable  # shape=(1,); dtype=float32
-
-    #: Frequency components of the signal
-    frequencies: tf.Variable  # shape=(None,); dtype=float32
-
     def __init__(
         self,
         *,
-        frequencies: tf.Tensor,
         power: float = 2e-3,
-        central_frequency: float = 193.414e12,
-        linewidth: float = 1e6,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.power = tf.Variable(tf.constant(power))
-        self.central_frequency = tf.Variable(tf.constant(central_frequency))
-        self.linewidth = tf.Variable(tf.constant(linewidth))
-        self.frequencies = tf.Variable(tf.constant(frequencies))
 
     @tf.function(input_signature=(timing_spec,))
     def __call__(self, timing: Timing) -> OpticalSignal:
-        gauss_variance = 1.0 / (2.0 * tf.math.log(2.0)) ** 0.5 * self.linewidth
+        samples = tf.fill(tf.shape(timing.time), tf.cast(tf.math.sqrt(self.power), tf.complex64))
 
-        frequency_count = tf.size(self.frequencies)
-
-        distribution = gaussian_distribution(
-            self.frequencies,
-            self.central_frequency,
-            gauss_variance
-        )
-        distribution /= tf.reduce_sum(distribution)
-
-        samples = tf.reshape(
-            tf.tile(
-                tf.cast(tf.math.sqrt(self.power) * distribution, tf.complex64),
-                [tf.size(timing.time)],
-            ),
-            [tf.size(timing.time), frequency_count]
-        )
-
-        return OpticalSignal(
-            timing=timing,
-            frequencies=self.frequencies,
-            samples=samples
-        )
+        return OpticalSignal(timing=timing, samples=samples)

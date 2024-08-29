@@ -52,19 +52,11 @@ def plot_power(
     label: str = "Signal power",
     **kwargs
 ) -> None:
-    if isinstance(signal, OpticalSignal):
+    if isinstance(signal, (ElectricalSignal, OpticalSignal)):
         _plot(
             ax,
             signal.timing.time.numpy() * time_units[0],
-            np.abs(np.sum(signal.samples.numpy(), axis=1) ** 2) * power_units[0],
-            label=label,
-            **kwargs
-        )
-    elif isinstance(signal, ElectricalSignal):
-        _plot(
-            ax,
-            signal.timing.time * time_units[0],
-            signal.samples.numpy() ** 2 * power_units[0],
+            np.abs(signal.samples.numpy()) ** 2 * power_units[0],
             label=label,
             **kwargs
         )
@@ -99,7 +91,7 @@ def plot_envelope(
 ) -> None:
     if isinstance(signal, OpticalSignal):
         time = signal.timing.time.numpy() * time_units[0]
-        samples = np.sum(signal.samples.numpy(), axis=1) * envelope_units[0]
+        samples = signal.samples.numpy() * envelope_units[0]
 
         _plot(ax, time, np.real(samples), label=f"{label} (real)", **kwargs)
         _plot(ax, time, np.imag(samples), label=f"{label} (imaginary)", **kwargs)
@@ -141,7 +133,7 @@ def plot_phase(
 ) -> None:
     if isinstance(signal, OpticalSignal):
         time = signal.timing.time.numpy() * time_units[0]
-        samples = np.sum(signal.samples.numpy(), axis=1)
+        samples = signal.samples.numpy()
 
         phase = np.arctan2(np.real(samples), np.imag(samples))
     else:
@@ -172,6 +164,7 @@ def plot_bitseq(
     _set_xlabel(ax, "Bit index")
     _set_ylabel(ax, "Bit value")
 
+
 def _plot_spectrum(
     ax: Optional[Axes],
     signal: OpticalSignal | ElectricalSignal,
@@ -182,10 +175,7 @@ def _plot_spectrum(
 ) -> None:
     sampling_rate = signal.timing.sampling_rate.numpy()
 
-    if isinstance(signal, OpticalSignal):
-        samples = np.sum(signal.samples.numpy(), axis=1)
-    else:
-        samples = signal.samples.numpy()
+    samples = signal.samples.numpy()
 
     fft = np.fft.fftshift(np.fft.fft(samples)) * amplitude_scale
     freqs = np.fft.fftshift(np.fft.fftfreq(fft.size, 1 / sampling_rate)) * frequency_scale

@@ -39,20 +39,13 @@ class MachZehnderModulator(Component):
         # Modulation signal is expected to be in range [0.0, 1.0]
         modulated_signal = tf.multiply(
             carrier_signal.samples,
-            tf.reshape(
-                tf.repeat(
-                    tf.complex(
-                        tf.math.cos(constants.pi * modulation_signal.samples),
-                        k * tf.math.sin(constants.pi * modulation_signal.samples)
-                    ),
-                    tf.size(carrier_signal.frequencies)
-                ),
-                tf.shape(carrier_signal.samples)
-            )
+            tf.complex(
+                tf.math.cos(constants.pi * modulation_signal.samples),
+                k * tf.math.sin(constants.pi * modulation_signal.samples)
+            ),
         )
 
         return OpticalSignal(
             timing=carrier_signal.timing,
-            frequencies=carrier_signal.frequencies,
             samples=modulated_signal
         )
