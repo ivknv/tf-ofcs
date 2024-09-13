@@ -34,18 +34,35 @@ class OpticalPhaseShifter(Component):
         )
 
 
-class OpticalLoss(Component):
-    #: Optical signal power loss in dB
-    loss: tf.Variable  # shape=(1,); dtype=float32
+class OpticalFiber(Component):
+    #: Optical signal power loss in dB/km
+    attenuation: tf.Variable  # shape=(1,); dtype=float32
 
-    def __init__(self, *, loss: float, name: Optional[str] = None) -> None:
+    #: Chromatic dispersion coefficient (ps / (nm * km))
+    chromatic_dispersion: tf.Variable  # shape=(1,); dtype=float32
+    length: tf.Variable  # shape=(1,); dtype=float32
+
+    #: Central frequency at which light travels at normal speed (without delay)
+    central_frequency: tf.Variable  # shape=(1,); dtype=float32
+
+    def __init__(
+        self,
+        attenuation: float,
+        chromatic_dispersion: float,
+        length: float,
+        central_frequency: float,
+        name: Optional[str] = None
+    ) -> None:
         super().__init__(name=name)
 
-        self.loss = tf.Variable(tf.constant(loss))
+        self.attenuation = tf.Variable(tf.constant(attenuation))
+        self.chromatic_dispersion = tf.Variable(tf.constant(chromatic_dispersion))
+        self.length = tf.Variable(tf.constant(length))
+        self.central_frequency = tf.Variable(tf.constant(central_frequency))
 
     @tf.function(input_signature=(optical_signal_spec,))
-    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
-        power_loss_coeff = tf.math.pow(10.0, self.loss * 0.1)
+    def _apply_attenuation(self, signal: OpticalSignal) -> OpticalSignal:
+        power_loss_coeff = tf.math.pow(10.0, self.attenuation * self.length * 0.1)
         samples = tf.divide(
             signal.samples,
             tf.cast(tf.sqrt(power_loss_coeff), tf.complex64)
@@ -56,36 +73,13 @@ class OpticalLoss(Component):
             samples=samples
         )
 
-
-class ChromaticDispersion(Component):
-    #: Chromatic dispersion coefficient (ps / (nm * km))
-    coefficient: tf.Variable  # shape=(1,); dtype=float32
-    distance: tf.Variable  # shape=(1,); dtype=float32
-
-    #: Central frequency at which light travels at normal speed (without delay)
-    central_frequency: tf.Variable  # shape=(1,); dtype=float32
-
-    def __init__(
-        self,
-        *,
-        coefficient: float,
-        distance: float,
-        central_frequency: float,
-        name: Optional[str] = None
-    ) -> None:
-        super().__init__(name=name)
-
-        self.coefficient = tf.Variable(tf.constant(coefficient))
-        self.distance = tf.Variable(tf.constant(distance))
-        self.central_frequency = tf.Variable(tf.constant(central_frequency))
-
     @tf.function(input_signature=(optical_signal_spec,))
-    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
-        if tf.abs(self.coefficient) <= 1e-6:  # type: ignore
+    def _apply_chromatic_dispersion(self, signal: OpticalSignal) -> OpticalSignal:
+        if tf.abs(self.chromatic_dispersion) <= 1e-6:  # type: ignore
             return signal
 
         # Convert the dispersion coefficient from ps / (nm * km) to s / (m * m)
-        D = self.coefficient * 1e-6  # s / m**2
+        D = self.chromatic_dispersion * 1e-6  # s / m**2
 
         wavelength = constants.c / self.central_frequency
         beta_2 = wavelength ** 2 / (-2.0 * constants.pi * constants.c) * D
@@ -97,7 +91,7 @@ class ChromaticDispersion(Component):
         fft = tf.signal.fft(samples)
         freqs = 2 * constants.pi * tf.abs(fftfreq(tf.size(fft), 1.0 / fs))
 
-        phase_shifts = beta_2 * 0.5 * self.distance * 1e3 * freqs ** 2
+        phase_shifts = beta_2 * 0.5 * self.length * 1e3 * freqs ** 2
 
         new_signal = tf.signal.ifft(
             tf.multiply(
@@ -106,33 +100,11 @@ class ChromaticDispersion(Component):
             )
         )
 
-        return OpticalSignal(
-            timing=signal.timing,
-            samples=new_signal
-        )
-
-
-class OpticalFiber(Component):
-    def __init__(
-        self,
-        attenuation: float,
-        chromatic_dispersion: float,
-        length: float,
-        central_frequency: float,
-        name: Optional[str] = None
-    ) -> None:
-        super().__init__(name=name)
-
-        self._optical_loss = OpticalLoss(loss=attenuation * length)
-        self._chromatic_dispersion = ChromaticDispersion(
-            coefficient=chromatic_dispersion,
-            distance=length,
-            central_frequency=central_frequency
-        )
+        return OpticalSignal(timing=signal.timing, samples=new_signal)
 
     @tf.function(input_signature=(optical_signal_spec,))
     def __call__(self, signal: OpticalSignal) -> OpticalSignal:
-        return self._chromatic_dispersion(self._optical_loss(signal))
+        return self._apply_chromatic_dispersion(self._apply_attenuation(signal))
 
 
 class OpticalCoupler1x2(Component):
