@@ -32,7 +32,7 @@ class PAMConstellation(Component):
         self,
         *,
         bits_per_symbol: int,
-        mapping: Sequence[Sequence[float]],
+        mapping: Optional[Sequence[Sequence[float]]] = None,
         adjust_for_mzm: bool = False,
         transform_to_gray: bool = False,
         name: Optional[str] = None
@@ -43,6 +43,8 @@ class PAMConstellation(Component):
 
         if mapping is None:
             mapping = self._default_pam_constellation()
+
+        assert mapping is not None
 
         if transform_to_gray:
             gray_mapping = list(mapping)
@@ -71,7 +73,7 @@ class PAMConstellation(Component):
         else:
             return self.mapping[symbol_index]
 
-    @tf.function(input_signature=(tf.TensorSpec(shape=[], dtype=tf.complex64),))
+    @tf.function(input_signature=(tf.TensorSpec(shape=[], dtype=tf.float32),))
     def decode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
         best_index = tf.cast(tf.argmin(tf.abs(self.mapping - symbol)), tf.int32)
 
@@ -184,7 +186,7 @@ class PAMDecoder(Component):
         symbols = tf.vectorized_map(
             fn=lambda i: tf.cast(
                 current[i * n + n // 2] / max_current,
-                tf.complex64
+                tf.float32
             ),
             elems=tf.range(tf.cast(tf.size(current) // n, tf.int32))
         )
