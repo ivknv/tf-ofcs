@@ -36,48 +36,45 @@ class OpticalPhaseShifter(Component):
 
 class OpticalFiber(Component):
     #: Optical signal power loss in dB/km
-    attenuation: tf.Variable  # shape=(1,); dtype=float32
+    attenuation: tf.Variable  # shape=(None,); dtype=float32
 
     #: Chromatic dispersion coefficient (ps / (nm * km))
-    chromatic_dispersion: tf.Variable  # shape=(1,); dtype=float32
-    length: tf.Variable  # shape=(1,); dtype=float32
+    chromatic_dispersion: tf.Variable  # shape=(None,); dtype=float32
+
+    #: Effective non-linear coefficient of the fiber (rad / (W * m))
+    eff_non_linear_coeff: tf.Variable  # shape=(None,); dtype=float32
+
+    #: Fiber length in kilometers
+    length: tf.Variable  # shape=(None,); dtype=float32
 
     #: Central frequency at which light travels at normal speed (without delay)
-    central_frequency: tf.Variable  # shape=(1,); dtype=float32
+    central_frequency: tf.Variable  # shape=(None,); dtype=float32
+
+    #: Step count used for the split-step method (in meters)
+    step_count: tf.Variable  # shape=(None,); dtype=int32
 
     def __init__(
         self,
         attenuation: float,
         chromatic_dispersion: float,
+        eff_non_linear_coeff: float,
         length: float,
         central_frequency: float,
+        step_count: int = 50,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.attenuation = tf.Variable(tf.constant(attenuation))
         self.chromatic_dispersion = tf.Variable(tf.constant(chromatic_dispersion))
+        self.eff_non_linear_coeff = tf.Variable(tf.constant(eff_non_linear_coeff))
         self.length = tf.Variable(tf.constant(length))
         self.central_frequency = tf.Variable(tf.constant(central_frequency))
 
-    @tf.function(input_signature=(optical_signal_spec,))
-    def _apply_attenuation(self, signal: OpticalSignal) -> OpticalSignal:
-        power_loss_coeff = tf.math.pow(10.0, self.attenuation * self.length * 0.1)
-        samples = tf.divide(
-            signal.samples,
-            tf.cast(tf.sqrt(power_loss_coeff), tf.complex64)
-        )
-
-        return OpticalSignal(
-            timing=signal.timing,
-            samples=samples
-        )
+        self.step_count = tf.Variable(tf.constant(step_count))
 
     @tf.function(input_signature=(optical_signal_spec,))
-    def _apply_chromatic_dispersion(self, signal: OpticalSignal) -> OpticalSignal:
-        if tf.abs(self.chromatic_dispersion) <= 1e-6:  # type: ignore
-            return signal
-
+    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
         # Convert the dispersion coefficient from ps / (nm * km) to s / (m * m)
         D = self.chromatic_dispersion * 1e-6  # s / m**2
 
@@ -91,20 +88,35 @@ class OpticalFiber(Component):
         fft = tf.signal.fft(samples)
         freqs = 2 * constants.pi * tf.abs(fftfreq(tf.size(fft), 1.0 / fs))
 
-        phase_shifts = beta_2 * 0.5 * self.length * 1e3 * freqs ** 2
+        # Step length in kilometers
+        step_length = self.length / tf.cast(self.step_count, tf.float32)
+        half_step_length = step_length * 0.5
 
-        new_signal = tf.signal.ifft(
-            tf.multiply(
-                fft,
-                tf.math.exp(1j * tf.cast(phase_shifts, tf.complex64))  # type: ignore
-            )
+        # Phase shifts per step due to chromatic dispersion
+        phase_shifts = tf.cast(beta_2 * 0.5 * half_step_length * 1e3 * freqs ** 2, tf.complex64)
+
+        # Loss of signal power per step
+        loss = tf.cast(
+            tf.math.pow(10.0, self.attenuation * half_step_length * 0.1 * 0.5),
+            tf.complex64
         )
 
-        return OpticalSignal(timing=signal.timing, samples=new_signal)
+        gamma_per_step = tf.cast(self.eff_non_linear_coeff * step_length * 1e-3, tf.complex64)
 
-    @tf.function(input_signature=(optical_signal_spec,))
-    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
-        return self._apply_chromatic_dispersion(self._apply_attenuation(signal))
+        dispersion_step = (1.0 / loss) * tf.math.exp(1j * phase_shifts)
+
+        for _ in tf.range(self.step_count):
+            fft *= dispersion_step
+
+            time_signal = tf.signal.ifft(fft)
+            time_signal *= tf.math.exp(
+                1j * gamma_per_step * tf.cast(tf.abs(time_signal) ** 2, tf.complex64)  # type: ignore[operator]
+            )
+
+            fft = tf.signal.fft(time_signal)
+            fft *= dispersion_step
+
+        return OpticalSignal(timing=signal.timing, samples=tf.signal.ifft(fft))
 
 
 class OpticalCoupler1x2(Component):
