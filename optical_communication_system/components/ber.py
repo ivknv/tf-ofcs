@@ -15,7 +15,7 @@ class BERAnalyzer(Component):
         bit_sequence_spec,
         bit_sequence_spec
     ))
-    def __call__(self, expected_output: tf.Tensor, output: tf.Tensor) -> tf.Tensor:
+    def implementation(self, expected_output: tf.Tensor, output: tf.Tensor) -> tf.Tensor:
         tf.debugging.assert_equal(tf.size(output), tf.size(expected_output))
 
         correct_count = tf.cast(tf.math.count_nonzero(expected_output == output), tf.float32)
@@ -35,6 +35,7 @@ class BERTester(Component):
         self,
         systems: Sequence[Callable],
         rng: Optional[tf.random.Generator] = None,
+        n_iterations: int = 100,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -46,13 +47,26 @@ class BERTester(Component):
         else:
             self.rng = rng
 
-        self.ber_analyzer = BERAnalyzer()
+        self.n_iterations = tf.Variable(tf.constant(n_iterations))
+        self.parameters = ["n_iterations"]
+
+    @tf.function(input_signature=(
+        bit_sequence_spec,
+        bit_sequence_spec
+    ))
+    def _compute_ber(self, expected_output: tf.Tensor, output: tf.Tensor) -> tf.Tensor:
+        tf.debugging.assert_equal(tf.size(output), tf.size(expected_output))
+
+        correct_count = tf.cast(tf.math.count_nonzero(expected_output == output), tf.float32)
+        total_bits = tf.cast(tf.size(output), tf.float32)
+
+        return (total_bits - correct_count) / total_bits
 
     @tf.function(input_signature=(
         tf.TensorSpec(shape=[], dtype=tf.int32),
         tf.TensorSpec(shape=[], dtype=tf.int32)
     ))
-    def __call__(self, sequence_length: tf.Tensor, n_iterations: tf.Tensor) -> tf.Tensor:
+    def implementation(self, sequence_length: tf.Tensor, n_iterations: tf.Tensor) -> tf.Tensor:
         inputs = self.rng.uniform(
             (n_iterations, sequence_length,),
             minval=0,
@@ -64,7 +78,7 @@ class BERTester(Component):
 
         for system in self.systems:
             def fn(system):
-                return lambda inp: self.ber_analyzer(inp, system(inp))
+                return lambda inp: self._compute_ber(inp, system(inp))
 
             bers = tf.concat(
                 [

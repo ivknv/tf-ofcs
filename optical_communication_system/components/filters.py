@@ -15,25 +15,29 @@ __all__ = ["ElectricalLowPassFilter"]
 
 class ElectricalLowPassFilter(Component):
     #: Filter cutoff frequency in Hz
-    cutoff_frequency: tf.Variable  # shape=(1,); dtype=float32
+    cutoff_frequency: tf.Variable  # shape=(); dtype=float32
 
     def __init__(self, cutoff_frequency: float, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.cutoff_frequency = tf.Variable(tf.constant(cutoff_frequency))
+        self.parameters = ["cutoff_frequency"]
 
-    @tf.function(input_signature=(tf.TensorSpec(shape=[2], dtype=tf.complex64),))
-    def _transfer_function(self, fft_and_freq: tf.Tensor) -> tf.Tensor:
+    @tf.function(input_signature=(
+        tf.TensorSpec(shape=[2], dtype=tf.complex64),
+        tf.TensorSpec([], tf.float32)
+    ))
+    def _transfer_function(self, fft_and_freq: tf.Tensor, cutoff_frequency: tf.Tensor) -> tf.Tensor:
         fft = fft_and_freq[0]
         freq = tf.abs(fft_and_freq[1])
 
-        if tf.greater(freq, self.cutoff_frequency):  # type: ignore
+        if tf.greater(freq, cutoff_frequency):  # type: ignore
             return tf.complex(0.0, 0.0)
         else:
             return fft
 
-    @tf.function(input_signature=(electrical_signal_spec,))
-    def __call__(self, signal: ElectricalSignal) -> ElectricalSignal:
+    @tf.function(input_signature=(electrical_signal_spec, tf.TensorSpec([], tf.float32)))
+    def implementation(self, signal: ElectricalSignal, cutoff_frequency: tf.Tensor) -> ElectricalSignal:
         fft = tf.signal.fft(tf.cast(signal.samples, tf.complex64))
         freqs = tf.cast(
             fftfreq(tf.size(fft), 1.0 / signal.timing.sampling_rate),
@@ -41,7 +45,7 @@ class ElectricalLowPassFilter(Component):
         )
 
         filtered_fft = tf.vectorized_map(
-            fn=self._transfer_function,
+            fn=lambda fft_and_freq: self._transfer_function(fft_and_freq, cutoff_frequency),
             elems=tf.transpose(tf.stack([fft, freqs]))
         )
 

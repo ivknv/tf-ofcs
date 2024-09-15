@@ -26,13 +26,24 @@ class Photodiode(Component):
         self.sensitivity = tf.Variable(tf.constant(sensitivity))
         self.maximum_power = tf.Variable(tf.constant(maximum_power))
 
-    @tf.function(input_signature=(optical_signal_spec,))
-    def __call__(self, signal: OpticalSignal) -> ElectricalSignal:
+        self.parameters = ["sensitivity", "maximum_power"]
+
+    @tf.function(input_signature=(
+        optical_signal_spec,
+        tf.TensorSpec([], tf.float32),
+        tf.TensorSpec([], tf.float32)
+    ))
+    def implementation(
+        self,
+        signal: OpticalSignal,
+        sensitivity: tf.Tensor,
+        maximum_power: tf.Tensor
+    ) -> ElectricalSignal:
         samples = tf.cast(
             tf.clip_by_value(
                 tf.abs(signal.samples)**2,
-                self.sensitivity,
-                self.maximum_power
+                sensitivity,
+                maximum_power
             ),
             tf.float32
         )

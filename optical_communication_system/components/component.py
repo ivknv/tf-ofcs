@@ -18,6 +18,7 @@ def _type_as_str(inp: Any) -> str:
 class Component(tf.Module):
     output: Any
     trace_debug_enabled: bool
+    parameters: list[str]
 
     trace_debug_enabled_by_default: bool = False
 
@@ -26,9 +27,25 @@ class Component(tf.Module):
 
         self.output = None
         self.trace_debug_enabled = self.trace_debug_enabled_by_default
+        self.parameters = []
 
     @tf.function
-    def __call__(self, inp: Any) -> Any:
+    def __call__(self, inp: Any, **kwargs) -> Any:
+        component_kwargs = {}
+
+        for parameter in self.parameters:
+            key = f"{self.name}__{parameter}"
+
+            value = kwargs.get(key)
+            if value is None:
+                value = getattr(self, parameter)
+
+            component_kwargs[parameter] = value
+
+        return self.implementation(inp, **component_kwargs)
+
+    @tf.function
+    def implementation(self, inp: Any, **kwargs) -> Any:
         raise NotImplementedError
 
     def _padding(self, level: int) -> str:
@@ -47,9 +64,9 @@ class Component(tf.Module):
 
             print(f"{padding}Return {_type_as_str(output)}")
 
-    def trace(self, inp: Any, level: int = 0) -> Any:
+    def trace(self, inp: Any, level: int = 0, **kwargs) -> Any:
         self.trace_call(inp, level)
-        self.output = self.__call__(inp)
+        self.output = self.__call__(inp, **kwargs)
         self.trace_return_value(self.output, level + 1)
 
         return self.output
@@ -63,3 +80,11 @@ class Component(tf.Module):
                 return module
 
         raise KeyError(f"No subcomponent with name {repr(name)}")
+
+    def get_kwarg(
+        self,
+        kwarg_name: str,
+        kwargs: dict[str, Any],
+        default: Optional[Any] = None
+    ) -> Any:
+        return kwargs.get(f"{self.name}__{kwarg_name}", default)

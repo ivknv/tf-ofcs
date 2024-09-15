@@ -5,7 +5,6 @@ import tensorflow as tf
 from typing import Optional
 from .datatypes import Timing, timing_spec, OpticalSignal
 
-from .utils import fftfreq, gaussian_distribution
 from .component import Component
 
 __all__ = ["Laser"]
@@ -13,7 +12,7 @@ __all__ = ["Laser"]
 
 class Laser(Component):
     #: Output power in watts
-    power: tf.Variable  # shape=(1,); dtype=float32
+    power: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(
         self,
@@ -24,9 +23,10 @@ class Laser(Component):
         super().__init__(name=name)
 
         self.power = tf.Variable(tf.constant(power))
+        self.parameters = ["power"]
 
-    @tf.function(input_signature=(timing_spec,))
-    def __call__(self, timing: Timing) -> OpticalSignal:
-        samples = tf.fill(tf.shape(timing.time), tf.cast(tf.math.sqrt(self.power), tf.complex64))
+    @tf.function(input_signature=(timing_spec, tf.TensorSpec(shape=[], dtype=tf.float32)))
+    def implementation(self, timing: Timing, power: tf.Tensor) -> tf.Tensor:
+        samples = tf.fill(tf.shape(timing.time), tf.cast(tf.math.sqrt(power), tf.complex64))
 
         return OpticalSignal(timing=timing, samples=samples)

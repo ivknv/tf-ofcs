@@ -22,11 +22,11 @@ __all__ = [
 
 class PAMConstellation(Component):
     #: Number of bits per symbol
-    bits_per_symbol: tf.Variable  # shape=(1,); dtype=int32
+    bits_per_symbol: tf.Variable  # shape=[None]; dtype=int32
     mapping: tf.Variable  # shape=(2 ** bits_per_symbol,); dtype=float32
 
     #: If true, the constellation will be adjusted for MZM
-    adjust_for_mzm: tf.Variable  # shape=(1,); dtype=bool
+    adjust_for_mzm: tf.Variable  # shape=[]; dtype=bool
 
     def __init__(
         self,
@@ -82,10 +82,10 @@ class PAMConstellation(Component):
 
 class PAMEncoder(Component):
     #: Sampling rate in Hz
-    sampling_rate: tf.Variable  # shape=(1,); dtype=float32
+    sampling_rate: tf.Variable  # shape=[]; dtype=float32
 
     #: Data rate in bits/second
-    data_rate: tf.Variable  # shape=(1,); dtype=float32
+    data_rate: tf.Variable  # shape=[]; dtype=float32
 
     #: Constellation used for encoding
     constellation: PAMConstellation
@@ -104,7 +104,7 @@ class PAMEncoder(Component):
         self.constellation = constellation
 
     @tf.function(input_signature=(bit_sequence_spec,))
-    def __call__(self, bitseq: tf.Tensor) -> ElectricalSignal:
+    def implementation(self, bitseq: tf.Tensor) -> ElectricalSignal:
         bits_per_symbol = self.constellation.bits_per_symbol
 
         tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), bits_per_symbol), 0)
@@ -145,16 +145,16 @@ class PAMEncoder(Component):
 
 class PAMDecoder(Component):
     #: Data rate in bits/second
-    data_rate: tf.Variable  # shape=(1,); dtype=float32
+    data_rate: tf.Variable  # shape=[None]; dtype=float32
 
     #: Constellation used for encoding
     constellation: PAMConstellation
 
     #: Minimum current (or power in watts) recognized as non-zero
-    threshold: tf.Variable  # shape=(1,); dtype=float32
+    threshold: tf.Variable  # shape=[None]; dtype=float32
 
     #: Currents above this value will be clipped
-    max_current: tf.Variable  # shape=(1,); dtype=float32
+    max_current: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(
         self,
@@ -172,7 +172,7 @@ class PAMDecoder(Component):
         self.max_current = tf.Variable(tf.constant(max_current))
 
     @tf.function(input_signature=(electrical_signal_spec,))
-    def __call__(self, signal: ElectricalSignal) -> tf.Tensor:
+    def implementation(self, signal: ElectricalSignal) -> tf.Tensor:
         bits_per_symbol = self.constellation.bits_per_symbol
 
         n = tf.cast(

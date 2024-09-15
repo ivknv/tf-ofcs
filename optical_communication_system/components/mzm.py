@@ -8,7 +8,7 @@ from . import constants
 from .component import Component
 
 from .datatypes import (
-    Timing, ElectricalSignal, electrical_signal_spec, OpticalSignal
+    Timing, ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec
 )
 
 __all__ = ["MachZehnderModulator"]
@@ -30,11 +30,35 @@ class MachZehnderModulator(Component):
         self.carrier_source = carrier_source
         self.extinction_ratio = tf.Variable(tf.constant(extinction_ratio))
 
-    @tf.function(input_signature=(electrical_signal_spec,))
-    def __call__(self, modulation_signal: ElectricalSignal) -> OpticalSignal:
-        carrier_signal = self.carrier_source(modulation_signal.timing)
+        self.parameters = ["extinction_ratio"]
 
-        k = 1.0 / self.extinction_ratio
+    @tf.function
+    def __call__(self, modulation_signal: ElectricalSignal, **kwargs) -> OpticalSignal:
+        carrier_signal = self.carrier_source(modulation_signal.timing, **kwargs)
+
+        extinction_ratio = self.get_kwarg("extinction_ratio", kwargs)
+
+        if extinction_ratio is None:
+            extinction_ratio = self.extinction_ratio
+
+        return self._implementation(
+            modulation_signal,
+            carrier_signal,
+            extinction_ratio=extinction_ratio
+        )
+
+    @tf.function(input_signature=(
+        electrical_signal_spec,
+        optical_signal_spec,
+        tf.TensorSpec([], tf.float32)
+    ))
+    def _implementation(
+        self,
+        modulation_signal: ElectricalSignal,
+        carrier_signal: OpticalSignal,
+        extinction_ratio: tf.Tensor
+    ) -> OpticalSignal:
+        k = 1.0 / extinction_ratio
 
         # Modulation signal is expected to be in range [0.0, 1.0]
         modulated_signal = tf.multiply(

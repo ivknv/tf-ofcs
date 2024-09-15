@@ -17,16 +17,21 @@ __all__ = [
 
 
 class OpticalPhaseShifter(Component):
-    phase_shift: tf.Variable  # shape=(1,); dtype=float32
+    phase_shift: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(self, *, phase_shift: float, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.phase_shift = tf.Variable(tf.constant(phase_shift))
+        self.parameters = ["phase_shift"]
 
-    @tf.function(input_signature=(optical_signal_spec,))
-    def __call__(self, input_signal: OpticalSignal) -> OpticalSignal:
-        shifted_samples = input_signal.samples * tf.math.exp(tf.complex(0.0, self.phase_shift))
+    @tf.function(input_signature=(optical_signal_spec, tf.TensorSpec(shape=[], dtype=tf.float32)))
+    def implementation(
+        self,
+        input_signal: OpticalSignal,
+        phase_shift: tf.Tensor
+    ) -> OpticalSignal:
+        shifted_samples = input_signal.samples * tf.math.exp(tf.complex(0.0, phase_shift))
 
         return OpticalSignal(
             timing=input_signal.timing,
@@ -70,15 +75,40 @@ class OpticalFiber(Component):
         self.eff_non_linear_coeff = tf.Variable(tf.constant(eff_non_linear_coeff))
         self.length = tf.Variable(tf.constant(length))
         self.central_frequency = tf.Variable(tf.constant(central_frequency))
-
         self.step_count = tf.Variable(tf.constant(step_count))
 
-    @tf.function(input_signature=(optical_signal_spec,))
-    def __call__(self, signal: OpticalSignal) -> OpticalSignal:
-        # Convert the dispersion coefficient from ps / (nm * km) to s / (m * m)
-        D = self.chromatic_dispersion * 1e-6  # s / m**2
+        self.parameters = [
+            "attenuation",
+            "chromatic_dispersion",
+            "eff_non_linear_coeff",
+            "length",
+            "central_frequency",
+            "step_count"
+        ]
 
-        wavelength = constants.c / self.central_frequency
+    @tf.function(input_signature=(
+        optical_signal_spec,
+        tf.TensorSpec([], tf.float32),
+        tf.TensorSpec([], tf.float32),
+        tf.TensorSpec([], tf.float32),
+        tf.TensorSpec([], tf.float32),
+        tf.TensorSpec([], tf.float32),
+        tf.TensorSpec([], tf.int32)
+    ))
+    def implementation(
+        self,
+        signal: OpticalSignal,
+        attenuation: tf.Tensor,
+        chromatic_dispersion: tf.Tensor,
+        eff_non_linear_coeff: tf.Tensor,
+        length: tf.Tensor,
+        central_frequency: tf.Tensor,
+        step_count: tf.Tensor
+    ) -> OpticalSignal:
+        # Convert the dispersion coefficient from ps / (nm * km) to s / (m * m)
+        D = chromatic_dispersion * 1e-6  # s / m**2
+
+        wavelength = constants.c / central_frequency
         beta_2 = wavelength ** 2 / (-2.0 * constants.pi * constants.c) * D
 
         fs = signal.timing.sampling_rate
@@ -89,7 +119,7 @@ class OpticalFiber(Component):
         freqs = 2 * constants.pi * tf.abs(fftfreq(tf.size(fft), 1.0 / fs))
 
         # Step length in kilometers
-        step_length = self.length / tf.cast(self.step_count, tf.float32)
+        step_length = length / tf.cast(step_count, tf.float32)
         half_step_length = step_length * 0.5
 
         # Phase shifts per step due to chromatic dispersion
@@ -97,15 +127,15 @@ class OpticalFiber(Component):
 
         # Loss of signal power per step
         loss = tf.cast(
-            tf.math.pow(10.0, self.attenuation * half_step_length * 0.1 * 0.5),
+            tf.math.pow(10.0, attenuation * half_step_length * 0.1 * 0.5),
             tf.complex64
         )
 
-        gamma_per_step = tf.cast(self.eff_non_linear_coeff * step_length * 1e-3, tf.complex64)
+        gamma_per_step = tf.cast(eff_non_linear_coeff * step_length * 1e-3, tf.complex64)
 
         dispersion_step = (1.0 / loss) * tf.math.exp(1j * phase_shifts)
 
-        for _ in tf.range(self.step_count):
+        for _ in tf.range(step_count):
             fft *= dispersion_step
 
             time_signal = tf.signal.ifft(fft)
@@ -121,7 +151,7 @@ class OpticalFiber(Component):
 
 class OpticalCoupler1x2(Component):
     @tf.function(input_signature=(optical_signal_spec,))
-    def __call__(self, input_signal: OpticalSignal) -> tuple[OpticalSignal, OpticalSignal]:
+    def implementation(self, input_signal: OpticalSignal) -> tuple[OpticalSignal, OpticalSignal]:
         split_samples = input_signal.samples * 0.5 ** 0.5
 
         return (
@@ -138,18 +168,26 @@ class OpticalCoupler1x2(Component):
 
 class OpticalCoupler2x2(Component):
     #: If true, the second output will contain the difference of the two input signals
-    flip: tf.Variable  # shape=(1,); dtype=bool
+    flip: tf.Variable  # shape=[None]; dtype=bool
 
     def __init__(self, flip: bool = False, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.flip = tf.Variable(tf.constant(flip))
+        self.parameters = ["flip"]
 
-    @tf.function(input_signature=((optical_signal_spec, optical_signal_spec),))
-    def __call__(self, input_signals: tuple[OpticalSignal, OpticalSignal]) -> tuple[OpticalSignal, OpticalSignal]:
+    @tf.function(input_signature=(
+        (optical_signal_spec, optical_signal_spec),
+        tf.TensorSpec([], tf.bool)
+    ))
+    def implementation(
+        self,
+        input_signals: tuple[OpticalSignal, OpticalSignal],
+        flip: tf.Tensor
+    ) -> tuple[OpticalSignal, OpticalSignal]:
         mixed_samples1 = (input_signals[0].samples + input_signals[1].samples) * 0.5 ** 0.5
 
-        if self.flip:  # type: ignore
+        if flip:  # type: ignore
             mixed_samples2 = (input_signals[0].samples - input_signals[1].samples) * 0.5 ** 0.5
         else:
             mixed_samples2 = mixed_samples1
@@ -170,7 +208,7 @@ class OpticalCoupler2x2(Component):
 
 class OpticalCoupler2x1(Component):
     @tf.function(input_signature=((optical_signal_spec, optical_signal_spec),))
-    def __call__(self, input_signals: tuple[OpticalSignal, OpticalSignal]) -> OpticalSignal:
+    def implementation(self, input_signals: tuple[OpticalSignal, OpticalSignal]) -> OpticalSignal:
         mixed_samples = (input_signals[0].samples + input_signals[1].samples) * 0.5 ** 0.5
 
         timing = input_signals[0].timing

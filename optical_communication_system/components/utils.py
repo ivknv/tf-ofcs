@@ -102,21 +102,21 @@ class Composition(Component):
         self.components = components
 
     @tf.function
-    def __call__(self, inp: Any) -> Any:
+    def __call__(self, inp: Any, **kwargs) -> Any:
         result: Any = inp
 
         for component in self.components:
-            result = component(result)
+            result = component(result, **kwargs)
 
         return result
 
-    def trace(self, inp: Any, level: int = 0) -> Any:
+    def trace(self, inp: Any, level: int = 0, **kwargs) -> Any:
         self.trace_call(inp, level)
 
         result: Any = inp
 
         for component in self.components:
-            result = component.trace(result, level + 1)
+            result = component.trace(result, level + 1, **kwargs)
 
         self.output = result
         self.trace_return_value(self.output, level + 1)
@@ -133,12 +133,17 @@ class MapComponent(Component):
         self.component = component
 
     @tf.function
-    def __call__(self, inputs: tuple) -> tuple:
-        return tuple(self.component(input) for input in inputs)
+    def __call__(self, inputs: tuple, **kwargs) -> tuple:
+        return tuple(self.component(input, **kwargs) for input in inputs)
 
-    def trace(self, inp: tuple, level: int = 0) -> tuple:
+    def trace(self, inp: tuple, level: int = 0, **kwargs) -> tuple:
         self.trace_call(inp, level)
-        self.output = tuple(self.component.trace(input, level + 1) for input in inp)
+
+        self.output = tuple(
+            self.component.trace(input, level + 1, **kwargs)
+            for input in inp
+        )
+
         self.trace_return_value(self.output, level + 1)
 
         return self.output
@@ -153,14 +158,17 @@ class MapComponents(Component):
         self.components = components
 
     @tf.function
-    def __call__(self, inputs: tuple) -> tuple:
-        return tuple(component(input) for component, input in zip(self.components, inputs, strict=True))
+    def __call__(self, inputs: tuple, **kwargs) -> tuple:
+        return tuple(
+            component(input, **kwargs)
+            for component, input in zip(self.components, inputs, strict=True)
+        )
 
-    def trace(self, inp: tuple, level: int = 0) -> tuple:
+    def trace(self, inp: tuple, level: int = 0, **kwargs) -> tuple:
         self.trace_call(inp, level)
 
         self.output = tuple(
-            component.trace(input, level + 1)
+            component.trace(input, level + 1, **kwargs)
             for component, input in zip(self.components, inp, strict=True)
         )
 
@@ -171,7 +179,7 @@ class MapComponents(Component):
 
 class Identity(Component):
     @tf.function
-    def __call__(self, inp: Any) -> Any:
+    def implementation(self, inp: Any) -> Any:
         return inp
 
 
@@ -202,7 +210,7 @@ class Reindex(Component):
             return tuple(self._reindex(inputs, i) for i in index)
 
     @tf.function
-    def __call__(self, inputs: tuple) -> Any:
+    def implementation(self, inputs: tuple) -> Any:
         return self._reindex(inputs, self.indices)
 
 
@@ -215,7 +223,7 @@ class Fork(Component):
         self.shape = shape
 
     @tf.function
-    def __call__(self, inp: Any) -> tuple:
+    def implementation(self, inp: Any) -> tuple:
         result = inp
 
         for i in self.shape:
@@ -226,5 +234,5 @@ class Fork(Component):
 
 class ExtractTiming(Component):
     @tf.function
-    def __call__(self, signal: ElectricalSignal | OpticalSignal) -> Timing:
+    def implementation(self, signal: ElectricalSignal | OpticalSignal) -> Timing:
         return signal.timing

@@ -9,14 +9,13 @@ import tensorflow as tf
 from .datatypes import (
     bit_sequence_spec,
     ElectricalSignal,
-    OpticalSignal,
     IQSignal, iq_signal_spec,
     Timing
 )
 
 from .component import Component
 from .mzm import MachZehnderModulator
-from .passive import OpticalCoupler1x2, OpticalCoupler2x2, OpticalPhaseShifter
+from .passive import OpticalCoupler1x2, OpticalCoupler2x1, OpticalCoupler2x2, OpticalPhaseShifter
 from .utils import (
     Composition, ExtractTiming, Fork, Identity, MapComponent, MapComponents,
     Reindex, adjust_symbol_for_mzm, normalize_signal, index_to_gray,
@@ -29,11 +28,11 @@ __all__ = ["IQConstellation", "IQEncoder", "IQModulator", "IQReceiver"]
 
 class IQConstellation(Component):
     #: Number of bits per symbol
-    bits_per_symbol: tf.Variable  # shape=(1,); dtype=int32
+    bits_per_symbol: tf.Variable  # shape=[]; dtype=int32
     mapping: tf.Variable  # shape=(2 ** bits_per_symbol,2); dtype=float32
 
     #: If true, the constellation will be adjusted for MZM
-    adjust_for_mzm: tf.Variable  # shape=(1,); dtype=bool
+    adjust_for_mzm: tf.Variable  # shape=[]; dtype=bool
 
     def __init__(
         self,
@@ -111,10 +110,10 @@ class IQConstellation(Component):
 
 class IQEncoder(Component):
     #: Sampling rate in Hz
-    sampling_rate: tf.Variable  # shape=(1,); dtype=float32
+    sampling_rate: tf.Variable  # shape=[]; dtype=float32
 
     #: Data rate in bits/second
-    data_rate: tf.Variable  # shape=(1,); dtype=float32
+    data_rate: tf.Variable  # shape=[]; dtype=float32
 
     #: Constellation used for encoding
     constellation: IQConstellation
@@ -134,7 +133,7 @@ class IQEncoder(Component):
         self.constellation = constellation
 
     @tf.function(input_signature=(bit_sequence_spec,))
-    def __call__(self, bitseq: tf.Tensor) -> IQSignal:
+    def implementation(self, bitseq: tf.Tensor) -> IQSignal:
         bits_per_symbol = self.constellation.bits_per_symbol
 
         tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), bits_per_symbol), 0)
@@ -183,29 +182,20 @@ class IQEncoder(Component):
         )
 
 
-class IQModulator(Component):
+class IQModulator(Composition):
     def __init__(self, carrier_source: Component, name=None) -> None:
-        super().__init__(name=name)
-
-        self.i_modulator = MachZehnderModulator(carrier_source=carrier_source)
-        self.q_modulator = MachZehnderModulator(
-            carrier_source=Composition(components=[
-                carrier_source,
-                OpticalPhaseShifter(phase_shift=0.5 * math.pi)
-            ])
-        )
-
-    @tf.function(input_signature=(iq_signal_spec,))
-    def __call__(self, iq_signal: IQSignal) -> OpticalSignal:
-        i_signal = self.i_modulator(iq_signal[0])
-        q_signal = self.q_modulator(iq_signal[1])
-
-        combined_samples = (i_signal.samples + q_signal.samples) * 0.5 ** 0.5
-
-        return OpticalSignal(
-            timing=i_signal.timing,
-            samples=combined_samples
-        )
+        super().__init__(components=[
+            MapComponents(components=[
+                MachZehnderModulator(carrier_source=carrier_source),
+                MachZehnderModulator(
+                    carrier_source=Composition(components=[
+                        carrier_source,
+                        OpticalPhaseShifter(phase_shift=0.5 * math.pi)
+                    ])
+                )
+            ]),
+            OpticalCoupler2x1()
+        ], name=name)
 
 
 class IQReceiver(Composition):
@@ -257,13 +247,13 @@ class IQReceiver(Composition):
 
 class IQDecoder(Component):
     #: Data rate in bits/second
-    data_rate: tf.Variable  # shape=(1,); dtype=float32
+    data_rate: tf.Variable  # shape=[]; dtype=float32
 
     #: Constellation used for encoding
     constellation: IQConstellation
 
     #: Minimum current (or power in watts) recognized as non-zero
-    threshold: tf.Variable  # shape=(1,); dtype=float32
+    threshold: tf.Variable  # shape=[]; dtype=float32
 
     def __init__(
         self,
@@ -280,7 +270,7 @@ class IQDecoder(Component):
         self.threshold = tf.Variable(tf.constant(threshold))
 
     @tf.function(input_signature=(iq_signal_spec,))
-    def __call__(self, iq_signal: IQSignal) -> tf.Tensor:
+    def implementation(self, iq_signal: IQSignal) -> tf.Tensor:
         i_current = normalize_signal(tf.math.real(iq_signal[0].samples))
         q_current = normalize_signal(tf.math.real(iq_signal[1].samples))
 
