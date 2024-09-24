@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Any, Optional
 import tensorflow as tf
 
-from .utils import adjust_symbol_for_mzm, index_to_bits, bits_to_index, index_to_gray
+from .utils import adjust_symbol_for_mzm, index_to_bits, bits_to_index, pam_constellation
 from .component import Component
 
 from .datatypes import (
@@ -14,13 +14,14 @@ from .datatypes import (
 )
 
 __all__ = [
-    "PAMConstellation",
+    "PAMSymbolEncoder",
+    "PAMSymbolDecoder",
     "PAMEncoder",
     "PAMDecoder"
 ]
 
 
-class PAMConstellation(Component):
+class PAMSymbolEncoder(Component):
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=[None]; dtype=int32
     mapping: tf.Variable  # shape=(2 ** bits_per_symbol,); dtype=float32
@@ -32,9 +33,8 @@ class PAMConstellation(Component):
         self,
         *,
         bits_per_symbol: int,
-        mapping: Optional[Sequence[Sequence[float]]] = None,
+        mapping: Optional[Sequence[float]] = None,
         adjust_for_mzm: bool = False,
-        transform_to_gray: bool = False,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -42,42 +42,69 @@ class PAMConstellation(Component):
         self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
 
         if mapping is None:
-            mapping = self._default_pam_constellation()
-
-        assert mapping is not None
-
-        if transform_to_gray:
-            gray_mapping = list(mapping)
-
-            for i, symbol in enumerate(mapping):
-                gray_mapping[index_to_gray(tf.constant(i))] = symbol
-
-            mapping = gray_mapping
+            mapping = pam_constellation(bits_per_symbol)
 
         self.mapping = tf.Variable(tf.constant(mapping))
         self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
 
-    @tf.function
-    def _default_pam_constellation(self) -> tf.Tensor:
-        return tf.vectorized_map(
-            fn=lambda i: tf.cast(i / (tf.math.pow(2, self.bits_per_symbol) - 1), tf.float32),
-            elems=tf.range(tf.math.pow(2, self.bits_per_symbol))
-        )
+        self.parameters = ["mapping", "adjust_for_mzm"]
 
-    @tf.function(input_signature=(bit_sequence_spec,))
-    def encode_symbol(self, bitseq: tf.Tensor) -> tf.Tensor:
+    @tf.function(input_signature=(
+        bit_sequence_spec,
+        tf.TensorSpec(shape=[None], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.bool)
+    ))
+    def implementation(
+        self,
+        bitseq: tf.Tensor,
+        mapping: tf.Tensor,
+        adjust_for_mzm: tf.Tensor
+    ) -> tf.Tensor:
         symbol_index: Any = bits_to_index(bitseq)
 
-        if self.adjust_for_mzm:  # type: ignore
-            return adjust_symbol_for_mzm(self.mapping[symbol_index])
+        if adjust_for_mzm:  # type: ignore
+            return adjust_symbol_for_mzm(mapping[symbol_index])
         else:
-            return self.mapping[symbol_index]
+            return mapping[symbol_index]
 
-    @tf.function(input_signature=(tf.TensorSpec(shape=[], dtype=tf.float32),))
-    def decode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
-        best_index = tf.cast(tf.argmin(tf.abs(self.mapping - symbol)), tf.int32)
 
-        return index_to_bits(best_index, self.bits_per_symbol)
+class PAMSymbolDecoder(Component):
+    #: Number of bits per symbol
+    bits_per_symbol: tf.Variable  # shape=[None]; dtype=int32
+    mapping: tf.Variable  # shape=(2 ** bits_per_symbol,); dtype=float32
+
+    def __init__(
+        self,
+        *,
+        bits_per_symbol: int,
+        mapping: Optional[Sequence[float]] = None,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
+
+        if mapping is None:
+            mapping = pam_constellation(bits_per_symbol)
+
+        self.mapping = tf.Variable(tf.constant(mapping))
+
+        self.parameters = ["bits_per_symbol", "mapping"]
+
+    @tf.function(input_signature=(
+        tf.TensorSpec(shape=[], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.int32),
+        tf.TensorSpec(shape=[None], dtype=tf.float32),
+    ))
+    def implementation(
+        self,
+        symbol: tf.Tensor,
+        bits_per_symbol: tf.Tensor,
+        mapping: tf.Tensor,
+    ) -> tf.Tensor:
+        best_index = tf.cast(tf.argmin(tf.abs(mapping - symbol)), tf.int32)
+
+        return index_to_bits(best_index, bits_per_symbol)
 
 
 class PAMEncoder(Component):
@@ -88,24 +115,24 @@ class PAMEncoder(Component):
     data_rate: tf.Variable  # shape=[]; dtype=float32
 
     #: Constellation used for encoding
-    constellation: PAMConstellation
+    symbol_encoder: PAMSymbolEncoder
 
     def __init__(
         self,
         sampling_rate: float,
         data_rate: float,
-        constellation: PAMConstellation,
+        symbol_encoder: PAMSymbolEncoder,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
         self.data_rate = tf.Variable(tf.constant(data_rate))
-        self.constellation = constellation
+        self.symbol_encoder = symbol_encoder
 
     @tf.function(input_signature=(bit_sequence_spec,))
     def implementation(self, bitseq: tf.Tensor) -> ElectricalSignal:
-        bits_per_symbol = self.constellation.bits_per_symbol
+        bits_per_symbol = self.symbol_encoder.bits_per_symbol
 
         tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), bits_per_symbol), 0)
 
@@ -121,7 +148,7 @@ class PAMEncoder(Component):
         )
 
         pam_sequence = tf.vectorized_map(
-            fn=lambda i: self.constellation.encode_symbol(
+            fn=lambda i: self.symbol_encoder(
                 bitseq[i * bits_per_symbol:(i + 1) * bits_per_symbol]
             ),
             elems=tf.range(tf.math.floordiv(tf.size(bitseq), bits_per_symbol))
@@ -148,7 +175,7 @@ class PAMDecoder(Component):
     data_rate: tf.Variable  # shape=[None]; dtype=float32
 
     #: Constellation used for encoding
-    constellation: PAMConstellation
+    symbol_decoder: PAMSymbolDecoder
 
     #: Minimum current (or power in watts) recognized as non-zero
     threshold: tf.Variable  # shape=[None]; dtype=float32
@@ -159,7 +186,7 @@ class PAMDecoder(Component):
     def __init__(
         self,
         data_rate: float,
-        constellation: PAMConstellation,
+        symbol_decoder: PAMSymbolDecoder,
         threshold: float = 1e-5,
         max_current: float = 2e-3,
         name: Optional[str] = None
@@ -167,21 +194,34 @@ class PAMDecoder(Component):
         super().__init__(name=name)
 
         self.data_rate = tf.Variable(tf.constant(data_rate))
-        self.constellation = constellation
+        self.symbol_decoder = symbol_decoder
         self.threshold = tf.Variable(tf.constant(threshold))
         self.max_current = tf.Variable(tf.constant(max_current))
 
-    @tf.function(input_signature=(electrical_signal_spec,))
-    def implementation(self, signal: ElectricalSignal) -> tf.Tensor:
-        bits_per_symbol = self.constellation.bits_per_symbol
+        self.parameters = ["data_rate", "threshold", "max_current"]
 
+    @tf.function(input_signature=(
+        electrical_signal_spec,
+        tf.TensorSpec(shape=[], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.int32),
+    ))
+    def _extract_pam_symbols(
+        self,
+        signal: ElectricalSignal,
+        data_rate: tf.Tensor,
+        threshold: tf.Tensor,
+        max_current: tf.Tensor,
+        bits_per_symbol: tf.Tensor
+    ) -> tf.Tensor:
         n = tf.cast(
-            tf.round(signal.timing.sampling_rate / self.data_rate * tf.cast(bits_per_symbol, tf.float32)),
+            tf.round(signal.timing.sampling_rate / data_rate * tf.cast(bits_per_symbol, tf.float32)),
             tf.int32
         )
 
-        current = tf.clip_by_value(tf.abs(signal.samples), 0, self.max_current)
-        max_current = tf.math.maximum(tf.reduce_max(current), self.threshold)
+        current = tf.clip_by_value(tf.abs(signal.samples), 0, max_current)
+        max_current = tf.math.maximum(tf.reduce_max(current), threshold)
 
         symbols = tf.vectorized_map(
             fn=lambda i: tf.cast(
@@ -191,9 +231,22 @@ class PAMDecoder(Component):
             elems=tf.range(tf.cast(tf.size(current) // n, tf.int32))
         )
 
+        return symbols
+
+    @tf.function
+    def __call__(self, signal: ElectricalSignal, **kwargs) -> tf.Tensor:
+        data_rate = self.get_component_parameter(kwargs, "data_rate")
+        threshold = self.get_component_parameter(kwargs, "threshold")
+        max_current = self.get_component_parameter(kwargs, "max_current")
+        bits_per_symbol = self.get_component_parameter(kwargs, "bits_per_symbol")
+
+        symbols = self._extract_pam_symbols(
+            signal, data_rate, threshold, max_current, bits_per_symbol
+        )
+
         return tf.reshape(
             tf.vectorized_map(
-                fn=self.constellation.decode_symbol,
+                fn=lambda symbol: self.symbol_decoder(symbol, **kwargs),
                 elems=symbols
             ),
             (tf.size(symbols) * bits_per_symbol,)

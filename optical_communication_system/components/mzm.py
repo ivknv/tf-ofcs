@@ -36,7 +36,7 @@ class MachZehnderModulator(Component):
     def __call__(self, modulation_signal: ElectricalSignal, **kwargs) -> OpticalSignal:
         carrier_signal = self.carrier_source(modulation_signal.timing, **kwargs)
 
-        extinction_ratio = self.get_kwarg("extinction_ratio", kwargs)
+        extinction_ratio = self.get_kwarg(kwargs, "extinction_ratio")
 
         if extinction_ratio is None:
             extinction_ratio = self.extinction_ratio

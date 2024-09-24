@@ -34,13 +34,7 @@ class Component(tf.Module):
         component_kwargs = {}
 
         for parameter in self.parameters:
-            key = f"{self.name}__{parameter}"
-
-            value = kwargs.get(key)
-            if value is None:
-                value = getattr(self, parameter)
-
-            component_kwargs[parameter] = value
+            component_kwargs[parameter] = self.get_component_parameter(kwargs, parameter)
 
         return self.implementation(inp, **component_kwargs)
 
@@ -83,8 +77,16 @@ class Component(tf.Module):
 
     def get_kwarg(
         self,
-        kwarg_name: str,
         kwargs: dict[str, Any],
+        kwarg_name: str,
         default: Optional[Any] = None
     ) -> Any:
         return kwargs.get(f"{self.name}__{kwarg_name}", default)
+
+    def get_component_parameter(self, kwargs: dict[str, Any], parameter: str):
+        value = self.get_kwarg(kwargs, parameter)
+
+        if value is not None:
+            return value
+
+        return getattr(self, parameter)

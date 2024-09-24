@@ -4,8 +4,10 @@ from . import datatypes
 from .laser import Laser
 from .photodiode import Photodiode
 from .mzm import MachZehnderModulator
-from .pam import PAMConstellation, PAMEncoder, PAMDecoder
-from .iq import IQConstellation, IQEncoder, IQModulator, IQReceiver, IQDecoder
+from .pam import PAMSymbolEncoder, PAMSymbolDecoder, PAMEncoder, PAMDecoder
+from .iq import (
+    IQSymbolEncoder, IQSymbolDecoder, IQEncoder, IQModulator, IQReceiver, IQDecoder
+)
 from .noise import ElectricalAWGN, OpticalAWGN
 from .passive import (
     OpticalFiber, OpticalPhaseShifter, OpticalCoupler1x2,
@@ -22,10 +24,12 @@ from .component import Component
 __all__ = [
     "Laser",
     "Photodiode",
-    "PAMConstellation",
+    "PAMSymbolEncoder",
+    "PAMSymbolDecoder",
     "PAMEncoder",
     "PAMDecoder",
-    "IQConstellation",
+    "IQSymbolEncoder",
+    "IQSymbolDecoder",
     "IQEncoder",
     "IQModulator",
     "IQReceiver",

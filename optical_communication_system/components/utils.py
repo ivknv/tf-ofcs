@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from collections.abc import Sequence
+import math
 from typing import Any, Optional
 
 import tensorflow as tf
@@ -18,6 +19,9 @@ __all__ = [
     "adjust_symbol_for_mzm",
     "bits_to_index",
     "index_to_bits",
+    "symbol_mapping_to_gray",
+    "psk_constellation",
+    "pam_constellation",
     "Composition",
     "MapComponent",
     "MapComponents",
@@ -90,6 +94,35 @@ def index_to_bits(index: tf.Tensor, bit_count: tf.Tensor) -> tf.Tensor:
 @tf.function
 def index_to_gray(index: tf.Tensor) -> tf.Tensor:
     return index ^ tf.bitwise.right_shift(index, 1)
+
+
+def symbol_mapping_to_gray(mapping: list) -> list:
+    gray_mapping = list(mapping)
+
+    for i, symbol in enumerate(mapping):
+        gray_mapping[index_to_gray(tf.constant(i))] = symbol
+
+    return gray_mapping
+
+
+def psk_constellation(
+    bits_per_symbol: int,
+    psk_mapping: Optional[Sequence[float]] = None
+) -> list[list[float]]:
+    if psk_mapping is None:
+        symbol_count = 2 ** bits_per_symbol
+        psk_mapping = [
+            2 * math.pi * (-i) / symbol_count + math.pi * 1.25
+            for i in range(symbol_count)
+        ]
+
+    iq_mapping = [[math.cos(phase), math.sin(phase)] for phase in psk_mapping]
+
+    return iq_mapping
+
+
+def pam_constellation(bits_per_symbol: int) -> list[float]:
+    return [i / (2 ** bits_per_symbol - 1) for i in range(2 ** bits_per_symbol)]
 
 
 class Composition(Component):

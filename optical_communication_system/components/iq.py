@@ -18,15 +18,14 @@ from .mzm import MachZehnderModulator
 from .passive import OpticalCoupler1x2, OpticalCoupler2x1, OpticalCoupler2x2, OpticalPhaseShifter
 from .utils import (
     Composition, ExtractTiming, Fork, Identity, MapComponent, MapComponents,
-    Reindex, adjust_symbol_for_mzm, normalize_signal, index_to_gray,
-    index_to_bits, bits_to_index
+    Reindex, adjust_symbol_for_mzm, normalize_signal, index_to_bits, bits_to_index
 )
 from .electrical import ElectricalSubtractor
 
-__all__ = ["IQConstellation", "IQEncoder", "IQModulator", "IQReceiver"]
+__all__ = ["IQSymbolEncoder", "IQSymbolDecoder", "IQEncoder", "IQModulator", "IQReceiver"]
 
 
-class IQConstellation(Component):
+class IQSymbolEncoder(Component):
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=[]; dtype=int32
     mapping: tf.Variable  # shape=(2 ** bits_per_symbol,2); dtype=float32
@@ -40,72 +39,79 @@ class IQConstellation(Component):
         bits_per_symbol: int,
         mapping: Sequence[Sequence[float]],
         adjust_for_mzm: bool = False,
-        transform_to_gray: bool = False,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
 
-        if transform_to_gray:
-            gray_mapping = list(mapping)
-
-            for i, symbol in enumerate(mapping):
-                gray_mapping[index_to_gray(tf.constant(i))] = symbol
-
-            mapping = gray_mapping
-
         self.mapping = tf.Variable(tf.constant(mapping))
         self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
 
-    @staticmethod
-    def from_psk(
-        *,
-        bits_per_symbol: int,
-        psk_mapping: Optional[Sequence[float]] = None,
-        adjust_for_mzm: bool = False,
-        transform_to_gray: bool = False,
-        name: Optional[str] = None
-    ) -> "IQConstellation":
-        if psk_mapping is None:
-            symbol_count = 2 ** bits_per_symbol
-            psk_mapping = [
-                2 * math.pi * (-i) / symbol_count + math.pi * 1.25
-                for i in range(symbol_count)
-            ]
+        self.parameters = ["bits_per_symbol", "mapping", "adjust_for_mzm"]
 
-        iq_mapping = [[math.cos(phase), math.sin(phase)] for phase in psk_mapping]
-
-        return IQConstellation(
-            bits_per_symbol=bits_per_symbol,
-            mapping=iq_mapping,
-            adjust_for_mzm=adjust_for_mzm,
-            transform_to_gray=transform_to_gray,
-            name=name
-        )
-
-    @tf.function(input_signature=(bit_sequence_spec,))
-    def encode_symbol(self, bitseq: tf.Tensor) -> tf.Tensor:
+    @tf.function(input_signature=(
+        bit_sequence_spec,
+        tf.TensorSpec(shape=[], dtype=tf.int32),
+        tf.TensorSpec(shape=[None, 2], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.bool)
+    ))
+    def implementation(
+        self,
+        bitseq: tf.Tensor,
+        bits_per_symbol: tf.Tensor,
+        mapping: tf.Tensor,
+        adjust_for_mzm: tf.Tensor
+    ) -> tf.Tensor:
         symbol_index: Any = bits_to_index(bitseq)
 
-        if self.adjust_for_mzm:  # type: ignore
-            return adjust_symbol_for_mzm(self.mapping[symbol_index])
+        if adjust_for_mzm:  # type: ignore
+            return adjust_symbol_for_mzm(mapping[symbol_index])
         else:
-            return self.mapping[symbol_index]
+            return mapping[symbol_index]
 
-    @tf.function(input_signature=(tf.TensorSpec(shape=[None], dtype=tf.float32),))
-    def decode_symbol(self, symbol: tf.Tensor) -> tf.Tensor:
+
+class IQSymbolDecoder(Component):
+    #: Number of bits per symbol
+    bits_per_symbol: tf.Variable  # shape=[]; dtype=int32
+    mapping: tf.Variable  # shape=(2 ** bits_per_symbol,2); dtype=float32
+
+    def __init__(
+        self,
+        *,
+        bits_per_symbol: int,
+        mapping: Sequence[Sequence[float]],
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
+        self.mapping = tf.Variable(tf.constant(mapping))
+
+        self.parameters = ["bits_per_symbol", "mapping"]
+
+    @tf.function(input_signature=(
+        tf.TensorSpec(shape=[None], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.int32),
+        tf.TensorSpec(shape=[None, 2], dtype=tf.float32)
+    ))
+    def implementation(
+        self,
+        symbol: tf.Tensor,
+        bits_per_symbol: tf.Tensor,
+        mapping: tf.Tensor
+    ) -> tf.Tensor:
         best_index = tf.cast(
             tf.argmin(
                 tf.reduce_sum(
-                    tf.abs(self.mapping - symbol),
+                    tf.abs(mapping - symbol),
                     axis=1
                 )
             ),
             tf.int32
         )
 
-        return index_to_bits(best_index, self.bits_per_symbol)
+        return index_to_bits(best_index, bits_per_symbol)
 
 
 class IQEncoder(Component):
@@ -115,51 +121,58 @@ class IQEncoder(Component):
     #: Data rate in bits/second
     data_rate: tf.Variable  # shape=[]; dtype=float32
 
-    #: Constellation used for encoding
-    constellation: IQConstellation
+    symbol_encoder: IQSymbolEncoder
 
     def __init__(
         self,
         *,
         sampling_rate: float,
         data_rate: float,
-        constellation: IQConstellation,
+        symbol_encoder: IQSymbolEncoder,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
         self.data_rate = tf.Variable(tf.constant(data_rate))
-        self.constellation = constellation
+        self.symbol_encoder = symbol_encoder
 
-    @tf.function(input_signature=(bit_sequence_spec,))
-    def implementation(self, bitseq: tf.Tensor) -> IQSignal:
-        bits_per_symbol = self.constellation.bits_per_symbol
+        self.parameters = ["sampling_rate", "data_rate"]
+
+    @tf.function
+    def __call__(self, bitseq: tf.Tensor, **kwargs) -> IQSignal:
+        assert isinstance(bitseq, tf.Tensor)
+        assert bitseq.dtype is tf.int32
+
+        data_rate = self.get_component_parameter(kwargs, "data_rate")
+        sampling_rate = self.get_component_parameter(kwargs, "sampling_rate")
+        bits_per_symbol = self.symbol_encoder.get_component_parameter(kwargs, "bits_per_symbol")
 
         tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), bits_per_symbol), 0)
 
         signal_duration = tf.divide(
             tf.cast(tf.size(bitseq), tf.float32),
-            self.data_rate
+            data_rate
         )
 
         time = tf.linspace(
             0.0,
             signal_duration,
-            tf.cast(tf.round(self.sampling_rate * signal_duration), tf.int32)
+            tf.cast(tf.round(sampling_rate * signal_duration), tf.int32)
         )
 
         iq_sequence = tf.vectorized_map(
-            fn=lambda i: self.constellation.encode_symbol(
-                bitseq[i * bits_per_symbol:(i + 1) * bits_per_symbol]
+            fn=lambda i: self.symbol_encoder(
+                bitseq[i * bits_per_symbol:(i + 1) * bits_per_symbol],
+                **kwargs
             ),
             elems=tf.range(tf.math.floordiv(tf.size(bitseq), bits_per_symbol))
         )
 
         timing = Timing(
             time=time,
-            sampling_rate=self.sampling_rate,
-            symbol_rate=tf.divide(self.data_rate, tf.cast(bits_per_symbol, tf.float32))
+            sampling_rate=sampling_rate,
+            symbol_rate=tf.divide(data_rate, tf.cast(bits_per_symbol, tf.float32))
         )
 
         repeat_count = tf.cast(
@@ -171,14 +184,8 @@ class IQEncoder(Component):
         q_samples = tf.repeat(iq_sequence[:,1], repeat_count)[:tf.size(time)]
 
         return (
-            ElectricalSignal(
-                timing=timing,
-                samples=i_samples
-            ),
-            ElectricalSignal(
-                timing=timing,
-                samples=q_samples
-            )
+            ElectricalSignal(timing=timing, samples=i_samples),
+            ElectricalSignal(timing=timing, samples=q_samples)
         )
 
 
@@ -249,37 +256,41 @@ class IQDecoder(Component):
     #: Data rate in bits/second
     data_rate: tf.Variable  # shape=[]; dtype=float32
 
-    #: Constellation used for encoding
-    constellation: IQConstellation
-
-    #: Minimum current (or power in watts) recognized as non-zero
-    threshold: tf.Variable  # shape=[]; dtype=float32
+    symbol_decoder: IQSymbolDecoder
 
     def __init__(
         self,
         *,
         data_rate: float,
-        constellation: IQConstellation,
+        symbol_decoder: IQSymbolDecoder,
         threshold: float = 1e-5,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.data_rate = tf.Variable(tf.constant(data_rate))
-        self.constellation = constellation
-        self.threshold = tf.Variable(tf.constant(threshold))
+        self.symbol_decoder = symbol_decoder
 
-    @tf.function(input_signature=(iq_signal_spec,))
-    def implementation(self, iq_signal: IQSignal) -> tf.Tensor:
+        self.parameters = ["data_rate"]
+
+    @tf.function(input_signature=(
+        iq_signal_spec,
+        tf.TensorSpec(shape=[], dtype=tf.int32),
+        tf.TensorSpec(shape=[], dtype=tf.float32)
+    ))
+    def _extract_iq_symbols(
+        self,
+        iq_signal: IQSignal,
+        bits_per_symbol: tf.Tensor,
+        data_rate: tf.Tensor
+    ) -> tf.Tensor:
         i_current = normalize_signal(tf.math.real(iq_signal[0].samples))
         q_current = normalize_signal(tf.math.real(iq_signal[1].samples))
 
         sampling_rate = iq_signal[0].timing.sampling_rate
 
-        bits_per_symbol = self.constellation.bits_per_symbol
-
         n = tf.cast(
-            tf.round(sampling_rate / self.data_rate * tf.cast(bits_per_symbol, tf.float32)),
+            tf.round(sampling_rate / data_rate * tf.cast(bits_per_symbol, tf.float32)),
             tf.int32
         )
 
@@ -293,9 +304,18 @@ class IQDecoder(Component):
             )
         )
 
+        return iq_symbols
+
+    @tf.function
+    def __call__(self, iq_signal: IQSignal, **kwargs) -> tf.Tensor:
+        data_rate = self.get_component_parameter(kwargs, "data_rate")
+        bits_per_symbol = self.symbol_decoder.get_component_parameter(kwargs, "bits_per_symbol")
+
+        iq_symbols = self._extract_iq_symbols(iq_signal, bits_per_symbol, data_rate)
+
         return tf.reshape(
             tf.vectorized_map(
-                fn=self.constellation.decode_symbol,
+                fn=lambda symbol: self.symbol_decoder(symbol, **kwargs),
                 elems=iq_symbols
             ),
             (tf.shape(iq_symbols)[0] * bits_per_symbol,)

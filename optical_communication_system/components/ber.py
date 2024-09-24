@@ -62,11 +62,10 @@ class BERTester(Component):
 
         return (total_bits - correct_count) / total_bits
 
-    @tf.function(input_signature=(
-        tf.TensorSpec(shape=[], dtype=tf.int32),
-        tf.TensorSpec(shape=[], dtype=tf.int32)
-    ))
-    def implementation(self, sequence_length: tf.Tensor, n_iterations: tf.Tensor) -> tf.Tensor:
+    @tf.function
+    def __call__(self, sequence_length: tf.Tensor, **kwargs) -> tf.Tensor:
+        n_iterations = self.get_component_parameter(kwargs, "n_iterations")
+
         inputs = self.rng.uniform(
             (n_iterations, sequence_length,),
             minval=0,
@@ -78,7 +77,7 @@ class BERTester(Component):
 
         for system in self.systems:
             def fn(system):
-                return lambda inp: self._compute_ber(inp, system(inp))
+                return lambda inp: self._compute_ber(inp, system(inp, **kwargs))
 
             bers = tf.concat(
                 [
