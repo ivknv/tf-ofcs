@@ -20,6 +20,7 @@ from .utils import (
 )
 from .electrical import ElectricalAdder, ElectricalSubtractor
 from .component import Component
+from .optical_gain import OpticalGain
 
 __all__ = [
     "Laser",
@@ -53,5 +54,6 @@ __all__ = [
     "ElectricalAdder",
     "ElectricalSubtractor",
     "ExtractTiming",
-    "Component"
+    "Component",
+    "OpticalGain"
 ]
