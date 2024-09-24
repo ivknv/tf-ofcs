@@ -7,21 +7,7 @@ import tensorflow as tf
 from .datatypes import bit_sequence_spec
 from .component import Component
 
-__all__ = ["BERAnalyzer", "BERTester"]
-
-
-class BERAnalyzer(Component):
-    @tf.function(input_signature=(
-        bit_sequence_spec,
-        bit_sequence_spec
-    ))
-    def implementation(self, expected_output: tf.Tensor, output: tf.Tensor) -> tf.Tensor:
-        tf.debugging.assert_equal(tf.size(output), tf.size(expected_output))
-
-        correct_count = tf.cast(tf.math.count_nonzero(expected_output == output), tf.float32)
-        total_bits = tf.cast(tf.size(output), tf.float32)
-
-        return (total_bits - correct_count) / total_bits
+__all__ = ["BERTester"]
 
 
 class BERTester(Component):
