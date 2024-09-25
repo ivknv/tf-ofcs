@@ -130,21 +130,32 @@ class PAMEncoder(Component):
         self.data_rate = tf.Variable(tf.constant(data_rate))
         self.symbol_encoder = symbol_encoder
 
-    @tf.function(input_signature=(bit_sequence_spec,))
-    def implementation(self, bitseq: tf.Tensor) -> ElectricalSignal:
+        self.parameters = ["sampling_rate", "data_rate"]
+
+    @tf.function(input_signature=(
+        bit_sequence_spec,
+        tf.TensorSpec(shape=[], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.float32)
+    ))
+    def implementation(
+        self,
+        bitseq: tf.Tensor,
+        sampling_rate: tf.Tensor,
+        data_rate: tf.Tensor
+    ) -> ElectricalSignal:
         bits_per_symbol = self.symbol_encoder.bits_per_symbol
 
         tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), bits_per_symbol), 0)
 
         signal_duration = tf.divide(
             tf.cast(tf.size(bitseq), tf.float32),
-            self.data_rate
+            data_rate
         )
 
         time = tf.linspace(
             0.0,
             signal_duration,
-            tf.cast(tf.round(self.sampling_rate * signal_duration), tf.int32)
+            tf.cast(tf.round(sampling_rate * signal_duration), tf.int32)
         )
 
         pam_sequence = tf.vectorized_map(
@@ -157,8 +168,8 @@ class PAMEncoder(Component):
         return ElectricalSignal(
             timing=Timing(
                 time=time,
-                sampling_rate=self.sampling_rate,
-                symbol_rate=tf.divide(self.data_rate, tf.cast(bits_per_symbol, tf.float32))
+                sampling_rate=sampling_rate,
+                symbol_rate=tf.divide(data_rate, tf.cast(bits_per_symbol, tf.float32))
             ),
             samples=tf.repeat(
                 pam_sequence,

@@ -16,7 +16,8 @@ from .passive import (
 from .filters import ElectricalLowPassFilter
 from .ber import BERTester
 from .utils import (
-    Composition, MapComponent, MapComponents, Identity, Reindex, Fork, ExtractTiming
+    Composition, MapComponent, MapComponents, Identity, Reindex, Fork,
+    ExtractTiming, TimingGenerator, Resample
 )
 from .electrical import ElectricalAdder, ElectricalSubtractor
 from .component import Component
@@ -54,6 +55,8 @@ __all__ = [
     "ElectricalAdder",
     "ElectricalSubtractor",
     "ExtractTiming",
+    "TimingGenerator",
+    "Resample",
     "Component",
     "OpticalGain"
 ]

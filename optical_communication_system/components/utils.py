@@ -28,7 +28,9 @@ __all__ = [
     "Identity",
     "Reindex",
     "Fork",
-    "ExtractTiming"
+    "ExtractTiming",
+    "TimingGenerator",
+    "Resample"
 ]
 
 
@@ -269,3 +271,104 @@ class ExtractTiming(Component):
     @tf.function
     def implementation(self, signal: ElectricalSignal | OpticalSignal) -> Timing:
         return signal.timing
+
+
+class TimingGenerator(Component):
+    sampling_rate: tf.Variable
+    symbol_rate: tf.Variable
+    duration: tf.Variable
+
+    def __init__(
+        self,
+        sampling_rate: float,
+        symbol_rate: float,
+        duration: float = 0.0,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
+        self.symbol_rate = tf.Variable(tf.constant(symbol_rate))
+        self.duration = tf.Variable(tf.constant(duration))
+        self.parameters = ["sampling_rate", "symbol_rate", "duration"]
+
+    @tf.function
+    def implementation(
+        self,
+        duration: tf.Tensor,
+        sampling_rate: tf.Tensor,
+        symbol_rate: tf.Tensor
+    ) -> Timing:
+        time = tf.linspace(
+            0.0,
+            duration,
+            tf.cast(tf.round(sampling_rate * duration), tf.int32)
+        )
+
+        return Timing(sampling_rate=sampling_rate, symbol_rate=symbol_rate, time=time)
+
+
+@tf.function
+def _upsample_with_linear_interpolation(x: tf.Tensor, factor: tf.Tensor) -> tf.Tensor:
+    n = factor + 1
+
+    return tf.concat(
+        [
+            x[:1],
+            tf.reshape(
+                tf.vectorized_map(
+                    fn=lambda i: tf.linspace(x[i], x[i + 1], n)[1:],
+                    elems=tf.range(tf.shape(x)[0] - 1)
+                ),
+                tf.concat([[(tf.shape(x)[0] - 1) * (n - 1)], tf.shape(x)[1:]], 0)
+            )
+        ],
+        0
+    )
+
+
+@tf.function
+def _downsample(x: tf.Tensor, factor: tf.Tensor) -> tf.Tensor:
+    return tf.gather(x, tf.range(0, tf.shape(x)[0], factor))
+
+
+class Resample(Component):
+    #: Desired sampling rate of the signal
+    sampling_rate: tf.Variable  # shape=[]; dtype=float32
+
+    def __init__(self, sampling_rate: int, name: Optional[str] = None) -> None:
+        super().__init__(name=name)
+
+        self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
+        self.parameters = ["sampling_rate"]
+
+    @tf.function
+    def implementation(
+        self,
+        signal: ElectricalSignal | OpticalSignal,
+        sampling_rate: tf.Tensor
+    ) -> ElectricalSignal | OpticalSignal:
+        assert isinstance(signal, (ElectricalSignal, OpticalSignal))
+
+        timing = signal.timing
+
+        if sampling_rate > timing.sampling_rate:
+            factor = tf.cast(tf.round(sampling_rate / timing.sampling_rate), tf.int32)
+
+            new_time = _upsample_with_linear_interpolation(timing.time, factor - 1)
+            new_samples = tf.repeat(signal.samples, [factor])
+        else:
+            factor = tf.cast(tf.round(timing.sampling_rate / sampling_rate), tf.int32)
+
+            new_time = _downsample(timing.time, factor)
+            new_samples = _downsample(signal.samples, factor)
+
+        new_timing = Timing(
+            sampling_rate=timing.sampling_rate * tf.cast(factor, tf.float32),
+            symbol_rate=timing.symbol_rate,
+            time=new_time
+        )
+
+        SignalClass = signal.__class__
+
+        return SignalClass(timing=new_timing, samples=new_samples)
