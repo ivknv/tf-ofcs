@@ -13,7 +13,7 @@ from .passive import (
     OpticalFiber, OpticalPhaseShifter, OpticalCoupler1x2,
     OpticalCoupler2x2, OpticalCoupler2x1
 )
-from .filters import ElectricalLowPassFilter
+from .filters import BandPassFilter
 from .ber import BERTester
 from .utils import (
     Composition, MapComponent, MapComponents, Identity, Reindex, Fork,
@@ -44,7 +44,7 @@ __all__ = [
     "OpticalCoupler1x2",
     "OpticalCoupler2x2",
     "OpticalCoupler2x1",
-    "ElectricalLowPassFilter",
+    "BandPassFilter",
     "BERTester",
     "Composition",
     "MapComponent",
