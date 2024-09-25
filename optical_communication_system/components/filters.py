@@ -49,9 +49,15 @@ class BandPassFilter(Component):
         max_frequency: tf.Tensor
     ) -> ElectricalSignal | OpticalSignal:
         SignalClass = signal.__class__
+
+        filtered_samples = self._implementation(signal.timing, signal.samples, min_frequency, max_frequency)
+
+        if isinstance(signal, ElectricalSignal):
+            filtered_samples = tf.cast(tf.math.real(filtered_samples), tf.float32)
+
         return SignalClass(
             timing=signal.timing,
-            samples=self._implementation(signal.timing, signal.samples, min_frequency, max_frequency)
+            samples=filtered_samples
         )
 
     @tf.function(input_signature=(
@@ -75,6 +81,6 @@ class BandPassFilter(Component):
             elems=tf.transpose(tf.stack([fft, freqs]))
         )
 
-        filtered_samples = tf.cast(tf.math.real(tf.signal.ifft(filtered_fft)), tf.float32)
+        filtered_samples = tf.signal.ifft(filtered_fft)
 
         return filtered_samples
