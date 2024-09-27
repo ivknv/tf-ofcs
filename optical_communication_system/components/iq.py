@@ -18,7 +18,7 @@ from .mzm import MachZehnderModulator
 from .passive import OpticalCoupler1x2, OpticalCoupler2x1, OpticalCoupler2x2, OpticalPhaseShifter
 from .utils import (
     Composition, ExtractTiming, Fork, Identity, MapComponent, MapComponents,
-    Reindex, adjust_symbol_for_mzm, normalize_signal, index_to_bits, bits_to_index
+    Reindex, adjust_symbol_for_mzm, index_to_bits, bits_to_index
 )
 from .electrical import ElectricalSubtractor
 
@@ -258,34 +258,41 @@ class IQDecoder(Component):
 
     symbol_decoder: IQSymbolDecoder
 
+    #: Received symbols will be scaled by this factor (necessary for M-ary modulation formats)
+    symbol_scale: tf.Variable  # shape=[]; dtype=float32
+
     def __init__(
         self,
         *,
         data_rate: float,
         symbol_decoder: IQSymbolDecoder,
         threshold: float = 1e-5,
+        symbol_scale: float = 1.0,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.data_rate = tf.Variable(tf.constant(data_rate))
         self.symbol_decoder = symbol_decoder
+        self.symbol_scale = tf.Variable(tf.constant(symbol_scale))
 
-        self.parameters = ["data_rate"]
+        self.parameters = ["data_rate", "symbol_scale"]
 
     @tf.function(input_signature=(
         iq_signal_spec,
         tf.TensorSpec(shape=[], dtype=tf.int32),
+        tf.TensorSpec(shape=[], dtype=tf.float32),
         tf.TensorSpec(shape=[], dtype=tf.float32)
     ))
     def _extract_iq_symbols(
         self,
         iq_signal: IQSignal,
         bits_per_symbol: tf.Tensor,
-        data_rate: tf.Tensor
+        data_rate: tf.Tensor,
+        symbol_scale: tf.Tensor
     ) -> tf.Tensor:
-        i_current = normalize_signal(tf.math.real(iq_signal[0].samples))
-        q_current = normalize_signal(tf.math.real(iq_signal[1].samples))
+        i_current = tf.math.real(iq_signal[0].samples)
+        q_current = tf.math.real(iq_signal[1].samples)
 
         sampling_rate = iq_signal[0].timing.sampling_rate
 
@@ -302,16 +309,17 @@ class IQDecoder(Component):
                 ],
                 elems=tf.range(tf.cast(tf.size(i_current) // n, tf.int32))
             )
-        )
+        ) / symbol_scale
 
         return iq_symbols
 
     @tf.function
     def __call__(self, iq_signal: IQSignal, **kwargs) -> tf.Tensor:
         data_rate = self.get_component_parameter(kwargs, "data_rate")
+        symbol_scale = self.get_component_parameter(kwargs, "symbol_scale")
         bits_per_symbol = self.symbol_decoder.get_component_parameter(kwargs, "bits_per_symbol")
 
-        iq_symbols = self._extract_iq_symbols(iq_signal, bits_per_symbol, data_rate)
+        iq_symbols = self._extract_iq_symbols(iq_signal, bits_per_symbol, data_rate, symbol_scale)
 
         return tf.reshape(
             tf.vectorized_map(

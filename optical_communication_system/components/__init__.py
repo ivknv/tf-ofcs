@@ -17,7 +17,7 @@ from .filters import BandPassFilter
 from .ber import BERTester
 from .utils import (
     Composition, MapComponent, MapComponents, Identity, Reindex, Fork,
-    ExtractTiming, TimingGenerator, Resample
+    ExtractTiming, TimingGenerator, Resample, Downsample, MeanAmplitude
 )
 from .electrical import ElectricalAdder, ElectricalSubtractor
 from .component import Component
@@ -57,6 +57,8 @@ __all__ = [
     "ExtractTiming",
     "TimingGenerator",
     "Resample",
+    "Downsample",
+    "MeanAmplitude",
     "Component",
     "OpticalGain"
 ]

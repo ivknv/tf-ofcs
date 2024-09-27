@@ -9,7 +9,8 @@ from . import constants
 from .component import Component
 
 from .datatypes import (
-    ElectricalSignal, OpticalSignal, Timing, bit_dtype, bit_sequence_spec
+    ElectricalSignal, electrical_signal_spec, OpticalSignal, Timing,
+    bit_dtype, bit_sequence_spec
 )
 
 __all__ = [
@@ -30,7 +31,9 @@ __all__ = [
     "Fork",
     "ExtractTiming",
     "TimingGenerator",
-    "Resample"
+    "Resample",
+    "Downsample",
+    "MeanAmplitude"
 ]
 
 
@@ -372,3 +375,58 @@ class Resample(Component):
         SignalClass = signal.__class__
 
         return SignalClass(timing=new_timing, samples=new_samples)
+
+
+class Downsample(Component):
+    #: Desired sampling rate in samples/second
+    sampling_rate: tf.Variable  # shape=[]; dtype=float32
+
+    #: Shift signal in time before taking samples
+    time_offset: tf.Variable  # shape=[]; dtype=float32
+
+    def __init__(
+        self,
+        sampling_rate: float,
+        time_offset: float = 0.0,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
+        self.time_offset = tf.Variable(tf.constant(time_offset))
+        self.parameters = ["sampling_rate", "time_offset"]
+
+    @tf.function(input_signature=(
+        electrical_signal_spec,
+        tf.TensorSpec(shape=[], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.float32)
+    ))
+    def implementation(
+        self,
+        signal: ElectricalSignal,
+        sampling_rate: tf.Tensor,
+        time_offset: tf.Tensor
+    ) -> ElectricalSignal:
+        n = tf.cast(tf.round(signal.timing.sampling_rate / sampling_rate), tf.int32)
+        shift = tf.cast(tf.round(signal.timing.sampling_rate * time_offset), tf.int32)
+
+        indices = tf.range(shift, tf.size(signal.samples) - shift, n)
+
+        signal_samples = tf.gather(signal.samples, indices)
+        time_samples = tf.gather(signal.timing.time, indices)
+
+        return ElectricalSignal(
+            timing=Timing(
+                time=time_samples,
+                symbol_rate=sampling_rate,
+                sampling_rate=sampling_rate
+            ),
+            samples=signal_samples
+        )
+
+
+class MeanAmplitude(Component):
+    @tf.function
+    def implementation(self, input_signal: OpticalSignal | ElectricalSignal) -> tf.Tensor:
+        assert isinstance(input_signal, (ElectricalSignal, OpticalSignal))
+        return tf.reduce_mean(input_signal.samples)
