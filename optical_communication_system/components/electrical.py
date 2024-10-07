@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 
+from typing import Optional
 import tensorflow as tf
 
 from .datatypes import ElectricalSignal, electrical_signal_spec
 from .component import Component
+from .utils import generate_timing
 
-__all__ = ["ElectricalAdder", "ElectricalSubtractor"]
+__all__ = ["ElectricalAdder", "ElectricalSubtractor", "ArbitraryWaveformGenerator"]
 
 
 class ElectricalAdder(Component):
@@ -23,4 +25,41 @@ class ElectricalSubtractor(Component):
         return ElectricalSignal(
             timing=input_signals[0].timing,
             samples=input_signals[0].samples - input_signals[1].samples
+        )
+
+
+class ArbitraryWaveformGenerator(Component):
+    #: Sampling rate in Hz
+    sampling_rate: tf.Variable  # shape=[]; dtype=float32
+
+    #: Symbol rate in symbols/second
+    symbol_rate: tf.Variable  # shape=[]; dtype=float32
+
+    def __init__(self, sampling_rate: float, symbol_rate: float, name: Optional[str] = None) -> None:
+        super().__init__(name=name)
+
+        self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
+        self.symbol_rate = tf.Variable(tf.constant(symbol_rate))
+
+        self.parameters = ["sampling_rate", "symbol_rate"]
+
+    @tf.function(input_signature=(
+        tf.TensorSpec(shape=[None], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.float32),
+    ))
+    def implementation(
+        self,
+        input_samples: tf.Tensor,
+        sampling_rate: tf.Tensor,
+        symbol_rate: tf.Tensor
+    ) -> ElectricalSignal:
+        symbol_count = tf.cast(
+            tf.round(tf.cast(tf.size(input_samples), tf.float32) * symbol_rate / sampling_rate),
+            tf.int32
+        )
+
+        return ElectricalSignal(
+            timing=generate_timing(sampling_rate, symbol_rate, symbol_count),
+            samples=input_samples
         )

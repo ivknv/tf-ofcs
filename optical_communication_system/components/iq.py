@@ -150,16 +150,17 @@ class IQEncoder(Component):
 
         tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), bits_per_symbol), 0)
 
-        signal_duration = tf.divide(
-            tf.cast(tf.size(bitseq), tf.float32),
-            data_rate
-        )
+        symbol_rate = tf.divide(data_rate, tf.cast(bits_per_symbol, tf.float32))
 
-        time = tf.linspace(
-            0.0,
-            signal_duration,
-            tf.cast(tf.round(sampling_rate * signal_duration), tf.int32)
-        )
+        time = tf.cast(
+            tf.range(
+                tf.multiply(
+                    tf.size(bitseq),
+                    tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
+                )
+            ),
+            tf.float32
+        ) / sampling_rate
 
         iq_sequence = tf.vectorized_map(
             fn=lambda i: self.symbol_encoder(
@@ -172,7 +173,7 @@ class IQEncoder(Component):
         timing = Timing(
             time=time,
             sampling_rate=sampling_rate,
-            symbol_rate=tf.divide(data_rate, tf.cast(bits_per_symbol, tf.float32))
+            symbol_rate=symbol_rate
         )
 
         repeat_count = tf.cast(

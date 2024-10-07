@@ -17,9 +17,10 @@ from .filters import BandPassFilter
 from .ber import BERTester
 from .utils import (
     Composition, MapComponent, MapComponents, Identity, Reindex, Fork,
-    ExtractTiming, TimingGenerator, Resample, Downsample, MeanAmplitude
+    ExtractTiming, TimingGenerator, Resample, Downsample, MeanAmplitude,
+    ParallelToSerial, SerialToParallel, ExtractSamples
 )
-from .electrical import ElectricalAdder, ElectricalSubtractor
+from .electrical import ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator
 from .component import Component
 from .optical_gain import OpticalGain
 
@@ -54,11 +55,15 @@ __all__ = [
     "Fork",
     "ElectricalAdder",
     "ElectricalSubtractor",
+    "ArbitraryWaveformGenerator",
     "ExtractTiming",
     "TimingGenerator",
     "Resample",
     "Downsample",
     "MeanAmplitude",
+    "ParallelToSerial",
+    "SerialToParallel",
+    "ExtractSamples",
     "Component",
     "OpticalGain"
 ]

@@ -23,6 +23,7 @@ __all__ = [
     "symbol_mapping_to_gray",
     "psk_constellation",
     "pam_constellation",
+    "generate_timing",
     "Composition",
     "MapComponent",
     "MapComponents",
@@ -33,7 +34,10 @@ __all__ = [
     "TimingGenerator",
     "Resample",
     "Downsample",
-    "MeanAmplitude"
+    "MeanAmplitude",
+    "ParallelToSerial",
+    "SerialToParallel",
+    "ExtractSamples"
 ]
 
 
@@ -130,6 +134,30 @@ def pam_constellation(bits_per_symbol: int) -> list[float]:
     return [i / (2 ** bits_per_symbol - 1) for i in range(2 ** bits_per_symbol)]
 
 
+@tf.function(input_signature=(
+    tf.TensorSpec(shape=[], dtype=tf.float32),
+    tf.TensorSpec(shape=[], dtype=tf.float32),
+    tf.TensorSpec(shape=[], dtype=tf.int32)
+))
+def generate_timing(
+    sampling_rate: tf.Tensor,
+    symbol_rate: tf.Tensor,
+    symbol_count: tf.Tensor
+) -> Timing:
+    time = tf.cast(
+        tf.range(
+            0,
+            symbol_count * tf.cast(
+                tf.round(sampling_rate / symbol_rate),
+                tf.int32
+            )
+        ),
+        tf.float32
+    ) / sampling_rate
+
+    return Timing(sampling_rate=sampling_rate, symbol_rate=symbol_rate, time=time)
+
+
 class Composition(Component):
     #: System components
     components: list[Component]
@@ -174,7 +202,7 @@ class MapComponent(Component):
     def __call__(self, inputs: tuple, **kwargs) -> tuple:
         return tuple(self.component(input, **kwargs) for input in inputs)
 
-    def trace(self, inp: tuple, level: int = 0, **kwargs) -> tuple:
+    def trace(self, inp: Sequence, level: int = 0, **kwargs) -> tuple:
         self.trace_call(inp, level)
 
         self.output = tuple(
@@ -279,36 +307,34 @@ class ExtractTiming(Component):
 class TimingGenerator(Component):
     sampling_rate: tf.Variable
     symbol_rate: tf.Variable
-    duration: tf.Variable
+    symbol_count: tf.Variable
 
     def __init__(
         self,
         sampling_rate: float,
         symbol_rate: float,
-        duration: float = 0.0,
+        symbol_count: float = 0.0,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
         self.symbol_rate = tf.Variable(tf.constant(symbol_rate))
-        self.duration = tf.Variable(tf.constant(duration))
-        self.parameters = ["sampling_rate", "symbol_rate", "duration"]
+        self.symbol_count = tf.Variable(tf.constant(symbol_count))
+        self.parameters = ["sampling_rate", "symbol_rate", "symbol_count"]
 
-    @tf.function
+    @tf.function(input_signature=(
+        tf.TensorSpec(shape=[], dtype=tf.int32),
+        tf.TensorSpec(shape=[], dtype=tf.float32),
+        tf.TensorSpec(shape=[], dtype=tf.float32)
+    ))
     def implementation(
         self,
-        duration: tf.Tensor,
+        symbol_count: tf.Tensor,
         sampling_rate: tf.Tensor,
         symbol_rate: tf.Tensor
     ) -> Timing:
-        time = tf.linspace(
-            0.0,
-            duration,
-            tf.cast(tf.round(sampling_rate * duration), tf.int32)
-        )
-
-        return Timing(sampling_rate=sampling_rate, symbol_rate=symbol_rate, time=time)
+        return generate_timing(sampling_rate, symbol_rate, symbol_count)
 
 
 @tf.function
@@ -430,3 +456,89 @@ class MeanAmplitude(Component):
     def implementation(self, input_signal: OpticalSignal | ElectricalSignal) -> tf.Tensor:
         assert isinstance(input_signal, (ElectricalSignal, OpticalSignal))
         return tf.reduce_mean(input_signal.samples)
+
+
+class ParallelToSerial(Component):
+    @tf.function
+    def implementation(
+        self,
+        parallel_signals: Sequence[OpticalSignal] | Sequence[ElectricalSignal]
+    ) -> ElectricalSignal | OpticalSignal:
+        timing = parallel_signals[0].timing
+        sampling_rate = timing.sampling_rate
+
+        SignalClass = parallel_signals[0].__class__
+
+        for signal in parallel_signals:
+            assert isinstance(signal, SignalClass)
+            tf.debugging.assert_less(tf.abs(signal.timing.sampling_rate - sampling_rate), 1e-6)
+            tf.debugging.assert_equal(tf.size(signal.timing.time), tf.size(timing.time))
+
+        new_time = tf.cast(
+            tf.range(tf.size(timing.time) * len(parallel_signals)),
+            tf.float32
+        ) / sampling_rate + timing.time[0]
+
+        new_signal_samples = tf.concat(
+            [signal.samples for signal in parallel_signals],
+            0
+        )
+
+        return SignalClass(
+            timing=Timing(
+                time=new_time,
+                symbol_rate=timing.symbol_rate,
+                sampling_rate=sampling_rate
+            ),
+            samples=new_signal_samples
+        )
+
+
+class SerialToParallel(Component):
+    #: Number of parallel signals at the output
+    n_parallel: int
+
+    def __init__(self, n_parallel: int, name: Optional[str] = None) -> None:
+        super().__init__(name=name)
+
+        self.n_parallel = n_parallel
+
+    @tf.function
+    def implementation(
+        self,
+        serial_signal: OpticalSignal | ElectricalSignal,
+    ) -> tuple[ElectricalSignal, ...] | tuple[OpticalSignal, ...]:
+        assert self.n_parallel >= 1
+
+        if self.n_parallel == 1:
+            return (serial_signal,)
+
+        timing = serial_signal.timing
+        sampling_rate = timing.sampling_rate
+
+        SignalClass = serial_signal.__class__
+
+        parallel_sample_count = tf.cast(tf.round(tf.size(timing.time) / self.n_parallel), tf.int32)
+
+        new_time = timing.time[:parallel_sample_count]
+        new_timing = Timing(
+            time=new_time,
+            sampling_rate=sampling_rate,
+            symbol_rate=timing.symbol_rate
+        )
+
+        return tuple(
+            SignalClass(
+                timing=new_timing,
+                samples=serial_signal.samples[
+                    parallel_sample_count * tf.constant(i):parallel_sample_count * tf.constant(i + 1)
+                ]
+            ) for i in range(self.n_parallel)
+        )
+
+
+class ExtractSamples(Component):
+    @tf.function
+    def implementation(self, signal: ElectricalSignal | OpticalSignal) -> tf.Tensor:
+        assert isinstance(signal, (ElectricalSignal, OpticalSignal))
+        return signal.samples
