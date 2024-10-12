@@ -133,10 +133,11 @@ class OpticalFiber(Component):
 
         gamma_per_step = tf.cast(eff_non_linear_coeff * step_length * 1e-3, tf.complex64)
 
-        dispersion_step = (1.0 / loss) * tf.math.exp(1j * phase_shifts)
+        frequency_domain_step = (1.0 / loss) * tf.math.exp(1j * phase_shifts)
 
+        # Apply the symmetrized split-step Fourier method for solving the nonlinear Schrödinger equation
         for _ in tf.range(step_count):
-            fft *= dispersion_step
+            fft *= frequency_domain_step
 
             time_signal = tf.signal.ifft(fft)
             time_signal *= tf.math.exp(
@@ -144,7 +145,7 @@ class OpticalFiber(Component):
             )
 
             fft = tf.signal.fft(time_signal)
-            fft *= dispersion_step
+            fft *= frequency_domain_step
 
         return OpticalSignal(timing=signal.timing, samples=tf.signal.ifft(fft))
 

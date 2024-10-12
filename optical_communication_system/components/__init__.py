@@ -18,11 +18,12 @@ from .ber import BERTester
 from .utils import (
     Composition, MapComponent, MapComponents, Identity, Reindex, Fork,
     ExtractTiming, TimingGenerator, Resample, Downsample, MeanAmplitude,
-    ParallelToSerial, SerialToParallel, ExtractSamples
+    ParallelToSerial, SerialToParallel, ExtractSamples, Lambda
 )
 from .electrical import ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator
 from .component import Component
 from .optical_gain import OpticalGain
+from .channel_loss_estimator import ChannelLossEstimator
 
 __all__ = [
     "Laser",
@@ -64,6 +65,8 @@ __all__ = [
     "ParallelToSerial",
     "SerialToParallel",
     "ExtractSamples",
+    "Lambda",
     "Component",
-    "OpticalGain"
+    "OpticalGain",
+    "ChannelLossEstimator"
 ]

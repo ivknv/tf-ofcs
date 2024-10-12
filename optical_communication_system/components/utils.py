@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 import math
 from typing import Any, Optional
 
@@ -37,7 +37,8 @@ __all__ = [
     "MeanAmplitude",
     "ParallelToSerial",
     "SerialToParallel",
-    "ExtractSamples"
+    "ExtractSamples",
+    "Lambda"
 ]
 
 
@@ -454,7 +455,7 @@ class MeanAmplitude(Component):
     @tf.function
     def implementation(self, input_signal: OpticalSignal | ElectricalSignal) -> tf.Tensor:
         assert isinstance(input_signal, (ElectricalSignal, OpticalSignal))
-        return tf.reduce_mean(input_signal.samples)
+        return tf.math.reduce_mean(tf.abs(input_signal.samples))
 
 
 class ParallelToSerial(Component):
@@ -541,3 +542,29 @@ class ExtractSamples(Component):
     def implementation(self, signal: ElectricalSignal | OpticalSignal) -> tf.Tensor:
         assert isinstance(signal, (ElectricalSignal, OpticalSignal))
         return signal.samples
+
+
+class Lambda(Component):
+    #: `Callable` that will be invoked
+    function: Callable
+
+    #: If `True`, keyword arguments will be passed to `function`
+    allow_kwargs: bool
+
+    def __init__(
+        self,
+        function: Callable,
+        allow_kwargs: bool = False,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.function = function
+        self.allow_kwargs = allow_kwargs
+
+    @tf.function
+    def __call__(self, inp, /, **kwargs) -> Any:
+        if self.allow_kwargs:
+            return self.function(inp, **kwargs)
+
+        return self.function(inp)
