@@ -25,22 +25,6 @@ class BandPassFilter(Component):
         self.max_frequency = tf.Variable(tf.constant(max_frequency))
         self.parameters = ["min_frequency", "max_frequency"]
 
-    @tf.function(input_signature=(
-        tf.TensorSpec(shape=[2], dtype=tf.complex64),
-        tf.TensorSpec([2], tf.float32),
-    ))
-    def _transfer_function(self, fft_and_freq: tf.Tensor, freq_range: tf.Tensor) -> tf.Tensor:
-        fft = fft_and_freq[0]
-        freq = tf.abs(fft_and_freq[1])
-
-        min_frequency = freq_range[0]
-        max_frequency = freq_range[1]
-
-        if tf.greater(freq, max_frequency) or tf.less(freq, min_frequency):  # type: ignore
-            return tf.complex(0.0, 0.0)
-        else:
-            return fft
-
     @tf.function
     def implementation(
         self,
@@ -55,13 +39,13 @@ class BandPassFilter(Component):
         if isinstance(signal, ElectricalSignal):
             filtered_samples = tf.cast(tf.math.real(filtered_samples), tf.float32)
 
-        return SignalClass(
-            timing=signal.timing,
-            samples=filtered_samples
-        )
+        return SignalClass(timing=signal.timing, samples=filtered_samples)
 
     @tf.function(input_signature=(
-        timing_spec, tf.TensorSpec([None]), tf.TensorSpec([], tf.float32), tf.TensorSpec([], tf.float32)
+        timing_spec,
+        tf.TensorSpec([None, None]),
+        tf.TensorSpec([], tf.float32),
+        tf.TensorSpec([], tf.float32)
     ))
     def _implementation(
         self,
@@ -71,15 +55,10 @@ class BandPassFilter(Component):
         max_frequency: tf.Tensor
     ) -> tf.Tensor:
         fft = tf.signal.fft(tf.cast(samples, tf.complex64))
-        freqs = tf.cast(
-            fftfreq(tf.size(fft), 1.0 / timing.sampling_rate),
-            tf.complex64
-        )
 
-        filtered_fft = tf.vectorized_map(
-            fn=lambda fft_and_freq: self._transfer_function(fft_and_freq, [min_frequency, max_frequency]),
-            elems=tf.transpose(tf.stack([fft, freqs]))
-        )
+        freqs = tf.abs(fftfreq(tf.shape(fft)[1], 1.0 / timing.sampling_rate))
+        pass_mask = tf.logical_and(tf.math.greater_equal(freqs, min_frequency), tf.less_equal(freqs, max_frequency))
+        filtered_fft = tf.where(pass_mask, fft, tf.complex(0.0, 0.0))
 
         filtered_samples = tf.signal.ifft(filtered_fft)
 

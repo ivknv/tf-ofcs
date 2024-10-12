@@ -52,29 +52,21 @@ def plot_power(
     **kwargs
 ) -> None:
     if isinstance(signal, (ElectricalSignal, OpticalSignal)):
-        _plot(
-            ax,
-            signal.timing.time.numpy() * time_units[0],
-            np.abs(signal.samples.numpy()) ** 2 * power_units[0],
-            label=label,
-            **kwargs
-        )
-    else: # IQ signal case
-        _plot(
-            ax,
-            signal[0].timing.time * time_units[0],
-            signal[0].samples.numpy() ** 2 * power_units[0],
-            label=f"{label} (I)",
-            **kwargs
-        )
+        time = signal.timing.time.numpy() * time_units[0]
+        samples = np.abs(signal.samples.numpy()) ** 2 * power_units[0]
 
-        _plot(
-            ax,
-            signal[1].timing.time * time_units[0],
-            signal[1].samples.numpy() ** 2 * power_units[0],
-            label=f"{label} (Q)",
-            **kwargs
-        )
+        for batch in range(len(samples)):
+            _plot(ax, time, samples[batch], label=f"{label} [{batch}]", **kwargs)
+    else: # IQ signal case
+        time_i = signal[0].timing.time.numpy() * time_units[0]
+        samples_i = np.abs(signal[0].samples.numpy()) ** 2 * power_units[0]
+
+        time_q = signal[1].timing.time.numpy() * time_units[0]
+        samples_q = np.abs(signal[1].samples.numpy()) ** 2 * power_units[0]
+
+        for batch in range(len(samples_i)):
+            _plot(ax, time_i, samples_i[batch], label=f"{label} (I) [{batch}]", **kwargs)
+            _plot(ax, time_q, samples_q[batch], label=f"{label} (Q) [{batch}]", **kwargs)
 
     _set_xlabel(ax, f"Time, {time_units[1]}")
     _set_ylabel(ax, f"Power, {power_units[1]}")
@@ -92,32 +84,26 @@ def plot_envelope(
         time = signal.timing.time.numpy() * time_units[0]
         samples = signal.samples.numpy() * envelope_units[0]
 
-        _plot(ax, time, np.real(samples), label=f"{label} (real)", **kwargs)
-        _plot(ax, time, np.imag(samples), label=f"{label} (imaginary)", **kwargs)
+        for batch in range(len(samples)):
+            _plot(ax, time, np.real(samples[batch]), label=f"{label} (real) [{batch}]", **kwargs)
+            _plot(ax, time, np.imag(samples[batch]), label=f"{label} (imaginary) [{batch}]", **kwargs)
     elif isinstance(signal, ElectricalSignal):
-        _plot(
-            ax,
-            signal.timing.time * time_units[0],
-            signal.samples.numpy() * envelope_units[0],
-            label=label,
-            **kwargs
-        )
-    else: # IQ signal case
-        _plot(
-            ax,
-            signal[0].timing.time * time_units[0],
-            signal[0].samples.numpy() * envelope_units[0],
-            label=f"{label} (I)",
-            **kwargs
-        )
+        time = signal.timing.time.numpy() * time_units[0]
+        samples = signal.samples.numpy() * envelope_units[0]
 
-        _plot(
-            ax,
-            signal[1].timing.time * time_units[0],
-            signal[1].samples.numpy() * envelope_units[0],
-            label=f"{label} (Q)",
-            **kwargs
-        )
+        for batch in range(len(samples)):
+            _plot(ax, time, samples[batch], label=f"{label} [{batch}]", **kwargs)
+    else: # IQ signal case
+        time_i = signal[0].timing.time.numpy() * time_units[0]
+        samples_i = signal[0].samples.numpy() * envelope_units[0]
+
+        time_q = signal[1].timing.time.numpy() * time_units[0]
+        samples_q = signal[1].samples.numpy() * envelope_units[0]
+
+        for batch in range(len(samples_i)):
+            _plot(ax, time_i, samples_i[batch], label=f"{label} (I) [{batch}]", **kwargs)
+
+            _plot(ax, time_q, samples_q[batch], label=f"{label} (Q) [{batch}]", **kwargs)
 
     _set_xlabel(ax, f"Time, {time_units[1]}")
     _set_ylabel(ax, f"Envelope, {envelope_units[1]}")
@@ -141,7 +127,8 @@ def plot_phase(
 
     phase /= np.pi / 180.0
 
-    _plot(ax, time, phase, label=label, **kwargs)
+    for batch in range(len(phase)):
+        _plot(ax, time, phase[batch], label=f"{label} [{batch}]", **kwargs)
 
     _set_xlabel(ax, f"Time, {time_units[1]}")
     _set_ylabel(ax, "Phase, degrees")
@@ -156,9 +143,10 @@ def plot_bitseq(
     upsample_factor = 10
 
     seq = bitseq.numpy()
-    indices = np.arange(0, seq.size, 1.0 / upsample_factor)
+    indices = np.arange(0, seq.shape[1], 1.0 / upsample_factor)
 
-    _plot(ax, indices, seq.repeat(upsample_factor), label=label, **kwargs)
+    for batch in range(len(seq)):
+        _plot(ax, indices, seq[batch].repeat(upsample_factor), label=f"{label} [{batch}]", **kwargs)
 
     _set_xlabel(ax, "Bit index")
     _set_ylabel(ax, "Bit value")
@@ -177,9 +165,10 @@ def _plot_spectrum(
     samples = signal.samples.numpy()
 
     fft = np.fft.fftshift(np.fft.fft(samples)) * amplitude_scale
-    freqs = np.fft.fftshift(np.fft.fftfreq(fft.size, 1 / sampling_rate)) * frequency_scale
+    freqs = np.fft.fftshift(np.fft.fftfreq(fft.shape[1], 1 / sampling_rate)) * frequency_scale
 
-    _plot(ax, freqs, np.abs(fft), label=label, **kwargs)
+    for batch in range(len(fft)):
+        _plot(ax, freqs, np.abs(fft[batch]), label=f"{label} [{batch}]", **kwargs)
 
 
 def plot_spectrum(
@@ -209,14 +198,21 @@ def plot_iq_constellation(
 ) -> None:
     if isinstance(signal_or_constellation, tf.Tensor):
         constellation = signal_or_constellation
-        iq_symbols = constellation.numpy()
+        iq_symbols = constellation
     else:
         signal = signal_or_constellation
-        iq_symbols = np.array([signal[0].samples.numpy(), signal[1].samples.numpy()]).T
+        iq_symbols = tf.stack([signal[0].samples, signal[1].samples], axis=-1)
 
     iq_symbols *= iq_units[0]
 
-    _scatter(ax, iq_symbols[:,0], iq_symbols[:,1], label=label, **kwargs)
+    for batch in range(len(iq_symbols)):
+        _scatter(
+            ax,
+            iq_symbols[batch,:,0].numpy(),
+            iq_symbols[batch,:,1].numpy(),
+            label=f"{label} [{batch}]",
+            **kwargs
+        )
 
     _set_xlabel(ax, f"I, {iq_units[1]}")
     _set_ylabel(ax, f"Q, {iq_units[1]}")
@@ -231,12 +227,13 @@ def plot_eye_diagram(
 ) -> None:
     T_sym = int((signal.timing.sampling_rate / signal.timing.symbol_rate).numpy())
 
-    pattern: list[np.ndarray] = []
+    samples = signal.samples.numpy()[:,T_sym // 2:]
 
-    samples = signal.samples.numpy()[T_sym // 2:]
+    for batch in range(len(signal.samples)):
+        pattern: list[np.ndarray] = []
 
-    for i in range(samples.size // (T_sym * 2)):
-        wave = samples[i * T_sym * 2:(i + 1) * T_sym * 2]
-        pattern.append(wave)
+        for i in range(samples.size // (T_sym * 2)):
+            wave = samples[batch, i * T_sym * 2:(i + 1) * T_sym * 2]
+            pattern.append(wave)
 
-    _plot(ax, np.linspace(0.0, 2.0, T_sym * 2), np.array(pattern).T, **kwargs)
+        _plot(ax, np.linspace(0.0, 2.0, T_sym * 2), np.array(pattern).T, label=f"{label} [{batch}]", **kwargs)

@@ -44,7 +44,7 @@ class ArbitraryWaveformGenerator(Component):
         self.parameters = ["sampling_rate", "symbol_rate"]
 
     @tf.function(input_signature=(
-        tf.TensorSpec(shape=[None], dtype=tf.float32),
+        tf.TensorSpec(shape=[None, None], dtype=tf.float32),
         tf.TensorSpec(shape=[], dtype=tf.float32),
         tf.TensorSpec(shape=[], dtype=tf.float32),
     ))
@@ -55,7 +55,7 @@ class ArbitraryWaveformGenerator(Component):
         symbol_rate: tf.Tensor
     ) -> ElectricalSignal:
         symbol_count = tf.cast(
-            tf.round(tf.cast(tf.size(input_samples), tf.float32) * symbol_rate / sampling_rate),
+            tf.round(tf.cast(tf.shape(input_samples)[1], tf.float32) * symbol_rate / sampling_rate),
             tf.int32
         )
 

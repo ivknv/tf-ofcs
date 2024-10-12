@@ -41,22 +41,22 @@ class OpticalPhaseShifter(Component):
 
 class OpticalFiber(Component):
     #: Optical signal power loss in dB/km
-    attenuation: tf.Variable  # shape=(None,); dtype=float32
+    attenuation: tf.Variable  # shape=[]; dtype=float32
 
     #: Chromatic dispersion coefficient (ps / (nm * km))
-    chromatic_dispersion: tf.Variable  # shape=(None,); dtype=float32
+    chromatic_dispersion: tf.Variable  # shape=[]; dtype=float32
 
     #: Effective non-linear coefficient of the fiber (rad / (W * m))
-    eff_non_linear_coeff: tf.Variable  # shape=(None,); dtype=float32
+    eff_non_linear_coeff: tf.Variable  # shape=[]; dtype=float32
 
     #: Fiber length in kilometers
-    length: tf.Variable  # shape=(None,); dtype=float32
+    length: tf.Variable  # shape=[]; dtype=float32
 
     #: Central frequency at which light travels at normal speed (without delay)
-    central_frequency: tf.Variable  # shape=(None,); dtype=float32
+    central_frequency: tf.Variable  # shape=[]; dtype=float32
 
     #: Step count used for the split-step method (in meters)
-    step_count: tf.Variable  # shape=(None,); dtype=int32
+    step_count: tf.Variable  # shape=[]; dtype=int32
 
     def __init__(
         self,
@@ -116,7 +116,7 @@ class OpticalFiber(Component):
         samples = signal.samples
 
         fft = tf.signal.fft(samples)
-        freqs = 2 * constants.pi * tf.abs(fftfreq(tf.size(fft), 1.0 / fs))
+        freqs = 2 * constants.pi * tf.abs(fftfreq(tf.shape(fft)[1], 1.0 / fs))
 
         # Step length in kilometers
         step_length = length / tf.cast(step_count, tf.float32)
@@ -168,7 +168,7 @@ class OpticalCoupler1x2(Component):
 
 class OpticalCoupler2x2(Component):
     #: If true, the second output will contain the difference of the two input signals
-    flip: tf.Variable  # shape=[None]; dtype=bool
+    flip: tf.Variable  # shape=[]; dtype=bool
 
     def __init__(self, flip: bool = False, name: Optional[str] = None) -> None:
         super().__init__(name=name)

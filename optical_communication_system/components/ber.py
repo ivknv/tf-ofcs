@@ -62,13 +62,10 @@ class BERTester(Component):
         bers = tf.zeros(shape=(0,), dtype=tf.float32)
 
         for system in self.systems:
-            def fn(system):
-                return lambda inp: self._compute_ber(inp, system(inp, **kwargs))
-
             bers = tf.concat(
                 [
                     bers,
-                    [tf.reduce_sum(tf.vectorized_map(fn(system), inputs))]
+                    [tf.reduce_sum(self._compute_ber(inputs, system(inputs, **kwargs)))]
                 ],
                 0
             )

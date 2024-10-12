@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
 from collections.abc import Sequence
-from typing import Any, Optional
+from typing import Optional
 import math
 
 import tensorflow as tf
 
 from .datatypes import (
-    bit_sequence_spec,
+    bit_dtype,
     ElectricalSignal,
     IQSignal, iq_signal_spec,
     Timing
@@ -18,7 +18,7 @@ from .mzm import MachZehnderModulator
 from .passive import OpticalCoupler1x2, OpticalCoupler2x1, OpticalCoupler2x2, OpticalPhaseShifter
 from .utils import (
     Composition, ExtractTiming, Fork, Identity, MapComponent, MapComponents,
-    Reindex, adjust_symbol_for_mzm, index_to_bits, bits_to_index
+    Reindex, adjust_symbol_for_mzm, indices_to_bits, bits_to_indices
 )
 from .electrical import ElectricalSubtractor
 
@@ -51,7 +51,7 @@ class IQSymbolEncoder(Component):
         self.parameters = ["bits_per_symbol", "mapping", "adjust_for_mzm"]
 
     @tf.function(input_signature=(
-        bit_sequence_spec,
+        tf.TensorSpec(shape=[None, None], dtype=bit_dtype),
         tf.TensorSpec(shape=[], dtype=tf.int32),
         tf.TensorSpec(shape=[None, 2], dtype=tf.float32),
         tf.TensorSpec(shape=[], dtype=tf.bool)
@@ -63,12 +63,22 @@ class IQSymbolEncoder(Component):
         mapping: tf.Tensor,
         adjust_for_mzm: tf.Tensor
     ) -> tf.Tensor:
-        symbol_index: Any = bits_to_index(bitseq)
+        batch_size = tf.shape(bitseq)[0]
+        bit_count = tf.shape(bitseq)[1]
+
+        symbol_indices = bits_to_indices(
+            tf.reshape(bitseq, (tf.size(bitseq) // bits_per_symbol, bits_per_symbol))
+        )
+
+        symbols = tf.reshape(
+            tf.gather(mapping, symbol_indices),
+            (batch_size, bit_count // bits_per_symbol, 2)
+        )
 
         if adjust_for_mzm:  # type: ignore
-            return adjust_symbol_for_mzm(mapping[symbol_index])
+            return adjust_symbol_for_mzm(symbols)
         else:
-            return mapping[symbol_index]
+            return symbols
 
 
 class IQSymbolDecoder(Component):
@@ -91,27 +101,34 @@ class IQSymbolDecoder(Component):
         self.parameters = ["bits_per_symbol", "mapping"]
 
     @tf.function(input_signature=(
-        tf.TensorSpec(shape=[None], dtype=tf.float32),
+        tf.TensorSpec(shape=[None, None, 2], dtype=tf.float32),
         tf.TensorSpec(shape=[], dtype=tf.int32),
         tf.TensorSpec(shape=[None, 2], dtype=tf.float32)
     ))
     def implementation(
         self,
-        symbol: tf.Tensor,
+        symbols: tf.Tensor,
         bits_per_symbol: tf.Tensor,
         mapping: tf.Tensor
     ) -> tf.Tensor:
-        best_index = tf.cast(
+        batch_size = tf.shape(symbols)[0]
+        symbol_count = tf.shape(symbols)[1]
+
+        best_indices = tf.cast(
             tf.argmin(
-                tf.reduce_sum(
-                    tf.abs(mapping - symbol),
-                    axis=1
-                )
+                tf.reduce_sum(tf.abs(mapping - tf.expand_dims(symbols, 2)), axis=-1),
+                axis=-1
             ),
             tf.int32
         )
 
-        return index_to_bits(best_index, bits_per_symbol)
+        return tf.reshape(
+            indices_to_bits(
+                tf.reshape(best_indices, (tf.size(best_indices),)),
+                bits_per_symbol
+            ),
+            (batch_size, symbol_count, bits_per_symbol)
+        )
 
 
 class IQEncoder(Component):
@@ -142,33 +159,29 @@ class IQEncoder(Component):
     @tf.function
     def __call__(self, bitseq: tf.Tensor, **kwargs) -> IQSignal:
         assert isinstance(bitseq, tf.Tensor)
-        assert bitseq.dtype is tf.int32
+        assert bitseq.dtype is bit_dtype
 
         data_rate = self.get_component_parameter(kwargs, "data_rate")
         sampling_rate = self.get_component_parameter(kwargs, "sampling_rate")
         bits_per_symbol = self.symbol_encoder.get_component_parameter(kwargs, "bits_per_symbol")
 
-        tf.debugging.assert_equal(tf.math.floormod(tf.size(bitseq), bits_per_symbol), 0)
+        bit_count = tf.shape(bitseq)[1]
+
+        tf.debugging.assert_equal(tf.math.floormod(bit_count, bits_per_symbol), 0)
 
         symbol_rate = tf.divide(data_rate, tf.cast(bits_per_symbol, tf.float32))
 
         time = tf.cast(
             tf.range(
                 tf.multiply(
-                    tf.size(bitseq),
+                    bit_count,
                     tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
                 )
             ),
             tf.float32
         ) / sampling_rate
 
-        iq_sequence = tf.vectorized_map(
-            fn=lambda i: self.symbol_encoder(
-                bitseq[i * bits_per_symbol:(i + 1) * bits_per_symbol],
-                **kwargs
-            ),
-            elems=tf.range(tf.math.floordiv(tf.size(bitseq), bits_per_symbol))
-        )
+        iq_sequences = self.symbol_encoder(bitseq, **kwargs)
 
         timing = Timing(
             time=time,
@@ -177,12 +190,12 @@ class IQEncoder(Component):
         )
 
         repeat_count = tf.cast(
-            tf.math.ceil(tf.divide(tf.size(time), tf.shape(iq_sequence)[0])),
+            tf.math.ceil(tf.divide(tf.size(time), tf.shape(iq_sequences)[1])),
             tf.int32
         )
 
-        i_samples = tf.repeat(iq_sequence[:,0], repeat_count)[:tf.size(time)]
-        q_samples = tf.repeat(iq_sequence[:,1], repeat_count)[:tf.size(time)]
+        i_samples = tf.repeat(iq_sequences[:,:,0], repeat_count, axis=1)[:,:tf.size(time)]
+        q_samples = tf.repeat(iq_sequences[:,:,1], repeat_count, axis=1)[:,:tf.size(time)]
 
         return (
             ElectricalSignal(timing=timing, samples=i_samples),
@@ -292,8 +305,19 @@ class IQDecoder(Component):
         data_rate: tf.Tensor,
         symbol_scale: tf.Tensor
     ) -> tf.Tensor:
-        i_current = tf.math.real(iq_signal[0].samples)
-        q_current = tf.math.real(iq_signal[1].samples)
+        i_samples = iq_signal[0].samples
+        q_samples = iq_signal[1].samples
+
+        batch_size = tf.shape(i_samples)[0]
+        sample_count = tf.size(i_samples) + tf.size(q_samples)
+
+        iq_samples = tf.reshape(
+            tf.stack([
+                tf.reshape(i_samples, [tf.size(i_samples)]),
+                tf.reshape(q_samples, [tf.size(q_samples)])
+            ], axis=1),
+            (batch_size, sample_count // batch_size // 2, 2)
+        )
 
         sampling_rate = iq_signal[0].timing.sampling_rate
 
@@ -302,15 +326,8 @@ class IQDecoder(Component):
             tf.int32
         )
 
-        iq_symbols = tf.transpose(
-            tf.vectorized_map(
-                fn=lambda i: [
-                    i_current[i * n + n // 2],
-                    q_current[i * n + n // 2]
-                ],
-                elems=tf.range(tf.cast(tf.size(i_current) // n, tf.int32))
-            )
-        ) / symbol_scale
+        indices = n * tf.range(tf.shape(iq_samples)[1] // n) + n // 2
+        iq_symbols = tf.math.real(tf.gather(iq_samples, indices, axis=1)) / symbol_scale
 
         return iq_symbols
 
@@ -320,12 +337,13 @@ class IQDecoder(Component):
         symbol_scale = self.get_component_parameter(kwargs, "symbol_scale")
         bits_per_symbol = self.symbol_decoder.get_component_parameter(kwargs, "bits_per_symbol")
 
+        batch_size = tf.shape(iq_signal[0].samples)[0]
+
+        # shape=(batch_size, symbol_count, 2)
         iq_symbols = self._extract_iq_symbols(iq_signal, bits_per_symbol, data_rate, symbol_scale)
+        symbol_count = tf.shape(iq_symbols)[1]
 
         return tf.reshape(
-            tf.vectorized_map(
-                fn=lambda symbol: self.symbol_decoder(symbol, **kwargs),
-                elems=iq_symbols
-            ),
-            (tf.shape(iq_symbols)[0] * bits_per_symbol,)
+            self.symbol_decoder(iq_symbols, **kwargs),
+            (batch_size, symbol_count * bits_per_symbol)
         )

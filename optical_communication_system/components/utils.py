@@ -18,8 +18,8 @@ __all__ = [
     "gaussian_distribution",
     "normalize_signal",
     "adjust_symbol_for_mzm",
-    "bits_to_index",
-    "index_to_bits",
+    "bits_to_indices",
+    "indices_to_bits",
     "symbol_mapping_to_gray",
     "psk_constellation",
     "pam_constellation",
@@ -84,19 +84,21 @@ def adjust_symbol_for_mzm(symbol: tf.Tensor) -> tf.Tensor:
 
 
 @tf.function(input_signature=(bit_sequence_spec,))
-def bits_to_index(bits: tf.Tensor) -> tf.Tensor:
-    n = tf.size(bits)
-    return tf.reduce_sum(bits * 2 ** (n - tf.range(n) - 1))
+def bits_to_indices(bits: tf.Tensor) -> tf.Tensor:
+    n = tf.shape(bits)[1]
+    return tf.reduce_sum(bits * 2 ** (n - tf.range(n) - 1), axis=1)
 
 
-@tf.function(input_signature=2 * (tf.TensorSpec(shape=[], dtype=tf.int32),))
-def index_to_bits(index: tf.Tensor, bit_count: tf.Tensor) -> tf.Tensor:
-    return tf.vectorized_map(
-        fn=lambda i: tf.cast(
-            tf.math.floormod(index / 2 ** (bit_count - i - 1), 2),
-            bit_dtype
-        ),
-        elems=tf.range(bit_count)
+@tf.function(input_signature=(
+    tf.TensorSpec(shape=[None], dtype=tf.int32),
+    tf.TensorSpec(shape=[], dtype=tf.int32),
+))
+def indices_to_bits(index: tf.Tensor, bit_count: tf.Tensor) -> tf.Tensor:
+    denominators = 2 ** (bit_count - tf.range(bit_count) - 1)
+
+    return tf.cast(
+        tf.math.floormod(tf.expand_dims(index, -1) // denominators, 2),
+        bit_dtype
     )
 
 
@@ -307,21 +309,18 @@ class ExtractTiming(Component):
 class TimingGenerator(Component):
     sampling_rate: tf.Variable
     symbol_rate: tf.Variable
-    symbol_count: tf.Variable
 
     def __init__(
         self,
         sampling_rate: float,
         symbol_rate: float,
-        symbol_count: float = 0.0,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
         self.symbol_rate = tf.Variable(tf.constant(symbol_rate))
-        self.symbol_count = tf.Variable(tf.constant(symbol_count))
-        self.parameters = ["sampling_rate", "symbol_rate", "symbol_count"]
+        self.parameters = ["sampling_rate", "symbol_rate"]
 
     @tf.function(input_signature=(
         tf.TensorSpec(shape=[], dtype=tf.int32),

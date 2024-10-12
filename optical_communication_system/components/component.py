@@ -3,6 +3,8 @@
 from typing import Any, Optional
 import tensorflow as tf
 
+from .datatypes import ElectricalSignal, OpticalSignal
+
 __all__ = ["Component"]
 
 
@@ -11,6 +13,8 @@ def _type_as_str(inp: Any) -> str:
         return f"tuple[{', '.join(_type_as_str(i) for i in inp)}]"
     elif isinstance(inp, tf.Tensor):
         return f"tf.Tensor(shape={tf.shape(inp)}, dtype={repr(inp.dtype)})"
+    elif isinstance(inp, (ElectricalSignal, OpticalSignal)):
+        return f"{type(inp).__name__}{tf.shape(inp.samples)}"
     else:
         return type(inp).__name__
 

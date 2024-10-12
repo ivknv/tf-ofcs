@@ -114,14 +114,14 @@ class OpticalAWGN(Component):
 
         # We have to generate the double amount of noise samples since they must be complex
         fixed_noise_components = self.rng.normal(
-            shape=[2, tf.size(input_signal.samples)],
+            shape=tf.concat([[2], tf.shape(input_signal.samples)], 0),
             mean=0.0,
             stddev=fixed_noise_amplitude,
             dtype=tf.float32
         )
 
         relative_noise_components = self.rng.normal(
-            shape=[2, tf.size(input_signal.samples)],
+            shape=tf.concat([[2], tf.shape(input_signal.samples)], 0),
             mean=0.0,
             stddev=relative_noise_amplitude,
             dtype=tf.float32
