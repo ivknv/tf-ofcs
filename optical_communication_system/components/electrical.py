@@ -35,7 +35,12 @@ class ArbitraryWaveformGenerator(Component):
     #: Symbol rate in symbols/second
     symbol_rate: tf.Variable  # shape=[]; dtype=float32
 
-    def __init__(self, sampling_rate: float, symbol_rate: float, name: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        sampling_rate: float | tf.Tensor,
+        symbol_rate: float | tf.Tensor,
+        name: Optional[str] = None
+    ) -> None:
         super().__init__(name=name)
 
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))

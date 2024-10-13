@@ -4,7 +4,7 @@ from typing import Optional
 import tensorflow as tf
 
 from .datatypes import OpticalSignal, optical_signal_spec
-from . import constants
+from .. import constants
 from .utils import fftfreq
 from .component import Component
 
@@ -19,7 +19,7 @@ __all__ = [
 class OpticalPhaseShifter(Component):
     phase_shift: tf.Variable  # shape=[None]; dtype=float32
 
-    def __init__(self, *, phase_shift: float, name: Optional[str] = None) -> None:
+    def __init__(self, *, phase_shift: float | tf.Tensor, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.phase_shift = tf.Variable(tf.constant(phase_shift))
@@ -60,12 +60,12 @@ class OpticalFiber(Component):
 
     def __init__(
         self,
-        attenuation: float,
-        chromatic_dispersion: float,
-        eff_non_linear_coeff: float,
-        length: float,
-        central_frequency: float,
-        step_count: int = 50,
+        attenuation: float | tf.Tensor,
+        chromatic_dispersion: float | tf.Tensor,
+        eff_non_linear_coeff: float | tf.Tensor,
+        length: float | tf.Tensor,
+        central_frequency: float | tf.Tensor,
+        step_count: int | tf.Tensor = 50,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -171,7 +171,7 @@ class OpticalCoupler2x2(Component):
     #: If true, the second output will contain the difference of the two input signals
     flip: tf.Variable  # shape=[]; dtype=bool
 
-    def __init__(self, flip: bool = False, name: Optional[str] = None) -> None:
+    def __init__(self, flip: bool | tf.Tensor = False, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.flip = tf.Variable(tf.constant(flip))

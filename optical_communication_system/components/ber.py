@@ -21,7 +21,7 @@ class BERTester(Component):
         self,
         systems: Sequence[Callable],
         rng: Optional[tf.random.Generator] = None,
-        n_iterations: int = 100,
+        n_iterations: int | tf.Tensor = 100,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)

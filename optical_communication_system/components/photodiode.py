@@ -17,8 +17,8 @@ class Photodiode(Component):
 
     def __init__(
         self,
-        sensitivity: float = 1e-5,
-        maximum_power: float = 2e-3,
+        sensitivity: float | tf.Tensor = 1e-5,
+        maximum_power: float | tf.Tensor = 2e-3,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)

@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Optional
 import tensorflow as tf
 
-from . import constants
+from .. import constants
 from .component import Component
 
 from .datatypes import (
@@ -22,7 +22,7 @@ class MachZehnderModulator(Component):
         self,
         *,
         carrier_source: Callable[[Timing], OpticalSignal],
-        extinction_ratio: float = float("inf"),
+        extinction_ratio: float | tf.Tensor = float("inf"),
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)

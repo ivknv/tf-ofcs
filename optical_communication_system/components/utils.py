@@ -5,7 +5,7 @@ import math
 from typing import Any, Optional
 
 import tensorflow as tf
-from . import constants
+from .. import constants
 from .component import Component
 
 from .datatypes import (
@@ -313,8 +313,8 @@ class TimingGenerator(Component):
 
     def __init__(
         self,
-        sampling_rate: float,
-        symbol_rate: float,
+        sampling_rate: float | tf.Tensor,
+        symbol_rate: float | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -365,7 +365,7 @@ class Resample(Component):
     #: Desired sampling rate of the signal
     sampling_rate: tf.Variable  # shape=[]; dtype=float32
 
-    def __init__(self, sampling_rate: int, name: Optional[str] = None) -> None:
+    def __init__(self, sampling_rate: int | tf.Tensor, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
@@ -412,8 +412,8 @@ class Downsample(Component):
 
     def __init__(
         self,
-        sampling_rate: float,
-        time_offset: float = 0.0,
+        sampling_rate: float | tf.Tensor,
+        time_offset: float | tf.Tensor = 0.0,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)

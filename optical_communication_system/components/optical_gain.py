@@ -12,7 +12,7 @@ class OpticalGain(Component):
     #: Gain coefficient (unitless)
     gain: tf.Variable  # shape=[]; dtype=float32
 
-    def __init__(self, gain: float, name: Optional[str] = None) -> None:
+    def __init__(self, gain: float | tf.Tensor, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.gain = tf.Variable(tf.constant(gain))

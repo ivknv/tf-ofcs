@@ -32,9 +32,9 @@ class PAMSymbolEncoder(Component):
     def __init__(
         self,
         *,
-        bits_per_symbol: int,
-        mapping: Optional[Sequence[float]] = None,
-        adjust_for_mzm: bool = False,
+        bits_per_symbol: int | tf.Tensor,
+        mapping: Optional[Sequence[float]] | tf.Tensor = None,
+        adjust_for_mzm: bool | tf.Tensor = False,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -42,7 +42,7 @@ class PAMSymbolEncoder(Component):
         self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
 
         if mapping is None:
-            mapping = pam_constellation(bits_per_symbol)
+            mapping = pam_constellation(int(bits_per_symbol))
 
         self.mapping = tf.Variable(tf.constant(mapping))
         self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))

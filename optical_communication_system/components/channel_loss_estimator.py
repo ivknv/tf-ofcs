@@ -27,7 +27,7 @@ class ChannelLossEstimator(Composition):
         laser: Component,
         channel: Component,
         photodiode: Component,
-        sampling_rate: float,
+        sampling_rate: float | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
         self._timing_generator = TimingGenerator(sampling_rate=sampling_rate, symbol_rate=sampling_rate)
@@ -52,7 +52,7 @@ class ChannelLossEstimator(Composition):
             name=name
         )
 
-        self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
+        self.sampling_rate = tf.Variable(tf.constant(float(sampling_rate)))
 
         self.parameters = ["sampling_rate"]
 

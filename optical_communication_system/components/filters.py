@@ -18,7 +18,12 @@ class BandPassFilter(Component):
     #: Maximum frequency in Hz
     max_frequency: tf.Variable  # shape=(); dtype=float32
 
-    def __init__(self, min_frequency: float, max_frequency: float, name: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        min_frequency: float | tf.Tensor,
+        max_frequency: float | tf.Tensor,
+        name: Optional[str] = None
+    ) -> None:
         super().__init__(name=name)
 
         self.min_frequency = tf.Variable(tf.constant(min_frequency))

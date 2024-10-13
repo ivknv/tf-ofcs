@@ -20,8 +20,8 @@ class Laser(Component):
     def __init__(
         self,
         *,
-        power: float,
-        batch_size: int,
+        power: float | tf.Tensor,
+        batch_size: int | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)

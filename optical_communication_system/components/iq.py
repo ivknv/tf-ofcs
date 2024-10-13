@@ -36,9 +36,9 @@ class IQSymbolEncoder(Component):
     def __init__(
         self,
         *,
-        bits_per_symbol: int,
-        mapping: Sequence[Sequence[float]],
-        adjust_for_mzm: bool = False,
+        bits_per_symbol: int | tf.Tensor,
+        mapping: Sequence[Sequence[float]] | tf.Tensor,
+        adjust_for_mzm: bool | tf.Tensor = False,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -89,13 +89,14 @@ class IQSymbolDecoder(Component):
     def __init__(
         self,
         *,
-        bits_per_symbol: int,
-        mapping: Sequence[Sequence[float]],
+        bits_per_symbol: int | tf.Tensor,
+        mapping: Sequence[Sequence[float]] | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
+
         self.mapping = tf.Variable(tf.constant(mapping))
 
         self.parameters = ["bits_per_symbol", "mapping"]
@@ -143,8 +144,8 @@ class IQEncoder(Component):
     def __init__(
         self,
         *,
-        sampling_rate: float,
-        data_rate: float,
+        sampling_rate: float | tf.Tensor,
+        data_rate: float | tf.Tensor,
         symbol_encoder: IQSymbolEncoder,
         name: Optional[str] = None
     ) -> None:
@@ -278,10 +279,9 @@ class IQDecoder(Component):
     def __init__(
         self,
         *,
-        data_rate: float,
+        data_rate: float | tf.Tensor,
         symbol_decoder: IQSymbolDecoder,
-        threshold: float = 1e-5,
-        symbol_scale: float = 1.0,
+        symbol_scale: float | tf.Tensor = 1.0,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)

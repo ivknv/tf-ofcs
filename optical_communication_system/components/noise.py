@@ -22,8 +22,8 @@ class ElectricalAWGN(Component):
     def __init__(
         self,
         *,
-        fixed_db: float = -float("inf"),
-        relative_db: float = -float("inf"),
+        fixed_db: float | tf.Tensor = -float("inf"),
+        relative_db: float | tf.Tensor = -float("inf"),
         rng: Optional[tf.random.Generator] = None,
         name: Optional[str] = None
     ) -> None:
@@ -83,8 +83,8 @@ class OpticalAWGN(Component):
     def __init__(
         self,
         *,
-        fixed_dbm: float = -float("inf"),
-        relative_db: float = -float("inf"),
+        fixed_dbm: float | tf.Tensor = -float("inf"),
+        relative_db: float | tf.Tensor = -float("inf"),
         rng: Optional[tf.random.Generator] = None,
         name: Optional[str] = None
     ) -> None:
