@@ -20,7 +20,9 @@ from .utils import (
     ExtractTiming, TimingGenerator, Resample, Downsample, MeanAmplitude,
     ParallelToSerial, SerialToParallel, ExtractSamples, Lambda
 )
-from .electrical import ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator
+from .electrical import (
+    ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator, Quantizer
+)
 from .component import Component
 from .optical_gain import OpticalGain
 from .channel_loss_estimator import ChannelLossEstimator
@@ -57,6 +59,7 @@ __all__ = [
     "ElectricalAdder",
     "ElectricalSubtractor",
     "ArbitraryWaveformGenerator",
+    "Quantizer",
     "ExtractTiming",
     "TimingGenerator",
     "Resample",

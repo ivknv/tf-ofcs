@@ -7,7 +7,12 @@ from .datatypes import ElectricalSignal, electrical_signal_spec
 from .component import Component
 from .utils import generate_timing
 
-__all__ = ["ElectricalAdder", "ElectricalSubtractor", "ArbitraryWaveformGenerator"]
+__all__ = [
+    "ElectricalAdder",
+    "ElectricalSubtractor",
+    "ArbitraryWaveformGenerator",
+    "Quantizer"
+]
 
 
 class ElectricalAdder(Component):
@@ -68,3 +73,27 @@ class ArbitraryWaveformGenerator(Component):
             timing=generate_timing(sampling_rate, symbol_rate, symbol_count),
             samples=input_samples
         )
+
+
+class Quantizer(Component):
+    step: tf.Variable  # shape=[]; dtype=tf.float32
+
+    def __init__(
+        self,
+        step: float | tf.Tensor,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.step = tf.Variable(tf.constant(step))
+
+        self.parameters = ["step"]
+
+    @tf.function(input_signature=(
+        electrical_signal_spec,
+        tf.TensorSpec(shape=[], dtype=tf.float32),
+    ))
+    def implementation(self, signal: ElectricalSignal, step: tf.Tensor) -> ElectricalSignal:
+        quantized_samples = tf.round(signal.samples / step) * step
+
+        return ElectricalSignal(timing=signal.timing, samples=quantized_samples)
