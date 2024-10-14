@@ -6,6 +6,7 @@ from optical_communication_system.components import (
     Laser, MachZehnderModulator, TimingGenerator
 )
 from optical_communication_system.components.datatypes import ElectricalSignal, OpticalSignal
+from optical_communication_system.components.utils import timing_to_samples
 
 def test_mzm() -> None:
     laser = Laser(power=1e-3, batch_shape=(1,))
@@ -16,7 +17,7 @@ def test_mzm() -> None:
 
     modulation_signal = ElectricalSignal(
         timing=timing,
-        samples=[(tf.math.cos(2 * math.pi * timing.time) + 1.0) * 0.5]
+        samples=[(tf.math.cos(2 * math.pi * timing_to_samples(timing)) + 1.0) * 0.5]
     )
 
     modulated_signal = mzm(modulation_signal)

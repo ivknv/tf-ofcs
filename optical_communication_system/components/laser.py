@@ -39,9 +39,9 @@ class Laser(Component):
         tf.TensorSpec(shape=[None], dtype=tf.int32)
     ))
     def implementation(self, timing: Timing, power: tf.Tensor, batch_shape: tf.Tensor) -> tf.Tensor:
-        result_shape = combine_shape([self.batch_shape, tf.shape(power), [tf.size(timing.time)]])
+        result_shape = combine_shape([self.batch_shape, tf.shape(power), [timing.sample_count]])
 
-        repeated = tf.repeat(tf.cast(tf.math.sqrt(power), tf.complex64), tf.size(timing.time))
+        repeated = tf.repeat(tf.cast(tf.math.sqrt(power), tf.complex64), timing.sample_count)
         samples = tf.reshape(
             tf.tile(repeated, tf.concat([[tf.math.reduce_prod(batch_shape)], tf.shape(repeated)[1:]], 0)),
             result_shape

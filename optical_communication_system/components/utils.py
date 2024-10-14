@@ -10,8 +10,8 @@ from .. import constants
 from .component import Component
 
 from .datatypes import (
-    ElectricalSignal, electrical_signal_spec, OpticalSignal, Timing, bit_dtype,
-    bit_sequence_spec
+    ElectricalSignal, electrical_signal_spec, OpticalSignal, Timing, timing_spec,
+    bit_dtype, bit_sequence_spec
 )
 
 __all__ = [
@@ -25,6 +25,7 @@ __all__ = [
     "psk_constellation",
     "pam_constellation",
     "generate_timing",
+    "timing_to_samples",
     "combine_shape",
     "Composition",
     "MapComponent",
@@ -154,18 +155,24 @@ def generate_timing(
     symbol_rate: tf.Tensor,
     symbol_count: tf.Tensor
 ) -> Timing:
-    time = tf.cast(
-        tf.range(
-            0,
-            symbol_count * tf.cast(
-                tf.round(sampling_rate / symbol_rate),
-                tf.int32
-            )
-        ),
-        tf.float32
-    ) / sampling_rate
+    sample_count = symbol_count * tf.cast(
+        tf.round(sampling_rate / symbol_rate),
+        tf.int32
+    )
 
-    return Timing(sampling_rate=sampling_rate, symbol_rate=symbol_rate, time=time)
+    duration = tf.cast(sample_count, tf.float32) / sampling_rate
+
+    return Timing(
+        duration=duration,
+        sample_count=sample_count,
+        sampling_rate=sampling_rate,
+        symbol_rate=symbol_rate
+    )
+
+
+@tf.function(input_signature=(timing_spec,))
+def timing_to_samples(timing: Timing) -> tf.Tensor:
+    return tf.cast(tf.range(0, timing.sample_count), tf.float32) / timing.sampling_rate
 
 
 @tf.function
@@ -370,8 +377,8 @@ def _upsample_with_linear_interpolation(x: tf.Tensor, factor: tf.Tensor) -> tf.T
 
 
 @tf.function
-def _downsample(x: tf.Tensor, factor: tf.Tensor) -> tf.Tensor:
-    return tf.gather(x, tf.range(0, tf.shape(x)[0], factor))
+def _downsample(x: tf.Tensor, factor: tf.Tensor, axis: tf.Tensor = tf.constant(0)) -> tf.Tensor:
+    return tf.gather(x, tf.range(0, tf.shape(x)[axis], factor), axis=axis)
 
 
 class Resample(Component):
@@ -397,18 +404,25 @@ class Resample(Component):
         if sampling_rate > timing.sampling_rate:
             factor = tf.cast(tf.round(sampling_rate / timing.sampling_rate), tf.int32)
 
-            new_time = _upsample_with_linear_interpolation(timing.time, factor - 1)
-            new_samples = tf.repeat(signal.samples, [factor])
+            new_duration = timing.duration * factor
+            new_sample_count = timing.sample_count * factor
+            new_samples = tf.repeat(signal.samples, factor, axis=-1)
         else:
             factor = tf.cast(tf.round(timing.sampling_rate / sampling_rate), tf.int32)
 
-            new_time = _downsample(timing.time, factor)
+            tf.debugging.assert_equal(tf.math.floormod(timing.sample_count, factor), 0)
+
+            new_duration = timing.duration / factor
+            new_sample_count = timing.sample_count // factor
+
             new_samples = _downsample(signal.samples, factor)
+
 
         new_timing = Timing(
             sampling_rate=timing.sampling_rate * tf.cast(factor, tf.float32),
             symbol_rate=timing.symbol_rate,
-            time=new_time
+            duration=new_duration,
+            sample_count=new_sample_count
         )
 
         SignalClass = signal.__class__
@@ -452,11 +466,12 @@ class Downsample(Component):
         indices = tf.range(shift, tf.size(signal.samples) - shift, n)
 
         signal_samples = tf.gather(signal.samples, indices)
-        time_samples = tf.gather(signal.timing.time, indices)
+        duration = signal.timing.duration - time_offset
 
         return ElectricalSignal(
             timing=Timing(
-                time=time_samples,
+                duration=duration,
+                sample_count=n,
                 symbol_rate=sampling_rate,
                 sampling_rate=sampling_rate
             ),
@@ -485,12 +500,9 @@ class ParallelToSerial(Component):
         for signal in parallel_signals:
             assert isinstance(signal, SignalClass)
             tf.debugging.assert_less(tf.abs(signal.timing.sampling_rate - sampling_rate), 1e-6)
-            tf.debugging.assert_equal(tf.size(signal.timing.time), tf.size(timing.time))
 
-        new_time = tf.cast(
-            tf.range(tf.size(timing.time) * len(parallel_signals)),
-            tf.float32
-        ) / sampling_rate + timing.time[0]
+        new_duration = sum(i.timing.duration for i in parallel_signals)
+        new_sample_count = sum(i.timing.sample_count for i in parallel_signals)
 
         new_signal_samples = tf.concat(
             [signal.samples for signal in parallel_signals],
@@ -499,7 +511,8 @@ class ParallelToSerial(Component):
 
         return SignalClass(
             timing=Timing(
-                time=new_time,
+                new_duration=new_duration,
+                sample_count=new_sample_count,
                 symbol_rate=timing.symbol_rate,
                 sampling_rate=sampling_rate
             ),
@@ -529,13 +542,18 @@ class SerialToParallel(Component):
         timing = serial_signal.timing
         sampling_rate = timing.sampling_rate
 
+        tf.debugging.assert_equal(tf.math.floormod(timing.sample_count, self.n_parallel), 0)
+
         SignalClass = serial_signal.__class__
 
-        parallel_sample_count = tf.cast(tf.round(tf.size(timing.time) / self.n_parallel), tf.int32)
+        parallel_sample_count = tf.cast(tf.round(timing.sample_count / self.n_parallel), tf.int32)
 
-        new_time = timing.time[:parallel_sample_count]
+        new_duration = timing.duration / tf.cast(parallel_sample_count, tf.float32)
+        new_sample_count = timing.sample_count // self.n_parallel
+
         new_timing = Timing(
-            time=new_time,
+            duration=new_duration,
+            sample_count=new_sample_count,
             sampling_rate=sampling_rate,
             symbol_rate=timing.symbol_rate
         )

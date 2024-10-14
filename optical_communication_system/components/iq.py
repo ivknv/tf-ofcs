@@ -170,31 +170,29 @@ class IQEncoder(Component):
 
         symbol_rate = tf.divide(data_rate, tf.cast(bits_per_symbol, tf.float32))
 
-        time = tf.cast(
-            tf.range(
-                tf.multiply(
-                    bit_count,
-                    tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
-                )
-            ),
-            tf.float32
-        ) / sampling_rate
+        sample_count = tf.multiply(
+            bit_count,
+            tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
+        )
+
+        signal_duration = tf.cast(sample_count, tf.float32) / sampling_rate
 
         iq_sequences = self.symbol_encoder(bitseq, **kwargs)
 
         timing = Timing(
-            time=time,
+            duration=signal_duration,
+            sample_count=sample_count,
             sampling_rate=sampling_rate,
             symbol_rate=symbol_rate
         )
 
         repeat_count = tf.cast(
-            tf.math.ceil(tf.divide(tf.size(time), tf.shape(iq_sequences)[1])),
+            tf.math.ceil(tf.divide(sample_count, tf.shape(iq_sequences)[1])),
             tf.int32
         )
 
-        i_samples = tf.repeat(iq_sequences[:,:,0], repeat_count, axis=1)[:,:tf.size(time)]
-        q_samples = tf.repeat(iq_sequences[:,:,1], repeat_count, axis=1)[:,:tf.size(time)]
+        i_samples = tf.repeat(iq_sequences[:,:,0], repeat_count, axis=1)[:,:sample_count]
+        q_samples = tf.repeat(iq_sequences[:,:,1], repeat_count, axis=1)[:,:sample_count]
 
         return (
             ElectricalSignal(timing=timing, samples=i_samples),

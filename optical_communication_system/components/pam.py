@@ -169,32 +169,30 @@ class PAMEncoder(Component):
 
         symbol_rate = data_rate / tf.cast(bits_per_symbol, tf.float32)
 
-        time = tf.cast(
-            tf.range(
-                tf.multiply(
-                    bit_count,
-                    tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
-                )
-            ),
-            tf.float32
-        ) / sampling_rate
+        sample_count = tf.multiply(
+            bit_count,
+            tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
+        )
+
+        signal_duration = tf.cast(sample_count, tf.float32) / sampling_rate
 
         pam_sequence = self.symbol_encoder(bitseq)
 
         return ElectricalSignal(
             timing=Timing(
-                time=time,
+                duration=signal_duration,
+                sample_count=sample_count,
                 sampling_rate=sampling_rate,
                 symbol_rate=symbol_rate
             ),
             samples=tf.repeat(
                 pam_sequence,
                 tf.cast(
-                    tf.math.ceil(tf.divide(tf.size(time), tf.shape(pam_sequence)[1])),
+                    tf.math.ceil(tf.divide(sample_count, tf.shape(pam_sequence)[1])),
                     tf.int32
                 ),
                 axis=1
-            )[:,:tf.size(time)]
+            )[:,:sample_count]
         )
 
 

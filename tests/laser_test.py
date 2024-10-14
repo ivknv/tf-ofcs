@@ -13,14 +13,15 @@ def test_laser() -> None:
     timing = Timing(
         sampling_rate=tf.constant(1.0),
         symbol_rate=tf.constant(1.0),
-        time=tf.range(0, 16, dtype=tf.float32)
+        duration=tf.constant(16.0),
+        sample_count=tf.constant(16)
     )
 
     laser_output = laser(timing)
 
     assert isinstance(laser_output, OpticalSignal)
     assert tf.math.reduce_all(
-        tf.shape(laser_output.samples) == [*batch_shape, 2, tf.size(timing.time)]
+        tf.shape(laser_output.samples) == [*batch_shape, 2, timing.sample_count]
     )  # type: ignore
     assert tf.math.reduce_all(
         tf.less(

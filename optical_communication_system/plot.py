@@ -7,6 +7,7 @@ import tensorflow as tf
 
 from typing import Optional
 from .components.datatypes import OpticalSignal, ElectricalSignal
+from .components.utils import timing_to_samples
 
 __all__ = [
     "plot_power",
@@ -52,16 +53,16 @@ def plot_power(
     **kwargs
 ) -> None:
     if isinstance(signal, (ElectricalSignal, OpticalSignal)):
-        time = signal.timing.time.numpy() * time_units[0]
+        time = timing_to_samples(signal.timing).numpy() * time_units[0]
         samples = np.abs(signal.samples.numpy()) ** 2 * power_units[0]
 
         for batch in range(len(samples)):
             _plot(ax, time, samples[batch], label=f"{label} [{batch}]", **kwargs)
     else: # IQ signal case
-        time_i = signal[0].timing.time.numpy() * time_units[0]
+        time_i = timing_to_samples(signal[0].timing).numpy() * time_units[0]
         samples_i = np.abs(signal[0].samples.numpy()) ** 2 * power_units[0]
 
-        time_q = signal[1].timing.time.numpy() * time_units[0]
+        time_q = timing_to_samples(signal[1].timing).numpy() * time_units[0]
         samples_q = np.abs(signal[1].samples.numpy()) ** 2 * power_units[0]
 
         for batch in range(len(samples_i)):
@@ -81,23 +82,23 @@ def plot_envelope(
     **kwargs
 ) -> None:
     if isinstance(signal, OpticalSignal):
-        time = signal.timing.time.numpy() * time_units[0]
+        time = timing_to_samples(signal.timing).numpy() * time_units[0]
         samples = signal.samples.numpy() * envelope_units[0]
 
         for batch in range(len(samples)):
             _plot(ax, time, np.real(samples[batch]), label=f"{label} (real) [{batch}]", **kwargs)
             _plot(ax, time, np.imag(samples[batch]), label=f"{label} (imaginary) [{batch}]", **kwargs)
     elif isinstance(signal, ElectricalSignal):
-        time = signal.timing.time.numpy() * time_units[0]
+        time = timing_to_samples(signal.timing).numpy() * time_units[0]
         samples = signal.samples.numpy() * envelope_units[0]
 
         for batch in range(len(samples)):
             _plot(ax, time, samples[batch], label=f"{label} [{batch}]", **kwargs)
     else: # IQ signal case
-        time_i = signal[0].timing.time.numpy() * time_units[0]
+        time_i = timing_to_samples(signal[0].timing).numpy() * time_units[0]
         samples_i = signal[0].samples.numpy() * envelope_units[0]
 
-        time_q = signal[1].timing.time.numpy() * time_units[0]
+        time_q = timing_to_samples(signal[1].timing).numpy() * time_units[0]
         samples_q = signal[1].samples.numpy() * envelope_units[0]
 
         for batch in range(len(samples_i)):
@@ -117,12 +118,12 @@ def plot_phase(
     **kwargs
 ) -> None:
     if isinstance(signal, OpticalSignal):
-        time = signal.timing.time.numpy() * time_units[0]
+        time = timing_to_samples(signal.timing).numpy() * time_units[0]
         samples = signal.samples.numpy()
 
         phase = np.arctan2(np.real(samples), np.imag(samples))
     else:
-        time = signal[0].timing.time.numpy() * time_units[0]
+        time = timing_to_samples(signal[0].timing).numpy() * time_units[0]
         phase = np.arctan2(signal[0].samples.numpy(), signal[1].samples.numpy())
 
     phase /= np.pi / 180.0

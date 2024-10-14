@@ -6,6 +6,7 @@ import numpy as np
 
 from optical_communication_system.components import BandPassFilter, TimingGenerator
 from optical_communication_system.components.datatypes import ElectricalSignal
+from optical_communication_system.components.utils import timing_to_samples
 
 
 def test_bandpass_filter() -> None:
@@ -13,13 +14,15 @@ def test_bandpass_filter() -> None:
     timing_generator = TimingGenerator(sampling_rate=2.0, symbol_rate=1.0)
     timing = timing_generator(tf.constant(200))
 
+    time = timing_to_samples(timing)
+
     input_signal = ElectricalSignal(
         timing=timing,
         samples=[
-            tf.math.cos(2 * math.pi * 0.25 * timing.time) +
-            tf.math.cos(2 * math.pi * 0.30 * timing.time) +
-            tf.math.cos(2 * math.pi * 0.1  * timing.time) +
-            tf.math.cos(2 * math.pi * 0.55 * timing.time)
+            tf.math.cos(2 * math.pi * 0.25 * time) +
+            tf.math.cos(2 * math.pi * 0.30 * time) +
+            tf.math.cos(2 * math.pi * 0.1  * time) +
+            tf.math.cos(2 * math.pi * 0.55 * time)
         ]
     )
 
