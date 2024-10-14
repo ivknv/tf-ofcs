@@ -65,12 +65,7 @@ class PAMSymbolEncoder(Component):
         batch_size = tf.shape(bitseq)[0]
         bit_count = tf.shape(bitseq)[1]
 
-        symbol_indices = bits_to_indices(
-            tf.reshape(
-                bitseq,
-                (tf.size(bitseq) // bits_per_symbol, bits_per_symbol)
-            )
-        )
+        symbol_indices = bits_to_indices(bitseq, bits_per_symbol)
 
         symbols = tf.reshape(
             tf.gather(mapping, symbol_indices),

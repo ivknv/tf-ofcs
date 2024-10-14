@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import typing
 import tensorflow as tf
 
 __all__ = [
@@ -39,12 +40,12 @@ class ElectricalSignal(tf.experimental.ExtensionType):
     timing: Timing
 
     #: Signal's samples
-    samples: tf.Tensor  # shape=[None, None]; dtype=tf.float32
+    samples: tf.Tensor  # shape=None; dtype=tf.float32
 
 
 electrical_signal_spec = ElectricalSignal.Spec(
     timing=timing_spec,
-    samples=tf.TensorSpec(shape=[None, None], dtype=tf.float32)
+    samples=tf.TensorSpec(shape=typing.cast(tf.TensorShape, None), dtype=tf.float32)
 )
 
 
@@ -53,16 +54,16 @@ class OpticalSignal(tf.experimental.ExtensionType):
     timing: Timing
 
     #: Signal's samples
-    samples: tf.Tensor  # shape=[None, None]; dtype=tf.complex64
+    samples: tf.Tensor  # shape=None; dtype=tf.complex64
 
 
 optical_signal_spec = OpticalSignal.Spec(
     timing=timing_spec,
-    samples=tf.TensorSpec(shape=[None, None], dtype=tf.complex64)
+    samples=tf.TensorSpec(shape=typing.cast(tf.TensorShape, None), dtype=tf.complex64)
 )
 
 bit_dtype = tf.int32
-bit_sequence_spec = tf.TensorSpec(shape=[None, None], dtype=bit_dtype)
+bit_sequence_spec = tf.TensorSpec(shape=typing.cast(tf.TensorShape, None), dtype=bit_dtype)
 
 IQSignal = tuple[ElectricalSignal, ElectricalSignal]
 iq_signal_spec = (electrical_signal_spec, electrical_signal_spec)

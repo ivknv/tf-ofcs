@@ -7,7 +7,7 @@ from optical_communication_system.components import (
 
 
 def test_channel_loss_estimator() -> None:
-    laser = Laser(power=1e-3, batch_size=3)
+    laser = Laser(power=1e-3, batch_shape=(3,))
     photodiode = Photodiode()
     channel = OpticalFiber(
         attenuation=0.22,

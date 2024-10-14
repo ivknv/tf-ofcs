@@ -8,7 +8,7 @@ from optical_communication_system.components import (
 from optical_communication_system.components.datatypes import ElectricalSignal, OpticalSignal
 
 def test_mzm() -> None:
-    laser = Laser(power=1e-3, batch_size=1)
+    laser = Laser(power=1e-3, batch_shape=(1,))
     mzm = MachZehnderModulator(carrier_source=laser, extinction_ratio=float("inf"))
 
     timing_generator = TimingGenerator(sampling_rate=10.0, symbol_rate=1.0)

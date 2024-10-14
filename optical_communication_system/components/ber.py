@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Optional
 
 import tensorflow as tf
@@ -11,15 +11,18 @@ __all__ = ["BERTester"]
 
 
 class BERTester(Component):
-    #: System to test
-    systems: list[Callable]
+    #: Systems to test
+    systems: list[Component]
 
     #: Random number generator
     rng: tf.random.Generator
 
+    #: Number of iterations for testing
+    n_iterations: tf.Variable  # shape=[]; dtype=tf.int32
+
     def __init__(
         self,
-        systems: Sequence[Callable],
+        systems: Sequence[Component],
         rng: Optional[tf.random.Generator] = None,
         n_iterations: int | tf.Tensor = 100,
         name: Optional[str] = None

@@ -3,14 +3,15 @@
 from collections.abc import Callable, Sequence
 import math
 from typing import Any, Optional
+import typing
 
 import tensorflow as tf
 from .. import constants
 from .component import Component
 
 from .datatypes import (
-    ElectricalSignal, electrical_signal_spec, OpticalSignal, Timing,
-    bit_dtype, bit_sequence_spec
+    ElectricalSignal, electrical_signal_spec, OpticalSignal, Timing, bit_dtype,
+    bit_sequence_spec
 )
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "psk_constellation",
     "pam_constellation",
     "generate_timing",
+    "combine_shape",
     "Composition",
     "MapComponent",
     "MapComponents",
@@ -84,21 +86,26 @@ def adjust_symbol_for_mzm(symbol: tf.Tensor) -> tf.Tensor:
     return tf.math.acos(symbol) / constants.pi
 
 
-@tf.function(input_signature=(bit_sequence_spec,))
-def bits_to_indices(bits: tf.Tensor) -> tf.Tensor:
-    n = tf.shape(bits)[1]
-    return tf.reduce_sum(bits * 2 ** (n - tf.range(n) - 1), axis=1)
+@tf.function(input_signature=(bit_sequence_spec, tf.TensorSpec(shape=[], dtype=tf.int32)))
+def bits_to_indices(bits: tf.Tensor, n: tf.Tensor) -> tf.Tensor:
+    shape = tf.shape(bits)
+    bits = tf.reshape(bits, (tf.size(bits) // n, n))
+
+    return tf.reshape(
+        tf.reduce_sum(bits * 2 ** (n - tf.range(n) - 1), axis=1),
+        tf.concat([shape[:-1], [shape[-1] // n]], 0)
+    )
 
 
 @tf.function(input_signature=(
-    tf.TensorSpec(shape=[None], dtype=tf.int32),
-    tf.TensorSpec(shape=[], dtype=tf.int32),
-))
-def indices_to_bits(index: tf.Tensor, bit_count: tf.Tensor) -> tf.Tensor:
+    tf.TensorSpec(shape=typing.cast(tf.TensorShape, None), dtype=tf.int32),
+    tf.TensorSpec(shape=[], dtype=tf.int32))
+)
+def indices_to_bits(indices: tf.Tensor, bit_count: tf.Tensor) -> tf.Tensor:
     denominators = 2 ** (bit_count - tf.range(bit_count) - 1)
 
     return tf.cast(
-        tf.math.floormod(tf.expand_dims(index, -1) // denominators, 2),
+        tf.math.floormod(tf.expand_dims(indices, -1) // denominators, 2),
         bit_dtype
     )
 
@@ -159,6 +166,12 @@ def generate_timing(
     ) / sampling_rate
 
     return Timing(sampling_rate=sampling_rate, symbol_rate=symbol_rate, time=time)
+
+
+@tf.function
+def combine_shape(shapes: tf.Tensor) -> tf.Tensor:
+    combined = tf.concat(shapes, 0)
+    return tf.boolean_mask(combined, combined > 0)
 
 
 class Composition(Component):
