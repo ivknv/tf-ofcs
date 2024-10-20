@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
+from collections.abc import Sequence
 from typing import Optional
+import typing
 import tensorflow as tf
 
 from .datatypes import ElectricalSignal, electrical_signal_spec
@@ -65,7 +67,7 @@ class ArbitraryWaveformGenerator(Component):
         symbol_rate: tf.Tensor
     ) -> ElectricalSignal:
         symbol_count = tf.cast(
-            tf.round(tf.cast(tf.shape(input_samples)[1], tf.float32) * symbol_rate / sampling_rate),
+            tf.round(tf.cast(tf.shape(input_samples)[-1], tf.float32) * symbol_rate / sampling_rate),
             tf.int32
         )
 
@@ -76,11 +78,11 @@ class ArbitraryWaveformGenerator(Component):
 
 
 class Quantizer(Component):
-    step: tf.Variable  # shape=[]; dtype=tf.float32
+    step: tf.Variable  # shape=[] or [None]; dtype=tf.float32
 
     def __init__(
         self,
-        step: float | tf.Tensor,
+        step: float | Sequence[float] | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -91,9 +93,10 @@ class Quantizer(Component):
 
     @tf.function(input_signature=(
         electrical_signal_spec,
-        tf.TensorSpec(shape=[], dtype=tf.float32),
+        tf.TensorSpec(shape=typing.cast(tf.TensorShape, None), dtype=tf.float32),
     ))
     def implementation(self, signal: ElectricalSignal, step: tf.Tensor) -> ElectricalSignal:
+        step = tf.broadcast_to(step, [tf.shape(signal.samples)[1]])
         quantized_samples = tf.round(signal.samples / step) * step
 
         return ElectricalSignal(timing=signal.timing, samples=quantized_samples)

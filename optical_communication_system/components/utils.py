@@ -141,8 +141,17 @@ def psk_constellation(
     return iq_mapping
 
 
-def pam_constellation(bits_per_symbol: int) -> list[float]:
-    return [i / (2 ** bits_per_symbol - 1) for i in range(2 ** bits_per_symbol)]
+@tf.function
+def pam_constellation(bits_per_symbol: tf.Tensor, size: Optional[tf.Tensor] = None) -> tf.Tensor:
+    symbol_count = tf.math.pow(2, bits_per_symbol)
+
+    if size is None:
+        size = symbol_count
+
+    return tf.concat([
+        tf.cast(tf.range(symbol_count) / (symbol_count - 1), tf.float32),
+        tf.fill([size - symbol_count], 0.0)
+    ], 0)
 
 
 @tf.function(input_signature=(
@@ -172,7 +181,7 @@ def generate_timing(
 
 @tf.function(input_signature=(timing_spec,))
 def timing_to_samples(timing: Timing) -> tf.Tensor:
-    return tf.cast(tf.range(0, timing.sample_count), tf.float32) / timing.sampling_rate
+    return tf.cast(tf.range(timing.sample_count), tf.float32) / timing.sampling_rate
 
 
 @tf.function
@@ -216,7 +225,7 @@ class Composition(Component):
 class MapComponent(Component):
     component: Component
 
-    def __init__(self, *, component: Component, name: Optional[str] = None) -> None:
+    def __init__(self, component: Component, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.component = component
@@ -328,8 +337,8 @@ class ExtractTiming(Component):
 
 
 class TimingGenerator(Component):
-    sampling_rate: tf.Variable
-    symbol_rate: tf.Variable
+    sampling_rate: tf.Variable  # shape=[]; dtype=tf.float32
+    symbol_rate: tf.Variable  # shape=[]; dtype=tf.float32
 
     def __init__(
         self,
@@ -352,28 +361,9 @@ class TimingGenerator(Component):
         self,
         symbol_count: tf.Tensor,
         sampling_rate: tf.Tensor,
-        symbol_rate: tf.Tensor
+        symbol_rate: tf.Tensor,
     ) -> Timing:
         return generate_timing(sampling_rate, symbol_rate, symbol_count)
-
-
-@tf.function
-def _upsample_with_linear_interpolation(x: tf.Tensor, factor: tf.Tensor) -> tf.Tensor:
-    n = factor + 1
-
-    return tf.concat(
-        [
-            x[:1],
-            tf.reshape(
-                tf.vectorized_map(
-                    fn=lambda i: tf.linspace(x[i], x[i + 1], n)[1:],
-                    elems=tf.range(tf.shape(x)[0] - 1)
-                ),
-                tf.concat([[(tf.shape(x)[0] - 1) * (n - 1)], tf.shape(x)[1:]], 0)
-            )
-        ],
-        0
-    )
 
 
 @tf.function
@@ -415,7 +405,7 @@ class Resample(Component):
             new_duration = timing.duration / factor
             new_sample_count = timing.sample_count // factor
 
-            new_samples = _downsample(signal.samples, factor)
+            new_samples = _downsample(signal.samples, factor, axis=-1)
 
 
         new_timing = Timing(
@@ -463,9 +453,9 @@ class Downsample(Component):
         n = tf.cast(tf.round(signal.timing.sampling_rate / sampling_rate), tf.int32)
         shift = tf.cast(tf.round(signal.timing.sampling_rate * time_offset), tf.int32)
 
-        indices = tf.range(shift, tf.size(signal.samples) - shift, n)
+        indices = tf.range(shift, tf.shape(signal.samples)[-1] - shift, n)
 
-        signal_samples = tf.gather(signal.samples, indices)
+        signal_samples = tf.gather(signal.samples, indices, axis=-1)
         duration = signal.timing.duration - time_offset
 
         return ElectricalSignal(
@@ -483,7 +473,7 @@ class MeanAmplitude(Component):
     @tf.function
     def implementation(self, input_signal: OpticalSignal | ElectricalSignal) -> tf.Tensor:
         assert isinstance(input_signal, (ElectricalSignal, OpticalSignal))
-        return tf.math.reduce_mean(tf.abs(input_signal.samples))
+        return tf.math.reduce_mean(tf.abs(input_signal.samples), axis=-1)
 
 
 class ParallelToSerial(Component):
@@ -506,7 +496,7 @@ class ParallelToSerial(Component):
 
         new_signal_samples = tf.concat(
             [signal.samples for signal in parallel_signals],
-            0
+            -1
         )
 
         return SignalClass(
@@ -561,7 +551,7 @@ class SerialToParallel(Component):
         return tuple(
             SignalClass(
                 timing=new_timing,
-                samples=serial_signal.samples[
+                samples=serial_signal.samples[:,:,
                     parallel_sample_count * tf.constant(i):parallel_sample_count * tf.constant(i + 1)
                 ]
             ) for i in range(self.n_parallel)

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
@@ -13,15 +14,15 @@ __all__ = ["BandPassFilter"]
 
 class BandPassFilter(Component):
     #: Minimum frequency in Hz
-    min_frequency: tf.Variable  # shape=(); dtype=float32
+    min_frequency: tf.Variable  # shape=[] or [None]; dtype=float32
 
     #: Maximum frequency in Hz
-    max_frequency: tf.Variable  # shape=(); dtype=float32
+    max_frequency: tf.Variable  # shape=[] or [None]; dtype=float32
 
     def __init__(
         self,
-        min_frequency: float | tf.Tensor,
-        max_frequency: float | tf.Tensor,
+        min_frequency: float | Sequence[float] | tf.Tensor,
+        max_frequency: float | Sequence[float] | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -39,6 +40,11 @@ class BandPassFilter(Component):
     ) -> ElectricalSignal | OpticalSignal:
         SignalClass = signal.__class__
 
+        parameter_dims = tf.shape(signal.samples)[1]
+
+        min_frequency = tf.broadcast_to(min_frequency, [parameter_dims])
+        max_frequency = tf.broadcast_to(max_frequency, [parameter_dims])
+
         filtered_samples = self._implementation(signal.timing, signal.samples, min_frequency, max_frequency)
 
         if isinstance(signal, ElectricalSignal):
@@ -48,9 +54,9 @@ class BandPassFilter(Component):
 
     @tf.function(input_signature=(
         timing_spec,
-        tf.TensorSpec([None, None]),
-        tf.TensorSpec([], tf.float32),
-        tf.TensorSpec([], tf.float32)
+        tf.TensorSpec([None, None, None]),
+        tf.TensorSpec([None], tf.float32),
+        tf.TensorSpec([None], tf.float32)
     ))
     def _implementation(
         self,
@@ -61,7 +67,10 @@ class BandPassFilter(Component):
     ) -> tf.Tensor:
         fft = tf.signal.fft(tf.cast(samples, tf.complex64))
 
-        freqs = tf.abs(fftfreq(tf.shape(fft)[1], 1.0 / timing.sampling_rate))
+        min_frequency = tf.expand_dims(min_frequency, -1)
+        max_frequency = tf.expand_dims(max_frequency, -1)
+
+        freqs = tf.abs(fftfreq(tf.shape(fft)[-1], 1.0 / timing.sampling_rate))
         pass_mask = tf.logical_and(tf.math.greater_equal(freqs, min_frequency), tf.less_equal(freqs, max_frequency))
         filtered_fft = tf.where(pass_mask, fft, tf.complex(0.0, 0.0))
 

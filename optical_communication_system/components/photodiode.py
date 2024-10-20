@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from collections.abc import Sequence
+import typing
 from typing import Optional
 import tensorflow as tf
 from .datatypes import ElectricalSignal, OpticalSignal, optical_signal_spec
@@ -10,15 +12,15 @@ __all__ = ["Photodiode"]
 
 class Photodiode(Component):
     #: Minimum power (in watts) that can be converted into a current
-    sensitivity: tf.Variable  # shape=(1,); dtype=float32
+    sensitivity: tf.Variable  # shape=[] or [None]; dtype=float32
 
     #: Maximum power the diode can convert (anything above will be clipped)
-    maximum_power: tf.Variable  # shape=(1,); dtype=float32
+    maximum_power: tf.Variable  # shape=[] or [None]; dtype=float32
 
     def __init__(
         self,
-        sensitivity: float | tf.Tensor = 1e-5,
-        maximum_power: float | tf.Tensor = 2e-3,
+        sensitivity: float | Sequence[float] | tf.Tensor = 1e-5,
+        maximum_power: float | Sequence[float] | tf.Tensor = 2e-3,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -30,8 +32,8 @@ class Photodiode(Component):
 
     @tf.function(input_signature=(
         optical_signal_spec,
-        tf.TensorSpec([], tf.float32),
-        tf.TensorSpec([], tf.float32)
+        tf.TensorSpec(typing.cast(tf.TensorShape, None), tf.float32),
+        tf.TensorSpec(typing.cast(tf.TensorShape, None), tf.float32)
     ))
     def implementation(
         self,
@@ -39,6 +41,10 @@ class Photodiode(Component):
         sensitivity: tf.Tensor,
         maximum_power: tf.Tensor
     ) -> ElectricalSignal:
+        parameter_dims = tf.shape(signal.samples)[1]
+        sensitivity = tf.expand_dims(tf.broadcast_to(sensitivity, (parameter_dims,)), -1)
+        maximum_power = tf.expand_dims(tf.broadcast_to(maximum_power, (parameter_dims,)), -1)
+
         samples = tf.cast(
             tf.clip_by_value(
                 tf.abs(signal.samples)**2,

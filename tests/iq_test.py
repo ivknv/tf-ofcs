@@ -20,7 +20,7 @@ qam16_mapping = [
 def test_iq_symbol_encoder() -> None:
     qam_symbol_encoder = IQSymbolEncoder(
         bits_per_symbol=2,
-        mapping=qam4_mapping,
+        mapping=[qam4_mapping, qam4_mapping],
         adjust_for_mzm=False
     )
 
@@ -37,44 +37,57 @@ def test_iq_symbol_encoder() -> None:
 
     qam16_symbols = qam_symbol_encoder(
         qam16_bits,
-        iq_symbol_encoder__mapping=tf.constant(qam16_mapping),
+        iq_symbol_encoder__mapping=tf.constant([qam16_mapping, qam16_mapping]),
         iq_symbol_encoder__bits_per_symbol=tf.constant(4)
     )
 
-    assert tf.math.reduce_all(tf.less(tf.abs(qam4_symbols - qam4_mapping), 1e-6))  # type: ignore
-    assert tf.math.reduce_all(tf.less(tf.abs(qam16_symbols - qam16_mapping), 1e-6))  # type: ignore
+    assert tf.math.reduce_all(
+        tf.less(
+            tf.abs(qam4_symbols - [qam4_mapping, qam4_mapping]),
+            1e-6
+        )
+    )  # type: ignore
+    assert tf.math.reduce_all(
+        tf.less(
+            tf.abs(qam16_symbols - [qam16_mapping, qam16_mapping]),
+            1e-6)
+    )  # type: ignore
 
 
 def test_iq_symbol_decoder() -> None:
     qam_symbol_decoder = IQSymbolDecoder(
         bits_per_symbol=2,
-        mapping=qam4_mapping
+        mapping=[qam4_mapping]
     )
 
     qam4_symbols = [
-        [[ 1.0,  0.9], [-1.1,  0.7], [ 1.0, -0.8]],  # first batch
-        [[-1.0,  0.9], [ 0.7,  1.0], [-0.6, -1.0]]   # second batch
+        [  # first batch
+            [[ 1.0,  0.9], [-1.1,  0.7], [ 1.0, -0.8]],
+        ],
+        [  # second batch
+            [[-1.0,  0.9], [ 0.7,  1.0], [-0.6, -1.0]]
+        ]
     ]
 
     expected_qam4_bitseq = tf.constant([
-        [[1, 1], [0, 1], [1, 0]],
-        [[0, 1], [1, 1], [0, 0]]
+        [[[1, 1], [0, 1], [1, 0]]],
+        [[[0, 1], [1, 1], [0, 0]]]
     ])
 
     qam16_symbols = [
-        [[ 1.0,  0.45], [ 0.5, -0.8], [ 0.3,  0.8], [-1.3,  0.1], [-1.0, -1.4],  [0.7,  1.0]],
-        [[-1.0,  0.95], [ 0.2, -0.1], [-0.6,  1.2], [ 0.5,  0.2], [-0.7,  0.3],  [0.1,  0.1]]
+        [[[ 1.0,  0.45], [ 0.5, -0.8], [ 0.3,  0.8], [-1.3,  0.1], [-1.0, -1.4],  [0.7,  1.0]]],
+        [[[-1.0,  0.95], [ 0.2, -0.1], [-0.6,  1.2], [ 0.5,  0.2], [-0.7,  0.3],  [0.1,  0.1]]]
     ]
 
     expected_qam16_bitseq = [
-        [[1, 1, 1, 0], [1, 0, 1, 1], [1, 0, 0, 0], [0, 0, 0, 1], [0, 0, 1, 1], [1, 0, 0, 0]],
-        [[0, 0, 0, 0], [1, 0, 1, 0], [0, 1, 1, 1], [1, 0, 0, 1], [0, 1, 1, 0], [1, 0, 0, 1]]
+        [[[1, 1, 1, 0], [1, 0, 1, 1], [1, 0, 0, 0], [0, 0, 0, 1], [0, 0, 1, 1], [1, 0, 0, 0]]],
+        [[[0, 0, 0, 0], [1, 0, 1, 0], [0, 1, 1, 1], [1, 0, 0, 1], [0, 1, 1, 0], [1, 0, 0, 1]]]
     ]
 
     decoded_qam4_bitseq = qam_symbol_decoder(qam4_symbols)
     decoded_qam16_bitseq = qam_symbol_decoder(
         qam16_symbols,
-        iq_symbol_decoder__mapping=tf.constant(qam16_mapping),
+        iq_symbol_decoder__mapping=tf.constant([qam16_mapping]),
         iq_symbol_decoder__bits_per_symbol=tf.constant(4)
     )
 
@@ -103,7 +116,7 @@ def test_iq_encoder() -> None:
             ],
             4
         ),
-        (2, 24)
+        (2, 1, 24)
     )
     expected_q_samples = tf.reshape(
         tf.repeat(
@@ -112,10 +125,16 @@ def test_iq_encoder() -> None:
                 [1.0, -0.5, 1.0, 0.5,  0.5, 0.5]
             ],
             4),
-        (2, 24)
+        (2, 1, 24)
     )
 
     i_signal, q_signal = encoder(qam16_bitseq)
+
+    assert isinstance(i_signal, ElectricalSignal)
+    assert isinstance(q_signal, ElectricalSignal)
+
+    assert tf.math.reduce_all(tf.shape(i_signal.samples) == tf.shape(expected_i_samples))  # type: ignore
+    assert tf.math.reduce_all(tf.shape(q_signal.samples) == tf.shape(expected_q_samples))  # type: ignore
 
     assert tf.math.reduce_all(tf.abs(i_signal.samples - expected_i_samples) < 1e-6)  # type: ignore
     assert tf.math.reduce_all(tf.abs(q_signal.samples - expected_q_samples) < 1e-6)  # type: ignore
@@ -133,8 +152,8 @@ def test_iq_decoder() -> None:
     decoder = IQDecoder(data_rate=1.0, symbol_decoder=qam_symbol_decoder)
 
     expected_qam16_bitseq = [
-        [1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0],
-        [0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1]
+        [[1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0]],
+        [[0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1]]
     ]
 
     timing = Timing(
@@ -154,7 +173,7 @@ def test_iq_decoder() -> None:
                 ],
                 4
             ),
-            (2, 24)
+            (2, 1, 24)
         )
     )
     q_signal = ElectricalSignal(
@@ -166,7 +185,7 @@ def test_iq_decoder() -> None:
                     [1.0, -0.5, 1.0, 0.5,  0.5, 0.5]
                 ],
                 4),
-            (2, 24)
+            (2, 1, 24)
         )
     )
 

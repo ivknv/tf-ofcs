@@ -65,9 +65,10 @@ class ChannelLossEstimator(Composition):
             **kwargs
         )
 
-    @tf.function(input_signature=(
-        (tf.TensorSpec(shape=[], dtype=tf.float32), tf.TensorSpec(shape=[], dtype=tf.float32)),
-    ))
+    @tf.function(input_signature=((
+        tf.TensorSpec(shape=[None, None], dtype=tf.float32),
+        tf.TensorSpec(shape=[None, None], dtype=tf.float32)
+    ),))
     def _estimate_attenuation(self, inputs: tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
         input_amplitude, output_power = inputs
 

@@ -4,16 +4,17 @@ import tensorflow as tf
 from optical_communication_system.components import (
     ChannelLossEstimator, Laser, Photodiode, OpticalFiber
 )
+from optical_communication_system.utils import from_db
 
 
 def test_channel_loss_estimator() -> None:
-    laser = Laser(power=1e-3, batch_shape=(3,))
+    laser = Laser(power=[1e-3, 2e-3], batch_size=3)
     photodiode = Photodiode()
     channel = OpticalFiber(
-        attenuation=0.22,
-        chromatic_dispersion=0.0,
-        eff_non_linear_coeff=0.0,
-        length=20.0,
+        attenuation=[0.22, 0.3],
+        chromatic_dispersion=[0.0, 0.0],
+        eff_non_linear_coeff=[0.0, 0.0],
+        length=[20.0, 15.0],
         central_frequency=193.414e12,
         step_count=100
     )
@@ -27,10 +28,15 @@ def test_channel_loss_estimator() -> None:
         sampling_rate=sampling_rate
     )
 
-    expected_loss = tf.math.pow(10.0, 0.1 * channel.attenuation * channel.length)
+    expected_loss = from_db(channel.attenuation * channel.length)
 
     probe_duration = 30e-3
 
-    actual_loss = tf.math.reduce_mean(loss_estimator(probe_duration))
+    losses = loss_estimator(probe_duration)
 
-    assert tf.abs(actual_loss - expected_loss) < 1e-3  # type: ignore
+    assert isinstance(losses, tf.Tensor)
+    assert tf.math.reduce_all(tf.shape(losses) == (3, 2))  # type: ignore
+
+    actual_loss = tf.math.reduce_mean(loss_estimator(probe_duration), axis=[0])
+
+    assert tf.math.reduce_all(tf.abs(actual_loss - expected_loss) < 1e-3)  # type: ignore

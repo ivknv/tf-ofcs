@@ -35,15 +35,12 @@ class Component(tf.Module):
 
     @tf.function
     def __call__(self, inp: Any, **kwargs) -> Any:
-        component_kwargs = {}
-
-        for parameter in self.parameters:
-            component_kwargs[parameter] = self.get_component_parameter(kwargs, parameter)
+        component_kwargs = self.extract_component_parameters(kwargs)
 
         return self.implementation(inp, **component_kwargs)
 
     @tf.function
-    def implementation(self, inp: Any, **kwargs) -> Any:
+    def implementation(self, inp: Any, parameter_dims: tf.Tensor, **kwargs) -> Any:
         raise NotImplementedError
 
     def _padding(self, level: int) -> str:
@@ -87,10 +84,18 @@ class Component(tf.Module):
     ) -> Any:
         return kwargs.get(f"{self.name}__{kwarg_name}", default)
 
-    def get_component_parameter(self, kwargs: dict[str, Any], parameter: str):
+    def get_component_parameter(self, kwargs: dict[str, Any], parameter: str) -> Any:
         value = self.get_kwarg(kwargs, parameter)
 
         if value is not None:
             return value
 
         return getattr(self, parameter)
+
+    def extract_component_parameters(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        component_kwargs = {}
+
+        for parameter in self.parameters:
+            component_kwargs[parameter] = self.get_component_parameter(kwargs, parameter)
+
+        return component_kwargs

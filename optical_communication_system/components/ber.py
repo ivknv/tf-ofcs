@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Optional
 
 import tensorflow as tf
-from .datatypes import bit_sequence_spec
+from .datatypes import bit_sequence_spec, bit_dtype
 from .component import Component
 
 __all__ = ["BERTester"]
@@ -41,15 +41,22 @@ class BERTester(Component):
 
     @tf.function(input_signature=(
         bit_sequence_spec,
-        bit_sequence_spec
+        tf.TensorSpec(shape=[None, None, None], dtype=bit_dtype, name="output")
     ))
     def _compute_ber(self, expected_output: tf.Tensor, output: tf.Tensor) -> tf.Tensor:
-        tf.debugging.assert_equal(tf.size(output), tf.size(expected_output))
+        expected_output = tf.expand_dims(expected_output, 1)
 
-        correct_count = tf.cast(tf.math.count_nonzero(expected_output == output), tf.float32)
-        total_bits = tf.cast(tf.size(output), tf.float32)
+        correct_counts = tf.cast(
+            tf.math.count_nonzero(expected_output == output, axis=[0, -1]),
+            tf.float32
+        )  # shape=[parameter_dims]
 
-        return (total_bits - correct_count) / total_bits
+        batch_size = tf.shape(output, out_type=tf.int64)[0]
+        bit_count = tf.shape(output, out_type=tf.int64)[-1]
+
+        total_bits = tf.cast(batch_size * bit_count, tf.float32)
+
+        return (total_bits - correct_counts) / total_bits
 
     @tf.function
     def __call__(self, sequence_length: tf.Tensor, **kwargs) -> tf.Tensor:
@@ -62,15 +69,14 @@ class BERTester(Component):
             dtype=tf.int32
         )
 
-        bers = tf.zeros(shape=(0,), dtype=tf.float32)
+        bers = None
 
         for system in self.systems:
-            bers = tf.concat(
-                [
-                    bers,
-                    [tf.reduce_sum(self._compute_ber(inputs, system(inputs, **kwargs)))]
-                ],
-                0
-            )
+            ber = self._compute_ber(inputs, system(inputs, **kwargs))
+
+            if bers is None:
+                bers = tf.expand_dims(ber, 0)
+            else:
+                bers = tf.concat([[bers], [ber]], 0)
 
         return bers / tf.cast(n_iterations, tf.float32)
