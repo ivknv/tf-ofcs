@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
+from collections.abc import Sequence
 from typing import Optional
+import typing
 import tensorflow as tf
 
 from .datatypes import ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec
@@ -22,8 +24,8 @@ class ElectricalAWGN(Component):
     def __init__(
         self,
         *,
-        fixed_db: float | tf.Tensor = -float("inf"),
-        relative_db: float | tf.Tensor = -float("inf"),
+        fixed_db: float | Sequence[float] | tf.Tensor = -float("inf"),
+        relative_db: float | Sequence[float] | tf.Tensor = -float("inf"),
         rng: Optional[tf.random.Generator] = None,
         name: Optional[str] = None
     ) -> None:
@@ -39,7 +41,9 @@ class ElectricalAWGN(Component):
             self.rng = rng
 
     @tf.function(input_signature=(
-        electrical_signal_spec, tf.TensorSpec([], tf.float32), tf.TensorSpec([], tf.float32)
+        electrical_signal_spec,
+        tf.TensorSpec(typing.cast(tf.TensorShape, None), tf.float32, name="fixed_db"),
+        tf.TensorSpec(typing.cast(tf.TensorShape, None), tf.float32, name="relative_db")
     ))
     def implementation(
         self,
@@ -83,8 +87,8 @@ class OpticalAWGN(Component):
     def __init__(
         self,
         *,
-        fixed_dbm: float | tf.Tensor = -float("inf"),
-        relative_db: float | tf.Tensor = -float("inf"),
+        fixed_dbm: float | Sequence[float] | tf.Tensor = -float("inf"),
+        relative_db: float | Sequence[float] | tf.Tensor = -float("inf"),
         rng: Optional[tf.random.Generator] = None,
         name: Optional[str] = None
     ) -> None:
@@ -100,7 +104,9 @@ class OpticalAWGN(Component):
             self.rng = rng
 
     @tf.function(input_signature=(
-        optical_signal_spec, tf.TensorSpec([], tf.float32), tf.TensorSpec([], tf.float32)
+        optical_signal_spec,
+        tf.TensorSpec(typing.cast(tf.TensorShape, None), tf.float32, name="fixed_db"),
+        tf.TensorSpec(typing.cast(tf.TensorShape, None), tf.float32, name="relative_db")
     ))
     def implementation(
         self,
