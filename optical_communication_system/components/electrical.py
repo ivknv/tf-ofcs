@@ -12,7 +12,8 @@ __all__ = [
     "ElectricalAdder",
     "ElectricalSubtractor",
     "ArbitraryWaveformGenerator",
-    "Quantizer"
+    "Quantizer",
+    "ElectricalGain"
 ]
 
 
@@ -77,7 +78,7 @@ class ArbitraryWaveformGenerator(Component):
 
 
 class Quantizer(Component):
-    step: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+    step: tf.Variable  # shape=[] or [None]; dtype=float32
 
     def __init__(
         self,
@@ -87,15 +88,40 @@ class Quantizer(Component):
         super().__init__(name=name)
 
         self.step = tf.Variable(tf.constant(step))
-
         self.local_parameters = [("step", 0)]
 
     @tf.function(input_signature=(
         electrical_signal_spec,
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="step"),
+        tf.TensorSpec(shape=[None], dtype=tf.float32, name="step")
     ))
     def implementation(self, signal: ElectricalSignal, step: tf.Tensor) -> ElectricalSignal:
         step = tf.expand_dims(step, -1)
         quantized_samples = tf.round(signal.samples / step) * step
 
         return ElectricalSignal(timing=signal.timing, samples=quantized_samples)
+
+
+class ElectricalGain(Component):
+    gain: tf.Variable  # shape[] or [None]; dtype=float32
+
+    def __init__(
+        self,
+        gain: float | Sequence[float] | tf.Tensor,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.gain = tf.Variable(tf.constant(gain))
+        self.local_parameters = [("gain", 0)]
+
+    @tf.function(input_signature=(
+        electrical_signal_spec,
+        tf.TensorSpec(shape=[None], dtype=tf.float32, name="gain")
+    ))
+    def implementation(self, signal: ElectricalSignal, gain: tf.Tensor) -> ElectricalSignal:
+        gain = tf.expand_dims(gain, -1)
+
+        return ElectricalSignal(
+            timing=signal.timing,
+            samples=signal.samples * gain
+        )
