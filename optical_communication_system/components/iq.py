@@ -3,7 +3,6 @@
 from collections.abc import Sequence
 from typing import Optional
 import math
-import typing
 
 import tensorflow as tf
 
@@ -29,17 +28,20 @@ __all__ = ["IQSymbolEncoder", "IQSymbolDecoder", "IQEncoder", "IQModulator", "IQ
 class IQSymbolEncoder(Component):
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=[]; dtype=int32
-    mapping: tf.Variable  # shape=(2 ** bits_per_symbol, 2) or (None, 2 ** bits_per_symbol, 2); dtype=float32
+    mapping: tf.Variable  # shape=(2 ** bits_per_symbol, 2); dtype=float32
 
     #: If true, the constellation will be adjusted for MZM
     adjust_for_mzm: tf.Variable  # shape=[]; dtype=bool
+
+    parameter_dims: tf.Variable  # shape=[]; dtype=int32
 
     def __init__(
         self,
         *,
         bits_per_symbol: int | tf.Tensor,
-        mapping: Sequence[Sequence[Sequence[float]]] | Sequence[Sequence[float]] | tf.Tensor,
+        mapping: Sequence[Sequence[float]] | tf.Tensor,
         adjust_for_mzm: bool | tf.Tensor = False,
+        parameter_dims: int | tf.Tensor = 1,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -48,35 +50,39 @@ class IQSymbolEncoder(Component):
 
         self.mapping = tf.Variable(tf.constant(mapping))
         self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
+        self.parameter_dims = tf.Variable(tf.constant(parameter_dims))
 
-        self.parameters = ["bits_per_symbol", "mapping", "adjust_for_mzm"]
+        self.local_parameters = [
+            "mapping", "bits_per_symbol", "adjust_for_mzm", "parameter_dims"
+        ]
+        self.global_parameters = ["parameter_dims"]
 
     @tf.function(input_signature=(
         bit_sequence_spec,
-        tf.TensorSpec(shape=[], dtype=tf.int32),
-        tf.TensorSpec(shape=typing.cast(tf.TensorShape, None), dtype=tf.float32),
-        tf.TensorSpec(shape=[], dtype=tf.bool)
+        tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
+        tf.TensorSpec(shape=[None, 2], dtype=tf.float32, name="mapping"),
+        tf.TensorSpec(shape=[], dtype=tf.bool, name="adjust_for_mzm"),
+        tf.TensorSpec(shape=[], dtype=tf.int32, name="parameter_dims")
     ))
     def implementation(
         self,
         bitseq: tf.Tensor,
         bits_per_symbol: tf.Tensor,
         mapping: tf.Tensor,
-        adjust_for_mzm: tf.Tensor
+        adjust_for_mzm: tf.Tensor,
+        parameter_dims: tf.Tensor
     ) -> tf.Tensor:
         batch_size = tf.shape(bitseq)[0]
         bit_count = tf.shape(bitseq)[1]
 
-        if tf.rank(mapping) < 3:
-            mapping = tf.expand_dims(mapping, 0)
-
-        parameter_dims = tf.shape(mapping)[0]
-
         symbol_indices = bits_to_indices(bitseq, bits_per_symbol)
 
-        symbols = tf.reshape(
-            tf.vectorized_map(lambda m: tf.gather(m, symbol_indices), mapping),
-            (batch_size, parameter_dims, bit_count // bits_per_symbol, 2)
+        symbols = tf.tile(
+            tf.reshape(
+                tf.gather(mapping, symbol_indices),
+                (batch_size, 1, bit_count // bits_per_symbol, 2)
+            ),
+            [1, parameter_dims, 1, 1]
         )
 
         if adjust_for_mzm:  # type: ignore
@@ -88,27 +94,26 @@ class IQSymbolEncoder(Component):
 class IQSymbolDecoder(Component):
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=[]; dtype=int32
-    mapping: tf.Variable  # shape=(2 ** bits_per_symbol, 2) or (None, 2 ** bits_per_symbol,2); dtype=float32
+    mapping: tf.Variable  # shape=(2 ** bits_per_symbol, 2); dtype=float32
 
     def __init__(
         self,
         *,
         bits_per_symbol: int | tf.Tensor,
-        mapping: Sequence[Sequence[Sequence[float]]] | Sequence[Sequence[float]] | tf.Tensor,
+        mapping: Sequence[Sequence[float]] | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
-
         self.mapping = tf.Variable(tf.constant(mapping))
 
-        self.parameters = ["bits_per_symbol", "mapping"]
+        self.local_parameters = ["bits_per_symbol", "mapping"]
 
     @tf.function(input_signature=(
-        tf.TensorSpec(shape=[None, None, None, 2], dtype=tf.float32),
-        tf.TensorSpec(shape=[], dtype=tf.int32),
-        tf.TensorSpec(shape=typing.cast(tf.TensorShape, None), dtype=tf.float32)
+        tf.TensorSpec(shape=[None, None, None, 2], dtype=tf.float32, name="symbols"),
+        tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
+        tf.TensorSpec(shape=[None, 2], dtype=tf.float32, name="mapping")
     ))
     def implementation(
         self,
@@ -119,8 +124,6 @@ class IQSymbolDecoder(Component):
         batch_size = tf.shape(symbols)[0]
         parameter_dims = tf.shape(symbols)[1]
         symbol_count = tf.shape(symbols)[2]
-
-        mapping = tf.broadcast_to(mapping, (parameter_dims, tf.math.pow(2, bits_per_symbol), 2))
 
         best_indices = tf.cast(
             tf.argmin(
@@ -162,10 +165,9 @@ class IQEncoder(Component):
         self.data_rate = tf.Variable(tf.constant(data_rate))
         self.symbol_encoder = symbol_encoder
 
-        self.parameters = ["sampling_rate", "data_rate"]
+        self.local_parameters = ["sampling_rate", "data_rate"]
 
-    @tf.function
-    def __call__(self, bitseq: tf.Tensor, **kwargs) -> IQSignal:
+    def __call__(self, bitseq: tf.Tensor, /, **kwargs) -> IQSignal:
         assert isinstance(bitseq, tf.Tensor)
         assert bitseq.dtype is bit_dtype
 
@@ -295,7 +297,7 @@ class IQDecoder(Component):
         self.symbol_decoder = symbol_decoder
         self.symbol_scale = tf.Variable(tf.constant(symbol_scale))
 
-        self.parameters = ["data_rate", "symbol_scale"]
+        self.local_parameters = ["data_rate", "symbol_scale"]
 
     @tf.function(input_signature=(
         iq_signal_spec,
@@ -322,7 +324,7 @@ class IQDecoder(Component):
                 tf.reshape(i_samples, [tf.size(i_samples)]),
                 tf.reshape(q_samples, [tf.size(q_samples)])
             ], axis=-1),
-            (batch_size, parameter_dims, total_sample_count // batch_size // 2, 2)
+            (batch_size, parameter_dims, total_sample_count // batch_size // parameter_dims // 2, 2)
         )
 
         sampling_rate = iq_signal[0].timing.sampling_rate
@@ -337,8 +339,7 @@ class IQDecoder(Component):
 
         return iq_symbols
 
-    @tf.function
-    def __call__(self, iq_signal: IQSignal, **kwargs) -> tf.Tensor:
+    def __call__(self, iq_signal: IQSignal, /, **kwargs) -> tf.Tensor:
         data_rate = self.get_component_parameter(kwargs, "data_rate")
         symbol_scale = self.get_component_parameter(kwargs, "symbol_scale")
         bits_per_symbol = self.symbol_decoder.get_component_parameter(kwargs, "bits_per_symbol")

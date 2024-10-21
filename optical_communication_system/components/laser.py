@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from collections.abc import Sequence
-import typing
 import tensorflow as tf
 
 from typing import Optional
@@ -17,35 +16,45 @@ class Laser(Component):
     power: tf.Variable  # shape=[] or [None]; dtype=float32
 
     #: The output signal's shape is `(batch_size, parameter_dims, tf.size(time))`
-    batch_size: tf.Variable # shape=[]; dtype=int32
+    batch_size: tf.Variable  # shape=[]; dtype=int32
+
+    #: The output signal's shape is `(batch_size, parameter_dims, tf.size(time))`
+    parameter_dims: tf.Variable  # shape=[]; dtype=int32
 
     def __init__(
         self,
         power: float | Sequence[float] | tf.Tensor,
         batch_size: int | tf.Tensor = 1,
+        parameter_dims: Optional[int | tf.Tensor] = None,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.power = tf.Variable(tf.constant(power))
         self.batch_size = tf.Variable(tf.constant(batch_size))
-        self.parameters = ["power", "batch_size"]
+
+        if parameter_dims is None:
+            self.parameter_dims = tf.Variable(tf.size(self.power))
+        else:
+            self.parameter_dims = tf.Variable(tf.constant(parameter_dims))
+
+        self.global_parameters = ["batch_size", "parameter_dims"]
+        self.local_parameters = [("power", 0), "batch_size", "parameter_dims"]
 
     @tf.function(input_signature=(
         timing_spec,
-        tf.TensorSpec(shape=typing.cast(tf.TensorShape, None), dtype=tf.float32),
-        tf.TensorSpec(shape=[], dtype=tf.int32),
+        tf.TensorSpec(shape=[None], dtype=tf.float32, name="power"),
+        tf.TensorSpec(shape=[], dtype=tf.int32, name="batch_size"),
+        tf.TensorSpec(shape=[], dtype=tf.int32, name="parameter_dims")
     ))
     def implementation(
         self,
         timing: Timing,
         power: tf.Tensor,
-        batch_size: tf.Tensor
+        batch_size: tf.Tensor,
+        parameter_dims: tf.Tensor
     ) -> tf.Tensor:
-        if tf.rank(power) == 0:
-            power = tf.expand_dims(power, 0)
-
-        result_shape = [batch_size, tf.size(power), timing.sample_count]
+        result_shape = [batch_size, parameter_dims, timing.sample_count]
 
         samples = tf.reshape(
             tf.tile(

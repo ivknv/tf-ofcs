@@ -2,7 +2,6 @@
 
 from collections.abc import Sequence
 from typing import Optional
-import typing
 import tensorflow as tf
 
 from .datatypes import OpticalSignal, optical_signal_spec
@@ -19,20 +18,28 @@ __all__ = [
 
 
 class OpticalPhaseShifter(Component):
-    phase_shift: tf.Variable  # shape=[None]; dtype=float32
+    phase_shift: tf.Variable  # shape=[] or [None]; dtype=float32
 
-    def __init__(self, *, phase_shift: float | tf.Tensor, name: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        phase_shift: float | Sequence[float] | tf.Tensor,
+        name: Optional[str] = None
+    ) -> None:
         super().__init__(name=name)
 
         self.phase_shift = tf.Variable(tf.constant(phase_shift))
-        self.parameters = ["phase_shift"]
+        self.local_parameters = [("phase_shift", 0)]
 
-    @tf.function(input_signature=(optical_signal_spec, tf.TensorSpec(shape=[], dtype=tf.float32)))
+    @tf.function(input_signature=(
+        optical_signal_spec,
+        tf.TensorSpec(shape=[None], dtype=tf.float32)
+    ))
     def implementation(
         self,
         input_signal: OpticalSignal,
         phase_shift: tf.Tensor
     ) -> OpticalSignal:
+        phase_shift = tf.expand_dims(phase_shift, -1)
         shifted_samples = input_signal.samples * tf.math.exp(tf.complex(0.0, phase_shift))
 
         return OpticalSignal(
@@ -79,21 +86,21 @@ class OpticalFiber(Component):
         self.central_frequency = tf.Variable(tf.constant(central_frequency))
         self.step_count = tf.Variable(tf.constant(step_count))
 
-        self.parameters = [
-            "attenuation",
-            "chromatic_dispersion",
-            "eff_non_linear_coeff",
-            "length",
+        self.local_parameters = [
+            ("attenuation", 0),
+            ("chromatic_dispersion", 0),
+            ("eff_non_linear_coeff", 0),
+            ("length", 0),
             "central_frequency",
             "step_count"
         ]
 
     @tf.function(input_signature=(
         optical_signal_spec,
-        tf.TensorSpec(typing.cast(tf.TensorShape, None), tf.float32),
-        tf.TensorSpec(typing.cast(tf.TensorShape, None), tf.float32),
-        tf.TensorSpec(typing.cast(tf.TensorShape, None), tf.float32),
-        tf.TensorSpec(typing.cast(tf.TensorShape, None), tf.float32),
+        tf.TensorSpec(shape=[None], dtype=tf.float32, name="attenuation"),
+        tf.TensorSpec(shape=[None], dtype=tf.float32, name="chromatic_dispersion"),
+        tf.TensorSpec(shape=[None], dtype=tf.float32, name="eff_non_linear_coeff"),
+        tf.TensorSpec(shape=[None], dtype=tf.float32, name="length"),
         tf.TensorSpec([], tf.float32),
         tf.TensorSpec([], tf.int32)
     ))
@@ -107,19 +114,17 @@ class OpticalFiber(Component):
         central_frequency: tf.Tensor,
         step_count: tf.Tensor
     ) -> OpticalSignal:
-        parameter_dims = tf.shape(signal.samples)[1]
+        # shape=[parameter_dims, 1]
+        attenuation = tf.expand_dims(attenuation, -1)
 
         # shape=[parameter_dims, 1]
-        attenuation = tf.expand_dims(tf.broadcast_to(attenuation, [parameter_dims]), -1)
+        chromatic_dispersion = tf.expand_dims(chromatic_dispersion, -1)
 
         # shape=[parameter_dims, 1]
-        chromatic_dispersion = tf.expand_dims(tf.broadcast_to(chromatic_dispersion, [parameter_dims]), -1)
+        eff_non_linear_coeff = tf.expand_dims(eff_non_linear_coeff, -1)
 
         # shape=[parameter_dims, 1]
-        eff_non_linear_coeff = tf.expand_dims(tf.broadcast_to(eff_non_linear_coeff, [parameter_dims]), -1)
-
-        # shape=[parameter_dims, 1]
-        length = tf.expand_dims(tf.broadcast_to(length, [parameter_dims]), -1)
+        length = tf.expand_dims(length, -1)
 
         # Convert the dispersion coefficient from ps / (nm * km) to s / (m * m)
         D = chromatic_dispersion * 1e-6  # s / m**2; shape=[parameter_dims, 1]
@@ -197,7 +202,7 @@ class OpticalCoupler2x2(Component):
         super().__init__(name=name)
 
         self.flip = tf.Variable(tf.constant(flip))
-        self.parameters = ["flip"]
+        self.local_parameters = ["flip"]
 
     @tf.function(input_signature=(
         (optical_signal_spec, optical_signal_spec),

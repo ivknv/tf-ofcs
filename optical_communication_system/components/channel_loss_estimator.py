@@ -38,14 +38,14 @@ class ChannelLossEstimator(Composition):
         mean_amplitude = MeanAmplitude()
 
         super().__init__(
-            components=[
+            [
                 # We set the name to forward kwargs to the Lambda component
                 Lambda(self._generate_timing, allow_kwargs=True, name=name),
                 laser,
                 Fork(shape=[2]),
-                MapComponents(components=[
+                MapComponents([
                     mean_amplitude,
-                    Composition(components=[channel, photodiode, mean_amplitude])
+                    Composition([channel, photodiode, mean_amplitude])
                 ]),
                 Lambda(self._estimate_attenuation)
             ],
@@ -54,9 +54,8 @@ class ChannelLossEstimator(Composition):
 
         self.sampling_rate = tf.Variable(tf.constant(float(sampling_rate)))
 
-        self.parameters = ["sampling_rate"]
+        self.local_parameters = ["sampling_rate"]
 
-    @tf.function
     def _generate_timing(self, duration: tf.Tensor, **kwargs) -> tf.Tensor:
         sampling_rate = self.get_component_parameter(kwargs, "sampling_rate")
 

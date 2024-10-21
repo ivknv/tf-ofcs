@@ -37,7 +37,7 @@ class BERTester(Component):
             self.rng = rng
 
         self.n_iterations = tf.Variable(tf.constant(n_iterations))
-        self.parameters = ["n_iterations"]
+        self.local_parameters = ["n_iterations"]
 
     @tf.function(input_signature=(
         bit_sequence_spec,
@@ -47,7 +47,7 @@ class BERTester(Component):
         expected_output = tf.expand_dims(expected_output, 1)
 
         correct_counts = tf.cast(
-            tf.math.count_nonzero(expected_output == output, axis=[0, -1]),
+            tf.math.count_nonzero(tf.math.equal(expected_output, output), axis=[0, -1]),
             tf.float32
         )  # shape=[parameter_dims]
 
@@ -58,8 +58,7 @@ class BERTester(Component):
 
         return (total_bits - correct_counts) / total_bits
 
-    @tf.function
-    def __call__(self, sequence_length: tf.Tensor, **kwargs) -> tf.Tensor:
+    def __call__(self, sequence_length: tf.Tensor, /, **kwargs) -> tf.Tensor:
         n_iterations = self.get_component_parameter(kwargs, "n_iterations")
 
         inputs = self.rng.uniform(
@@ -71,6 +70,8 @@ class BERTester(Component):
 
         bers = None
 
+        kwargs["batch_size"] = n_iterations
+
         for system in self.systems:
             ber = self._compute_ber(inputs, system(inputs, **kwargs))
 
@@ -79,4 +80,5 @@ class BERTester(Component):
             else:
                 bers = tf.concat([[bers], [ber]], 0)
 
-        return bers / tf.cast(n_iterations, tf.float32)
+        assert bers is not None
+        return bers

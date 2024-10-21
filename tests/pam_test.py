@@ -16,10 +16,16 @@ def test_pam_symbol_encoder() -> None:
         [0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 0]
     ])
 
-    pam2_symbols = pam2_encoder(pam_input)
+    pam2_symbols = pam2_encoder(pam_input, parameter_dims=2)
     expected_pam2_symbols = tf.constant([
-        [[1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0]],
-        [[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0]]
+        [
+            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0],
+            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0]
+        ],
+        [
+            [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0]
+        ]
     ])
 
     pam4_symbols = pam4_encoder(pam_input)
@@ -98,12 +104,18 @@ def test_pam_encoder_decoder() -> None:
         [0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 0]
     ])
 
-    pam2_signal = pam2_encoder(pam_input)
+    pam2_signal = pam2_encoder(pam_input, parameter_dims=tf.constant(2))
     expected_pam2_symbols = tf.cast(
         tf.repeat(
             [
-                [[1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1]],
-                [[0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 0]]
+                [
+                    [1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1],
+                    [1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1]
+                ],
+                [
+                    [0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 0],
+                    [0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 0]
+                ]
             ],
             upsample_factor,
             axis=-1
@@ -111,16 +123,28 @@ def test_pam_encoder_decoder() -> None:
         tf.float32
     )
 
-    pam4_signal = pam4_encoder(pam_input)
+    pam4_signal = pam4_encoder(pam_input, parameter_dims=2)
     expected_pam4_symbols = tf.repeat([
-        [[2.0, 1.0, 0.0, 1.0, 0.0, 3.0]],
-        [[0.0, 0.0, 3.0, 1.0, 2.0, 2.0]]
+        [
+            [2.0, 1.0, 0.0, 1.0, 0.0, 3.0],
+            [2.0, 1.0, 0.0, 1.0, 0.0, 3.0]
+        ],
+        [
+            [0.0, 0.0, 3.0, 1.0, 2.0, 2.0],
+            [0.0, 0.0, 3.0, 1.0, 2.0, 2.0]
+        ]
     ], 2 * upsample_factor, axis=-1) / 3.0
 
-    pam8_signal = pam8_encoder(pam_input)
+    pam8_signal = pam8_encoder(pam_input, parameter_dims=2)
     expected_pam8_symbols = tf.repeat([
-        [[4.0, 4.0, 2.0, 3.0]],
-        [[0.0, 3.0, 3.0, 2.0]]
+        [
+            [4.0, 4.0, 2.0, 3.0],
+            [4.0, 4.0, 2.0, 3.0]
+        ],
+        [
+            [0.0, 3.0, 3.0, 2.0],
+            [0.0, 3.0, 3.0, 2.0]
+        ]
     ], 3 * upsample_factor, axis=-1) / 7.0
 
     assert tf.math.reduce_all(tf.abs(pam2_signal.samples - expected_pam2_symbols) < 1e-9)  # type: ignore
@@ -148,6 +172,8 @@ def test_pam_encoder_decoder() -> None:
     decoded_pam4_bitseq = pam4_decoder(pam4_signal)
     decoded_pam8_bitseq = pam8_decoder(pam8_signal)
 
-    assert tf.math.reduce_all(decoded_pam2_bitseq == tf.reshape(pam_input, (2, 1, 12)))  # type: ignore
-    assert tf.math.reduce_all(decoded_pam4_bitseq == tf.reshape(pam_input, (2, 1, 12)))  # type: ignore
-    assert tf.math.reduce_all(decoded_pam8_bitseq == tf.reshape(pam_input, (2, 1, 12)))  # type: ignore
+    expected_bitseq = tf.tile(tf.reshape(pam_input, (2, 1, 12)), [1, 2, 1])
+
+    assert tf.math.reduce_all(decoded_pam2_bitseq == expected_bitseq)  # type: ignore
+    assert tf.math.reduce_all(decoded_pam4_bitseq == expected_bitseq)  # type: ignore
+    assert tf.math.reduce_all(decoded_pam8_bitseq == expected_bitseq)  # type: ignore

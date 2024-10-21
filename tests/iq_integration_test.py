@@ -75,10 +75,11 @@ def test_qam4_system() -> None:
         [1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0]
     ])
 
-    output_sequence = system(input_sequence)
+    output_sequence = system(input_sequence, parameter_dims=2)
+    expected_output_sequence = tf.tile(tf.expand_dims(input_sequence, 1), [1, 2, 1])
 
     assert isinstance(output_sequence, tf.Tensor)
     assert output_sequence.dtype is tf.int32
-    assert tf.math.reduce_all(tf.shape(output_sequence) == (3, 1, 16))  # type: ignore
+    assert tf.math.reduce_all(tf.shape(output_sequence) == (3, 2, 16))  # type: ignore
 
-    assert tf.math.reduce_all(tf.expand_dims(input_sequence, 1) == output_sequence)  # type: ignore
+    assert tf.math.reduce_all(expected_output_sequence == output_sequence)  # type: ignore

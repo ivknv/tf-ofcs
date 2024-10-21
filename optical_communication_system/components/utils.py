@@ -199,8 +199,7 @@ class Composition(Component):
 
         self.components = components
 
-    @tf.function
-    def __call__(self, inp: Any, **kwargs) -> Any:
+    def __call__(self, inp: Any, /, **kwargs) -> Any:
         result: Any = inp
 
         for component in self.components:
@@ -230,8 +229,7 @@ class MapComponent(Component):
 
         self.component = component
 
-    @tf.function
-    def __call__(self, inputs: tuple, **kwargs) -> tuple:
+    def __call__(self, inputs: tuple, /, **kwargs) -> tuple:
         return tuple(self.component(input, **kwargs) for input in inputs)
 
     def trace(self, inp: Sequence, level: int = 0, **kwargs) -> tuple:
@@ -250,13 +248,12 @@ class MapComponent(Component):
 class MapComponents(Component):
     components: list[Component]
 
-    def __init__(self, *, components: list[Component], name: Optional[str] = None) -> None:
+    def __init__(self, components: list[Component], name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.components = components
 
-    @tf.function
-    def __call__(self, inputs: tuple, **kwargs) -> tuple:
+    def __call__(self, inputs: tuple, /, **kwargs) -> tuple:
         return tuple(
             component(input, **kwargs)
             for component, input in zip(self.components, inputs, strict=True)
@@ -276,7 +273,6 @@ class MapComponents(Component):
 
 
 class Identity(Component):
-    @tf.function
     def implementation(self, inp: Any) -> Any:
         return inp
 
@@ -307,7 +303,6 @@ class Reindex(Component):
         else:
             return tuple(self._reindex(inputs, i) for i in index)
 
-    @tf.function
     def implementation(self, inputs: tuple) -> Any:
         return self._reindex(inputs, self.indices)
 
@@ -320,7 +315,6 @@ class Fork(Component):
 
         self.shape = shape
 
-    @tf.function
     def implementation(self, inp: Any) -> tuple:
         result = inp
 
@@ -331,7 +325,6 @@ class Fork(Component):
 
 
 class ExtractTiming(Component):
-    @tf.function
     def implementation(self, signal: ElectricalSignal | OpticalSignal) -> Timing:
         return signal.timing
 
@@ -350,7 +343,7 @@ class TimingGenerator(Component):
 
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
         self.symbol_rate = tf.Variable(tf.constant(symbol_rate))
-        self.parameters = ["sampling_rate", "symbol_rate"]
+        self.local_parameters = ["sampling_rate", "symbol_rate"]
 
     @tf.function(input_signature=(
         tf.TensorSpec(shape=[], dtype=tf.int32),
@@ -379,7 +372,7 @@ class Resample(Component):
         super().__init__(name=name)
 
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
-        self.parameters = ["sampling_rate"]
+        self.local_parameters = ["sampling_rate"]
 
     @tf.function
     def implementation(
@@ -437,7 +430,7 @@ class Downsample(Component):
 
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
         self.time_offset = tf.Variable(tf.constant(time_offset))
-        self.parameters = ["sampling_rate", "time_offset"]
+        self.local_parameters = ["sampling_rate", "time_offset"]
 
     @tf.function(input_signature=(
         electrical_signal_spec,
@@ -583,7 +576,6 @@ class Lambda(Component):
         self.function = function
         self.allow_kwargs = allow_kwargs
 
-    @tf.function
     def __call__(self, inp, /, **kwargs) -> Any:
         if self.allow_kwargs:
             return self.function(inp, **kwargs)

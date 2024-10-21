@@ -22,7 +22,16 @@ def _type_as_str(inp: Any) -> str:
 class Component(tf.Module):
     output: Any
     trace_debug_enabled: bool
-    parameters: list[str]
+
+    #: Parameters that can be passed as {component name}__{parameter name}.
+    #: Each parameter in the list specifies the parameter name and optionally
+    #: the minimum tensor rank (when specified as tuple).
+    #: If the minimum rank is specified, the parameter may be automatically
+    #: broadcasted to the desired shape based on the `parameter_dims` value.
+    local_parameters: list[str | tuple[str, int]]
+
+    #: Parameters that can be passed normally as ({parameter name})
+    global_parameters: list[str | tuple[str, int]]
 
     trace_debug_enabled_by_default: bool = False
 
@@ -31,16 +40,16 @@ class Component(tf.Module):
 
         self.output = None
         self.trace_debug_enabled = self.trace_debug_enabled_by_default
-        self.parameters = []
+        self.local_parameters = []
+        self.global_parameters = []
 
-    @tf.function
-    def __call__(self, inp: Any, **kwargs) -> Any:
+    def __call__(self, inp: Any, /, **kwargs) -> Any:
         component_kwargs = self.extract_component_parameters(kwargs)
 
         return self.implementation(inp, **component_kwargs)
 
     @tf.function
-    def implementation(self, inp: Any, parameter_dims: tf.Tensor, **kwargs) -> Any:
+    def implementation(self, inp: Any, **kwargs) -> Any:
         raise NotImplementedError
 
     def _padding(self, level: int) -> str:
@@ -59,7 +68,7 @@ class Component(tf.Module):
 
             print(f"{padding}Return {_type_as_str(output)}")
 
-    def trace(self, inp: Any, level: int = 0, **kwargs) -> Any:
+    def trace(self, inp: Any, level: int = 0, /, **kwargs) -> Any:
         self.trace_call(inp, level)
         self.output = self.__call__(inp, **kwargs)
         self.trace_return_value(self.output, level + 1)
@@ -76,7 +85,7 @@ class Component(tf.Module):
 
         raise KeyError(f"No subcomponent with name {repr(name)}")
 
-    def get_kwarg(
+    def get_local_kwarg(
         self,
         kwargs: dict[str, Any],
         kwarg_name: str,
@@ -84,18 +93,48 @@ class Component(tf.Module):
     ) -> Any:
         return kwargs.get(f"{self.name}__{kwarg_name}", default)
 
-    def get_component_parameter(self, kwargs: dict[str, Any], parameter: str) -> Any:
-        value = self.get_kwarg(kwargs, parameter)
+    def get_component_parameter(
+        self,
+        kwargs: dict[str, Any],
+        parameter: str,
+        default: Optional[tf.Tensor] = None,
+        global_parameter: bool = False,
+        rank: int = -1,
+        parameter_dims: tf.Tensor = tf.constant(1)
+    ) -> Any:
+        if global_parameter:
+            value = kwargs.get(parameter, default)
+        else:
+            value = self.get_local_kwarg(kwargs, parameter, default)
 
-        if value is not None:
-            return value
+        if value is None:
+            value = getattr(self, parameter)
 
-        return getattr(self, parameter)
+        if tf.rank(value) < tf.constant(rank + 1):
+            value = tf.broadcast_to(value, tf.concat([[parameter_dims], tf.shape(value)], 0))
+
+        return value
 
     def extract_component_parameters(self, kwargs: dict[str, Any]) -> dict[str, Any]:
-        component_kwargs = {}
+        parameter_dims = kwargs.get("parameter_dims", tf.constant(1))
+        component_kwargs: dict[str, Any] = {}
 
-        for parameter in self.parameters:
-            component_kwargs[parameter] = self.get_component_parameter(kwargs, parameter)
+        iterables = zip([True, False], [self.global_parameters, self.local_parameters], strict=True)
+
+        for global_parameter, parameters in iterables:
+            for parameter in parameters:
+                if isinstance(parameter, tuple):
+                    parameter, rank = parameter
+                else:
+                    parameter, rank = parameter, -1
+
+                component_kwargs[parameter] = self.get_component_parameter(
+                    kwargs,
+                    parameter,
+                    default=component_kwargs.get(parameter),
+                    global_parameter=global_parameter,
+                    rank=rank,
+                    parameter_dims=parameter_dims
+                )
 
         return component_kwargs

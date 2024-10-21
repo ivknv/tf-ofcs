@@ -7,8 +7,8 @@ from optical_communication_system.components.datatypes import Timing, OpticalSig
 
 
 def test_laser() -> None:
-    batch_size = 4
-    laser = Laser(power=tf.constant([2e-3, 1e-3]), batch_size=batch_size, name="test_laser")
+    batch_size = tf.constant(4)
+    laser = Laser(power=tf.constant([2e-3, 1e-3]), name="test_laser")
 
     timing = Timing(
         sampling_rate=tf.constant(1.0),
@@ -17,7 +17,7 @@ def test_laser() -> None:
         sample_count=tf.constant(16)
     )
 
-    laser_output = laser(timing)
+    laser_output = laser(timing, parameter_dims=tf.constant(2), batch_size=batch_size)
 
     assert isinstance(laser_output, OpticalSignal)
     assert tf.math.reduce_all(

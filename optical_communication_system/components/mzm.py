@@ -30,13 +30,12 @@ class MachZehnderModulator(Component):
         self.carrier_source = carrier_source
         self.extinction_ratio = tf.Variable(tf.constant(extinction_ratio))
 
-        self.parameters = ["extinction_ratio"]
+        self.local_parameters = [("extinction_ratio", 0)]
 
-    @tf.function
-    def __call__(self, modulation_signal: ElectricalSignal, **kwargs) -> OpticalSignal:
+    def __call__(self, modulation_signal: ElectricalSignal, /, **kwargs) -> OpticalSignal:
         carrier_signal = self.carrier_source(modulation_signal.timing, **kwargs)
 
-        extinction_ratio = self.get_kwarg(kwargs, "extinction_ratio")
+        extinction_ratio = self.get_local_kwarg(kwargs, "extinction_ratio")
 
         if extinction_ratio is None:
             extinction_ratio = self.extinction_ratio
