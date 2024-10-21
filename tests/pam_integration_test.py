@@ -5,7 +5,7 @@ import tensorflow as tf
 from optical_communication_system.components import (
     PAMEncoder, PAMDecoder, PAMSymbolEncoder, PAMSymbolDecoder,
     Composition, Laser, BandPassFilter, MachZehnderModulator, OpticalAWGN,
-    OpticalFiber, Photodiode, Quantizer
+    OpticalFiber, Photodiode, Quantizer, ElectricalGain
 )
 from optical_communication_system.utils import dbm_to_w, from_db, wavelength_nm_to_frequency
 
@@ -55,13 +55,13 @@ def test_pam2_system() -> None:
         ),
         lpf,
         Quantizer(step=1e-6),
+        ElectricalGain(1.0 / expected_symbol_scale),
         PAMDecoder(
             data_rate=data_rate,
             symbol_decoder=PAMSymbolDecoder(
                 bits_per_symbol=bits_per_symbol,
                 mapping=mapping ** 2
-            ),
-            symbol_scale=expected_symbol_scale
+            )
         )
     ])
 

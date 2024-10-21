@@ -280,37 +280,30 @@ class IQDecoder(Component):
 
     symbol_decoder: IQSymbolDecoder
 
-    #: Received symbols will be scaled by this factor (necessary for M-ary modulation formats)
-    symbol_scale: tf.Variable  # shape=[]; dtype=float32
-
     def __init__(
         self,
         *,
         data_rate: float | tf.Tensor,
         symbol_decoder: IQSymbolDecoder,
-        symbol_scale: float | tf.Tensor = 1.0,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.data_rate = tf.Variable(tf.constant(data_rate))
         self.symbol_decoder = symbol_decoder
-        self.symbol_scale = tf.Variable(tf.constant(symbol_scale))
 
-        self.local_parameters = ["data_rate", "symbol_scale"]
+        self.local_parameters = ["data_rate"]
 
     @tf.function(input_signature=(
         iq_signal_spec,
         tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
-        tf.TensorSpec(shape=[], dtype=tf.float32, name="data_rate"),
-        tf.TensorSpec(shape=[], dtype=tf.float32, name="symbol_scale")
+        tf.TensorSpec(shape=[], dtype=tf.float32, name="data_rate")
     ))
     def _extract_iq_symbols(
         self,
         iq_signal: IQSignal,
         bits_per_symbol: tf.Tensor,
-        data_rate: tf.Tensor,
-        symbol_scale: tf.Tensor
+        data_rate: tf.Tensor
     ) -> tf.Tensor:
         i_samples = iq_signal[0].samples  # shape=[batch_size, parameter_dims, sample_count]
         q_samples = iq_signal[1].samples  # shape=[batch_size, parameter_dims, sample_count]
@@ -335,20 +328,19 @@ class IQDecoder(Component):
         )
 
         indices = n * tf.range(tf.shape(iq_samples)[-2] // n) + n // 2
-        iq_symbols = tf.math.real(tf.gather(iq_samples, indices, axis=-2)) / symbol_scale
+        iq_symbols = tf.math.real(tf.gather(iq_samples, indices, axis=-2))
 
         return iq_symbols
 
     def __call__(self, iq_signal: IQSignal, /, **kwargs) -> tf.Tensor:
         data_rate = self.get_component_parameter(kwargs, "data_rate")
-        symbol_scale = self.get_component_parameter(kwargs, "symbol_scale")
         bits_per_symbol = self.symbol_decoder.get_component_parameter(kwargs, "bits_per_symbol")
 
         batch_size = tf.shape(iq_signal[0].samples)[0]
         parameter_dims = tf.shape(iq_signal[0].samples)[1]
 
         # shape=(batch_size, parameter_dims, symbol_count, 2)
-        iq_symbols = self._extract_iq_symbols(iq_signal, bits_per_symbol, data_rate, symbol_scale)
+        iq_symbols = self._extract_iq_symbols(iq_signal, bits_per_symbol, data_rate)
         symbol_count = tf.shape(iq_symbols)[-2]
 
         return tf.reshape(

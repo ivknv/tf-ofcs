@@ -219,35 +219,28 @@ class PAMDecoder(Component):
     #: Constellation used for encoding
     symbol_decoder: PAMSymbolDecoder
 
-    #: Received symbols will be scaled by this factor (necessary for M-ary modulation formats)
-    symbol_scale: tf.Variable  # shape=[]; dtype=float32
-
     def __init__(
         self,
         data_rate: float | tf.Tensor,
         symbol_decoder: PAMSymbolDecoder,
-        symbol_scale: float | tf.Tensor = 1.0,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.data_rate = tf.Variable(tf.constant(data_rate))
         self.symbol_decoder = symbol_decoder
-        self.symbol_scale = tf.Variable(tf.constant(symbol_scale))
 
-        self.local_parameters = ["data_rate", "symbol_scale"]
+        self.local_parameters = ["data_rate"]
 
     @tf.function(input_signature=(
         electrical_signal_spec,
         tf.TensorSpec(shape=[], dtype=tf.float32, name="data_rate"),
-        tf.TensorSpec(shape=[], dtype=tf.float32, name="symbol_scale"),
         tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
     ))
     def _extract_pam_symbols(
         self,
         signal: ElectricalSignal,
         data_rate: tf.Tensor,
-        symbol_scale: tf.Tensor,
         bits_per_symbol: tf.Tensor
     ) -> tf.Tensor:
         n = tf.cast(
@@ -256,17 +249,16 @@ class PAMDecoder(Component):
         )
 
         indices = n * tf.range(tf.shape(signal.samples)[-1] // n) + n // 2
-        symbols = tf.abs(tf.gather(signal.samples, indices, axis=-1)) / symbol_scale
+        symbols = tf.abs(tf.gather(signal.samples, indices, axis=-1))
 
         return symbols
 
     def __call__(self, signal: ElectricalSignal, /, **kwargs) -> tf.Tensor:
         data_rate = self.get_component_parameter(kwargs, "data_rate")
-        symbol_scale = self.get_component_parameter(kwargs, "symbol_scale")
         bits_per_symbol = self.symbol_decoder.get_component_parameter(kwargs, "bits_per_symbol")
 
         symbols = self._extract_pam_symbols(
-            signal, data_rate, symbol_scale, bits_per_symbol
+            signal, data_rate, bits_per_symbol
         )
 
         batch_size = tf.shape(symbols)[0]
