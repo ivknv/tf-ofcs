@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from collections.abc import Sequence
 from typing import Optional
 
 import tensorflow as tf
@@ -11,8 +10,8 @@ __all__ = ["BERTester"]
 
 
 class BERTester(Component):
-    #: Systems to test
-    systems: list[Component]
+    #: System to test
+    system: Component
 
     #: Random number generator
     rng: tf.random.Generator
@@ -22,14 +21,14 @@ class BERTester(Component):
 
     def __init__(
         self,
-        systems: Sequence[Component],
+        system: Component,
         rng: Optional[tf.random.Generator] = None,
         n_iterations: int | tf.Tensor = 100,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.systems = list(systems)
+        self.system = system
 
         if rng is None:
             self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
@@ -68,17 +67,6 @@ class BERTester(Component):
             dtype=tf.int32
         )
 
-        bers = None
-
         kwargs["batch_size"] = n_iterations
 
-        for system in self.systems:
-            ber = self._compute_ber(inputs, system(inputs, **kwargs))
-
-            if bers is None:
-                bers = tf.expand_dims(ber, 0)
-            else:
-                bers = tf.concat([[bers], [ber]], 0)
-
-        assert bers is not None
-        return bers
+        return self._compute_ber(inputs, self.system(inputs, **kwargs))
