@@ -13,7 +13,6 @@ def test_laser() -> None:
     timing = Timing(
         sampling_rate=tf.constant(1.0),
         symbol_rate=tf.constant(1.0),
-        duration=tf.constant(16.0),
         sample_count=tf.constant(16)
     )
 

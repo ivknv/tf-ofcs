@@ -169,10 +169,7 @@ def generate_timing(
         tf.int32
     )
 
-    duration = tf.cast(sample_count, tf.float32) / sampling_rate
-
     return Timing(
-        duration=duration,
         sample_count=sample_count,
         sampling_rate=sampling_rate,
         symbol_rate=symbol_rate
@@ -387,7 +384,6 @@ class Resample(Component):
         if sampling_rate > timing.sampling_rate:
             factor = tf.cast(tf.round(sampling_rate / timing.sampling_rate), tf.int32)
 
-            new_duration = timing.duration * factor
             new_sample_count = timing.sample_count * factor
             new_samples = tf.repeat(signal.samples, factor, axis=-1)
         else:
@@ -395,7 +391,6 @@ class Resample(Component):
 
             tf.debugging.assert_equal(tf.math.floormod(timing.sample_count, factor), 0)
 
-            new_duration = timing.duration / factor
             new_sample_count = timing.sample_count // factor
 
             new_samples = _downsample(signal.samples, factor, axis=-1)
@@ -404,7 +399,6 @@ class Resample(Component):
         new_timing = Timing(
             sampling_rate=timing.sampling_rate * tf.cast(factor, tf.float32),
             symbol_rate=timing.symbol_rate,
-            duration=new_duration,
             sample_count=new_sample_count
         )
 
@@ -449,11 +443,9 @@ class Downsample(Component):
         indices = tf.range(shift, tf.shape(signal.samples)[-1] - shift, n)
 
         signal_samples = tf.gather(signal.samples, indices, axis=-1)
-        duration = signal.timing.duration - time_offset
 
         return ElectricalSignal(
             timing=Timing(
-                duration=duration,
                 sample_count=n,
                 symbol_rate=sampling_rate,
                 sampling_rate=sampling_rate
@@ -484,7 +476,6 @@ class ParallelToSerial(Component):
             assert isinstance(signal, SignalClass)
             tf.debugging.assert_less(tf.abs(signal.timing.sampling_rate - sampling_rate), 1e-6)
 
-        new_duration = sum(i.timing.duration for i in parallel_signals)
         new_sample_count = sum(i.timing.sample_count for i in parallel_signals)
 
         new_signal_samples = tf.concat(
@@ -494,7 +485,6 @@ class ParallelToSerial(Component):
 
         return SignalClass(
             timing=Timing(
-                new_duration=new_duration,
                 sample_count=new_sample_count,
                 symbol_rate=timing.symbol_rate,
                 sampling_rate=sampling_rate
@@ -531,11 +521,9 @@ class SerialToParallel(Component):
 
         parallel_sample_count = tf.cast(tf.round(timing.sample_count / self.n_parallel), tf.int32)
 
-        new_duration = timing.duration / tf.cast(parallel_sample_count, tf.float32)
         new_sample_count = timing.sample_count // self.n_parallel
 
         new_timing = Timing(
-            duration=new_duration,
             sample_count=new_sample_count,
             sampling_rate=sampling_rate,
             symbol_rate=timing.symbol_rate

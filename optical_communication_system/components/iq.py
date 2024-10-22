@@ -186,12 +186,9 @@ class IQEncoder(Component):
             tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
         )
 
-        signal_duration = tf.cast(sample_count, tf.float32) / sampling_rate
-
         iq_sequences = self.symbol_encoder(bitseq, **kwargs)
 
         timing = Timing(
-            duration=signal_duration,
             sample_count=sample_count,
             sampling_rate=sampling_rate,
             symbol_rate=symbol_rate

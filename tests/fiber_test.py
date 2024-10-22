@@ -20,7 +20,6 @@ def test_optical_fiber_attenuation() -> None:
 
     input_signal = OpticalSignal(
         timing=Timing(
-            duration=tf.constant(10.0),
             sample_count=tf.constant(10),
             sampling_rate=tf.constant(1.0),
             symbol_rate=tf.constant(10.0)

@@ -17,7 +17,6 @@ def test_photodiode() -> None:
     )
 
     timing = Timing(
-        duration=10.0,
         sampling_rate=1.0,
         symbol_rate=1.0,
         sample_count=10

@@ -17,9 +17,6 @@ __all__ = [
 
 
 class Timing(tf.experimental.ExtensionType):
-    #: Signal duration (in seconds)
-    duration: tf.Tensor  # shape=[]; dtype=tf.float32
-
     #: Number of samples in the signal
     sample_count: tf.Tensor  # shape=[]; dtype=tf.int32
 
@@ -31,7 +28,6 @@ class Timing(tf.experimental.ExtensionType):
 
 
 timing_spec = Timing.Spec(
-    duration=tf.TensorSpec(shape=[], dtype=tf.float32),
     sample_count=tf.TensorSpec(shape=[], dtype=tf.int32),
     sampling_rate=tf.TensorSpec(shape=[], dtype=tf.float32),
     symbol_rate=tf.TensorSpec(shape=[], dtype=tf.float32)

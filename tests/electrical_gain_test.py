@@ -10,7 +10,6 @@ def test_electrical_gain() -> None:
 
     input_signal = ElectricalSignal(
         timing=Timing(
-            duration=1.0,
             sampling_rate=1.0,
             symbol_rate=1.0,
             sample_count=100

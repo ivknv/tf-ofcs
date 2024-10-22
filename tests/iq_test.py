@@ -174,7 +174,6 @@ def test_iq_decoder() -> None:
     ]
 
     timing = Timing(
-        duration=tf.constant(24.0),
         sample_count=tf.constant(24),
         sampling_rate=tf.constant(1.0),
         symbol_rate=tf.constant(0.25)

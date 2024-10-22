@@ -190,13 +190,10 @@ class PAMEncoder(Component):
             tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
         )
 
-        signal_duration = tf.cast(sample_count, tf.float32) / sampling_rate
-
         pam_sequence = self.symbol_encoder(bitseq, **kwargs)
 
         return ElectricalSignal(
             timing=Timing(
-                duration=signal_duration,
                 sample_count=sample_count,
                 sampling_rate=sampling_rate,
                 symbol_rate=symbol_rate
