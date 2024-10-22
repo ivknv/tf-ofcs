@@ -152,9 +152,6 @@ def test_iq_encoder() -> None:
     assert tf.math.reduce_all(tf.abs(i_signal.samples - expected_i_samples) < 1e-6)  # type: ignore
     assert tf.math.reduce_all(tf.abs(q_signal.samples - expected_q_samples) < 1e-6)  # type: ignore
 
-    assert tf.abs(i_signal.timing.symbol_rate - 0.25) < 1e-6
-    assert tf.abs(q_signal.timing.symbol_rate - 0.25) < 1e-6
-
 
 def test_iq_decoder() -> None:
     qam_symbol_decoder = IQSymbolDecoder(
@@ -173,11 +170,7 @@ def test_iq_decoder() -> None:
         ] * 2
     ]
 
-    timing = Timing(
-        sample_count=tf.constant(24),
-        sampling_rate=tf.constant(1.0),
-        symbol_rate=tf.constant(0.25)
-    )
+    timing = Timing(sample_count=tf.constant(24), sampling_rate=tf.constant(1.0))
 
     i_signal = ElectricalSignal(
         timing=timing,

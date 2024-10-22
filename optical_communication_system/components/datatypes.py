@@ -23,14 +23,10 @@ class Timing(tf.experimental.ExtensionType):
     #: Sampling rate in Hz
     sampling_rate: tf.Tensor  # shape=[]; dtype=tf.float32
 
-    #: Data rate in symbols/second
-    symbol_rate: tf.Tensor  # shape=[]; dtype=tf.float32
-
 
 timing_spec = Timing.Spec(
     sample_count=tf.TensorSpec(shape=[], dtype=tf.int32),
-    sampling_rate=tf.TensorSpec(shape=[], dtype=tf.float32),
-    symbol_rate=tf.TensorSpec(shape=[], dtype=tf.float32)
+    sampling_rate=tf.TensorSpec(shape=[], dtype=tf.float32)
 )
 
 

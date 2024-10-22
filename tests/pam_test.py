@@ -151,10 +151,6 @@ def test_pam_encoder_decoder() -> None:
     assert tf.math.reduce_all(tf.abs(pam4_signal.samples - expected_pam4_symbols) < 1e-9)  # type: ignore
     assert tf.math.reduce_all(tf.abs(pam8_signal.samples - expected_pam8_symbols) < 1e-9)  # type: ignore
 
-    assert tf.math.reduce_all(tf.abs(pam2_signal.timing.symbol_rate - 1.0) < 1e-9)  # type: ignore
-    assert tf.math.reduce_all(tf.abs(pam4_signal.timing.symbol_rate - 0.5) < 1e-9)  # type: ignore
-    assert tf.math.reduce_all(tf.abs(pam8_signal.timing.symbol_rate - 1 / 3) < 1e-9)  # type: ignore
-
     pam2_decoder = PAMDecoder(
         data_rate=data_rate,
         symbol_decoder=PAMSymbolDecoder(bits_per_symbol=1)

@@ -16,11 +16,7 @@ def test_photodiode() -> None:
         maximum_power=dbm_to_w(tf.constant([0.0, 0.0, -2.0]))
     )
 
-    timing = Timing(
-        sampling_rate=1.0,
-        symbol_rate=1.0,
-        sample_count=10
-    )
+    timing = Timing(sampling_rate=1.0, sample_count=10)
 
     power = dbm_to_w(-3.0)
 

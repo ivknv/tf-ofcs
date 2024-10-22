@@ -216,13 +216,14 @@ def plot_iq_constellation(
 
 def plot_eye_diagram(
     signal: ElectricalSignal,
+    symbol_rate: float | tf.Tensor,
     ax: Optional[Axes] = None,
     index: int | tuple[int, ...] = (0, 0),
     time_units: tuple[float, str] = (1e9, "ns"),
     label: str = "Signal eye diagram",
     **kwargs
 ) -> None:
-    T_sym = int((signal.timing.sampling_rate / signal.timing.symbol_rate))
+    T_sym = int((signal.timing.sampling_rate / symbol_rate))
 
     samples = signal.samples[index][T_sym // 2:].numpy()
 

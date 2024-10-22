@@ -169,11 +169,7 @@ def generate_timing(
         tf.int32
     )
 
-    return Timing(
-        sample_count=sample_count,
-        sampling_rate=sampling_rate,
-        symbol_rate=symbol_rate
-    )
+    return Timing(sample_count=sample_count, sampling_rate=sampling_rate)
 
 
 @tf.function(input_signature=(timing_spec,))
@@ -398,7 +394,6 @@ class Resample(Component):
 
         new_timing = Timing(
             sampling_rate=timing.sampling_rate * tf.cast(factor, tf.float32),
-            symbol_rate=timing.symbol_rate,
             sample_count=new_sample_count
         )
 
@@ -447,7 +442,6 @@ class Downsample(Component):
         return ElectricalSignal(
             timing=Timing(
                 sample_count=n,
-                symbol_rate=sampling_rate,
                 sampling_rate=sampling_rate
             ),
             samples=signal_samples
@@ -486,7 +480,6 @@ class ParallelToSerial(Component):
         return SignalClass(
             timing=Timing(
                 sample_count=new_sample_count,
-                symbol_rate=timing.symbol_rate,
                 sampling_rate=sampling_rate
             ),
             samples=new_signal_samples
@@ -526,7 +519,6 @@ class SerialToParallel(Component):
         new_timing = Timing(
             sample_count=new_sample_count,
             sampling_rate=sampling_rate,
-            symbol_rate=timing.symbol_rate
         )
 
         return tuple(

@@ -179,8 +179,6 @@ class IQEncoder(Component):
 
         tf.debugging.assert_equal(tf.math.floormod(bit_count, bits_per_symbol), 0)
 
-        symbol_rate = tf.divide(data_rate, tf.cast(bits_per_symbol, tf.float32))
-
         sample_count = tf.multiply(
             bit_count,
             tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
@@ -190,8 +188,7 @@ class IQEncoder(Component):
 
         timing = Timing(
             sample_count=sample_count,
-            sampling_rate=sampling_rate,
-            symbol_rate=symbol_rate
+            sampling_rate=sampling_rate
         )
 
         repeat_count = tf.cast(

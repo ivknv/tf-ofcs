@@ -9,11 +9,7 @@ def test_electrical_gain() -> None:
     gain = ElectricalGain(gain=[0.0, 1.0, 0.5, 2.0])
 
     input_signal = ElectricalSignal(
-        timing=Timing(
-            sampling_rate=1.0,
-            symbol_rate=1.0,
-            sample_count=100
-        ),
+        timing=Timing(sampling_rate=1.0, sample_count=100),
         samples=tf.tile(
             tf.reshape(tf.math.cos(tf.range(100, dtype=tf.float32)), [1, 1, 100]),
             [2, 4, 1]
