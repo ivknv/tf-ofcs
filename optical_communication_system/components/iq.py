@@ -167,7 +167,7 @@ class IQEncoder(Component):
 
         self.local_parameters = ["sampling_rate", "data_rate"]
 
-    def __call__(self, bitseq: tf.Tensor, /, **kwargs) -> IQSignal:
+    def call(self, bitseq: tf.Tensor, /, tracing_level: int = 0, **kwargs) -> IQSignal:
         assert isinstance(bitseq, tf.Tensor)
         assert bitseq.dtype is bit_dtype
 
@@ -184,7 +184,7 @@ class IQEncoder(Component):
             tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
         )
 
-        iq_sequences = self.symbol_encoder(bitseq, **kwargs)
+        iq_sequences = self.symbol_encoder(bitseq, tracing_level=tracing_level + 1, **kwargs)
 
         timing = Timing(
             sample_count=sample_count,
@@ -326,7 +326,7 @@ class IQDecoder(Component):
 
         return iq_symbols
 
-    def __call__(self, iq_signal: IQSignal, /, **kwargs) -> tf.Tensor:
+    def call(self, iq_signal: IQSignal, /, tracing_level: int = 0, **kwargs) -> tf.Tensor:
         data_rate = self.get_component_parameter(kwargs, "data_rate")
         bits_per_symbol = self.symbol_decoder.get_component_parameter(kwargs, "bits_per_symbol")
 
@@ -338,6 +338,6 @@ class IQDecoder(Component):
         symbol_count = tf.shape(iq_symbols)[-2]
 
         return tf.reshape(
-            self.symbol_decoder(iq_symbols, **kwargs),
+            self.symbol_decoder(iq_symbols, tracing_level=tracing_level + 1, **kwargs),
             (batch_size, parameter_dims, symbol_count * bits_per_symbol)
         )

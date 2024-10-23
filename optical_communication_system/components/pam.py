@@ -174,7 +174,7 @@ class PAMEncoder(Component):
 
         self.local_parameters = ["sampling_rate", "data_rate"]
 
-    def __call__(self, bitseq: tf.Tensor, /, **kwargs) -> ElectricalSignal:
+    def call(self, bitseq: tf.Tensor, /, tracing_level: int = 0, **kwargs) -> ElectricalSignal:
         data_rate = self.get_component_parameter(kwargs, "data_rate")
         sampling_rate = self.get_component_parameter(kwargs, "sampling_rate")
         bits_per_symbol = self.symbol_encoder.get_component_parameter(kwargs, "bits_per_symbol")
@@ -188,7 +188,7 @@ class PAMEncoder(Component):
             tf.cast(tf.round(sampling_rate / data_rate), tf.int32)
         )
 
-        pam_sequence = self.symbol_encoder(bitseq, **kwargs)
+        pam_sequence = self.symbol_encoder(bitseq, tracing_level=tracing_level + 1, **kwargs)
 
         return ElectricalSignal(
             timing=Timing(
@@ -247,7 +247,7 @@ class PAMDecoder(Component):
 
         return symbols
 
-    def __call__(self, signal: ElectricalSignal, /, **kwargs) -> tf.Tensor:
+    def __call__(self, signal: ElectricalSignal, /, tracing_level: int = 0, **kwargs) -> tf.Tensor:
         data_rate = self.get_component_parameter(kwargs, "data_rate")
         bits_per_symbol = self.symbol_decoder.get_component_parameter(kwargs, "bits_per_symbol")
 
@@ -260,6 +260,6 @@ class PAMDecoder(Component):
         symbol_count = tf.shape(symbols)[2]
 
         return tf.reshape(
-            self.symbol_decoder(symbols, **kwargs),
+            self.symbol_decoder(symbols, tracing_level=tracing_level + 1, **kwargs),
             (batch_size, parameter_dims, symbol_count * bits_per_symbol,)
         )

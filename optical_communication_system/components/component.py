@@ -44,12 +44,22 @@ class Component(tf.Module):
         self.global_parameters = []
 
     def __call__(self, inp: Any, /, **kwargs) -> Any:
-        component_kwargs = self.extract_component_parameters(kwargs)
+        if kwargs.get("tracing", False):
+            tracing_level = kwargs.get("tracing_level", 0)
 
+            self.trace_call(inp, tracing_level)
+            self.output = self.call(inp, **kwargs)
+            self.trace_return_value(self.output, tracing_level + 1)
+
+            return self.output
+        else:
+            return self.call(inp, **kwargs)
+
+    def call(self, inp: Any, /, **kwargs):
+        component_kwargs = self.extract_component_parameters(kwargs)
         return self.implementation(inp, **component_kwargs)
 
-    @tf.function
-    def implementation(self, inp: Any, **kwargs) -> Any:
+    def implementation(self, inp: Any, /, *args, **kwargs) -> Any:
         raise NotImplementedError
 
     def _padding(self, level: int) -> str:
@@ -68,12 +78,8 @@ class Component(tf.Module):
 
             print(f"{padding}Return {_type_as_str(output)}")
 
-    def trace(self, inp: Any, level: int = 0, /, **kwargs) -> Any:
-        self.trace_call(inp, level)
-        self.output = self.__call__(inp, **kwargs)
-        self.trace_return_value(self.output, level + 1)
-
-        return self.output
+    def trace(self, inp: Any, /, **kwargs) -> Any:
+        return self.__call__(inp, tracing=True, **kwargs)
 
     def find_child(self, name: str) -> "Component":
         for module in self.submodules:

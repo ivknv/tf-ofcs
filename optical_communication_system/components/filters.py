@@ -31,10 +31,10 @@ class BandPassFilter(Component):
         self.max_frequency = tf.Variable(tf.constant(max_frequency))
         self.local_parameters = [("min_frequency", 0), ("max_frequency", 0)]
 
-    @tf.function
     def implementation(
         self,
         signal: ElectricalSignal | OpticalSignal,
+        /,
         min_frequency: tf.Tensor,
         max_frequency: tf.Tensor
     ) -> ElectricalSignal | OpticalSignal:

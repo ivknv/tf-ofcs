@@ -193,24 +193,11 @@ class Composition(Component):
 
         self.components = components
 
-    def __call__(self, inp: Any, /, **kwargs) -> Any:
+    def call(self, inp: Any, /, tracing_level: int = 0, **kwargs) -> Any:
         result: Any = inp
 
         for component in self.components:
-            result = component(result, **kwargs)
-
-        return result
-
-    def trace(self, inp: Any, level: int = 0, **kwargs) -> Any:
-        self.trace_call(inp, level)
-
-        result: Any = inp
-
-        for component in self.components:
-            result = component.trace(result, level + 1, **kwargs)
-
-        self.output = result
-        self.trace_return_value(self.output, level + 1)
+            result = component(result, tracing_level=tracing_level + 1, **kwargs)
 
         return result
 
@@ -223,20 +210,15 @@ class MapComponent(Component):
 
         self.component = component
 
-    def __call__(self, inputs: tuple, /, **kwargs) -> tuple:
-        return tuple(self.component(input, **kwargs) for input in inputs)
-
-    def trace(self, inp: Sequence, level: int = 0, **kwargs) -> tuple:
-        self.trace_call(inp, level)
-
-        self.output = tuple(
-            self.component.trace(input, level + 1, **kwargs)
-            for input in inp
+    def call(self, inputs: tuple, /, tracing_level: int = 0, **kwargs) -> tuple:
+        return tuple(
+            self.component(
+                input,
+                tracing_level=tracing_level + 1,
+                **kwargs
+            )
+            for input in inputs
         )
-
-        self.trace_return_value(self.output, level + 1)
-
-        return self.output
 
 
 class MapComponents(Component):
@@ -247,27 +229,25 @@ class MapComponents(Component):
 
         self.components = components
 
-    def __call__(self, inputs: tuple, /, **kwargs) -> tuple:
+    def call(
+        self,
+        inputs: tuple,
+        /,
+        tracing_level: int = 0,
+        **kwargs
+    ) -> tuple:
         return tuple(
-            component(input, **kwargs)
+            component(
+                input,
+                tracing_level=tracing_level + 1,
+                **kwargs
+            )
             for component, input in zip(self.components, inputs, strict=True)
         )
 
-    def trace(self, inp: tuple, level: int = 0, **kwargs) -> tuple:
-        self.trace_call(inp, level)
-
-        self.output = tuple(
-            component.trace(input, level + 1, **kwargs)
-            for component, input in zip(self.components, inp, strict=True)
-        )
-
-        self.trace_return_value(self.output, level + 1)
-
-        return self.output
-
 
 class Identity(Component):
-    def implementation(self, inp: Any) -> Any:
+    def call(self, inp: Any, /, **kwargs) -> Any:
         return inp
 
 
@@ -297,7 +277,7 @@ class Reindex(Component):
         else:
             return tuple(self._reindex(inputs, i) for i in index)
 
-    def implementation(self, inputs: tuple) -> Any:
+    def call(self, inputs: tuple, /, **kwargs) -> Any:
         return self._reindex(inputs, self.indices)
 
 
@@ -309,7 +289,7 @@ class Fork(Component):
 
         self.shape = shape
 
-    def implementation(self, inp: Any) -> tuple:
+    def call(self, inp: Any, /, **kwargs) -> tuple:
         result = inp
 
         for i in self.shape:
@@ -319,7 +299,7 @@ class Fork(Component):
 
 
 class ExtractTiming(Component):
-    def implementation(self, signal: ElectricalSignal | OpticalSignal) -> Timing:
+    def call(self, signal: ElectricalSignal | OpticalSignal, /, **kwargs) -> Timing:
         return signal.timing
 
 
@@ -339,16 +319,13 @@ class TimingGenerator(Component):
         self.symbol_rate = tf.Variable(tf.constant(symbol_rate))
         self.local_parameters = ["sampling_rate", "symbol_rate"]
 
-    @tf.function(input_signature=(
-        tf.TensorSpec(shape=[], dtype=tf.int32),
-        tf.TensorSpec(shape=[], dtype=tf.float32),
-        tf.TensorSpec(shape=[], dtype=tf.float32)
-    ))
     def implementation(
         self,
         symbol_count: tf.Tensor,
+        /,
         sampling_rate: tf.Tensor,
         symbol_rate: tf.Tensor,
+        **kwargs
     ) -> Timing:
         return generate_timing(sampling_rate, symbol_rate, symbol_count)
 
@@ -368,10 +345,10 @@ class Resample(Component):
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
         self.local_parameters = ["sampling_rate"]
 
-    @tf.function
     def implementation(
         self,
         signal: ElectricalSignal | OpticalSignal,
+        /,
         sampling_rate: tf.Tensor
     ) -> ElectricalSignal | OpticalSignal:
         assert isinstance(signal, (ElectricalSignal, OpticalSignal))
@@ -430,6 +407,7 @@ class Downsample(Component):
     def implementation(
         self,
         signal: ElectricalSignal,
+        /,
         sampling_rate: tf.Tensor,
         time_offset: tf.Tensor
     ) -> ElectricalSignal:
@@ -450,17 +428,17 @@ class Downsample(Component):
 
 
 class MeanAmplitude(Component):
-    @tf.function
-    def implementation(self, input_signal: OpticalSignal | ElectricalSignal) -> tf.Tensor:
+    def call(self, input_signal: OpticalSignal | ElectricalSignal, /, **kwargs) -> tf.Tensor:
         assert isinstance(input_signal, (ElectricalSignal, OpticalSignal))
         return tf.math.reduce_mean(tf.abs(input_signal.samples), axis=-1)
 
 
 class ParallelToSerial(Component):
-    @tf.function
-    def implementation(
+    def call(
         self,
-        parallel_signals: Sequence[OpticalSignal] | Sequence[ElectricalSignal]
+        parallel_signals: Sequence[OpticalSignal] | Sequence[ElectricalSignal],
+        /,
+        **kwargs
     ) -> ElectricalSignal | OpticalSignal:
         timing = parallel_signals[0].timing
         sampling_rate = timing.sampling_rate
@@ -496,10 +474,11 @@ class SerialToParallel(Component):
 
         self.n_parallel = n_parallel
 
-    @tf.function
-    def implementation(
+    def call(
         self,
         serial_signal: OpticalSignal | ElectricalSignal,
+        /,
+        **kwargs
     ) -> tuple[ElectricalSignal, ...] | tuple[OpticalSignal, ...]:
         assert self.n_parallel >= 1
 
@@ -533,8 +512,7 @@ class SerialToParallel(Component):
 
 
 class ExtractSamples(Component):
-    @tf.function
-    def implementation(self, signal: ElectricalSignal | OpticalSignal) -> tf.Tensor:
+    def call(self, signal: ElectricalSignal | OpticalSignal, /, **kwargs) -> tf.Tensor:
         assert isinstance(signal, (ElectricalSignal, OpticalSignal))
         return signal.samples
 
@@ -557,7 +535,7 @@ class Lambda(Component):
         self.function = function
         self.allow_kwargs = allow_kwargs
 
-    def __call__(self, inp, /, **kwargs) -> Any:
+    def call(self, inp: Any, /, **kwargs) -> Any:
         if self.allow_kwargs:
             return self.function(inp, **kwargs)
 
@@ -588,6 +566,7 @@ class RedistributeDimensions(Component):
     def implementation(
         self,
         signal: OpticalSignal | ElectricalSignal,
+        /,
         factors: tf.Tensor
     ) -> OpticalSignal | ElectricalSignal:
         Signal = signal.__class__

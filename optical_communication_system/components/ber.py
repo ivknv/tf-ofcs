@@ -57,7 +57,7 @@ class BERTester(Component):
 
         return (total_bits - correct_counts) / total_bits
 
-    def __call__(self, sequence_length: tf.Tensor, /, **kwargs) -> tf.Tensor:
+    def call(self, sequence_length: tf.Tensor, /, tracing_level: int = 0, **kwargs) -> tf.Tensor:
         n_iterations = self.get_component_parameter(kwargs, "n_iterations")
 
         inputs = self.rng.uniform(
@@ -69,4 +69,7 @@ class BERTester(Component):
 
         kwargs["batch_size"] = n_iterations
 
-        return self._compute_ber(inputs, self.system(inputs, **kwargs))
+        return self._compute_ber(
+            inputs,
+            self.system(inputs, tracing_level=tracing_level + 1, **kwargs)
+        )
