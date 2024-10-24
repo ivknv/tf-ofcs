@@ -434,27 +434,46 @@ class MeanAmplitude(Component):
 
 
 class ParallelToSerial(Component):
+    """
+        Merges `n` parallel signals into one or more serial signals.
+        A single parallel signal is considered to span `batch_size` // `n` batches
+        of the signal.
+
+        If the input signal has the shape `(batch_size, parameter_dims, sample_count)`,
+        then the output shape is `(batch_size // n, parameter_dims, sample_count * n)`
+    """
+
+    #: Number of parallel signals to merge into one
+    n: int
+
+    def __init__(self, n: int, name: Optional[str] = None) -> None:
+        super().__init__(name=name)
+
+        self.n = n
+
     def call(
         self,
-        parallel_signals: Sequence[OpticalSignal] | Sequence[ElectricalSignal],
+        input_signal: OpticalSignal | ElectricalSignal,
         /,
         **kwargs
     ) -> ElectricalSignal | OpticalSignal:
-        timing = parallel_signals[0].timing
+        timing = input_signal.timing
         sampling_rate = timing.sampling_rate
 
-        SignalClass = parallel_signals[0].__class__
+        SignalClass = input_signal.__class__
 
-        for signal in parallel_signals:
-            assert isinstance(signal, SignalClass)
-            tf.debugging.assert_less(tf.abs(signal.timing.sampling_rate - sampling_rate), 1e-6)
+        new_sample_count = timing.sample_count * self.n
 
-        new_sample_count = sum(i.timing.sample_count for i in parallel_signals)
+        batch_size = tf.shape(input_signal.samples)[0]
 
-        new_signal_samples = tf.concat(
-            [signal.samples for signal in parallel_signals],
-            -1
-        )
+        tf.debugging.assert_equal(tf.math.floormod(batch_size, self.n), 0)
+
+        new_signal_samples = tf.vectorized_map(
+            lambda i: tf.concat(
+                [input_signal.samples[i * self.n + j] for j in range(self.n)],
+                1
+            ),
+            tf.range(batch_size // self.n))
 
         return SignalClass(
             timing=Timing(
@@ -466,49 +485,57 @@ class ParallelToSerial(Component):
 
 
 class SerialToParallel(Component):
-    #: Number of parallel signals at the output
-    n_parallel: int
+    """
+        Splits `m` serial signals into `m * n` parallel signals.
+        A single parallel signal is considered to span `batch_size` // `n` batches
+        of the signal.
 
-    def __init__(self, n_parallel: int, name: Optional[str] = None) -> None:
+        If the input signal has the shape `(batch_size, parameter_dims, sample_count)`,
+        then the output shape is `(batch_size * n, parameter_dims, sample_count // n)`
+    """
+
+    #: Number of parallel signals at the output
+    n: int
+
+    def __init__(self, n: int, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
-        self.n_parallel = n_parallel
+        self.n = n
 
     def call(
         self,
         serial_signal: OpticalSignal | ElectricalSignal,
         /,
         **kwargs
-    ) -> tuple[ElectricalSignal, ...] | tuple[OpticalSignal, ...]:
-        assert self.n_parallel >= 1
-
-        if self.n_parallel == 1:
-            return (serial_signal,)
-
+    ) -> ElectricalSignal | OpticalSignal:
         timing = serial_signal.timing
         sampling_rate = timing.sampling_rate
 
-        tf.debugging.assert_equal(tf.math.floormod(timing.sample_count, self.n_parallel), 0)
+        tf.debugging.assert_equal(tf.math.floormod(timing.sample_count, self.n), 0)
 
         SignalClass = serial_signal.__class__
 
-        parallel_sample_count = tf.cast(tf.round(timing.sample_count / self.n_parallel), tf.int32)
+        new_sample_count = timing.sample_count // self.n
+        batch_size = tf.shape(serial_signal.samples)[0]
 
-        new_sample_count = timing.sample_count // self.n_parallel
+        sample_start_indices = tf.range(0, timing.sample_count, new_sample_count)
+        sample_end_indices = sample_start_indices + new_sample_count
+
+        new_signal_samples = tf.vectorized_map(
+            lambda i: serial_signal.samples[
+                i // self.n,
+                :,
+                sample_start_indices[i % self.n]:sample_end_indices[i % self.n]
+            ],
+            tf.range(batch_size * self.n)
+        )
 
         new_timing = Timing(
             sample_count=new_sample_count,
             sampling_rate=sampling_rate,
         )
 
-        return tuple(
-            SignalClass(
-                timing=new_timing,
-                samples=serial_signal.samples[:,:,
-                    parallel_sample_count * tf.constant(i):parallel_sample_count * tf.constant(i + 1)
-                ]
-            ) for i in range(self.n_parallel)
-        )
+        return SignalClass(timing=new_timing, samples=new_signal_samples)
 
 
 class ExtractSamples(Component):
