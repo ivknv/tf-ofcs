@@ -15,6 +15,7 @@ from .redistribute_dimensions import RedistributeDimensions
 from .split_signals import SplitSignals
 from .merge_signals import MergeSignals
 from .tile_signals import TileSignals
+from .gather_signals import GatherSignals
 
 __all__ = [
     "MapComponents",
@@ -30,5 +31,6 @@ __all__ = [
     "RedistributeDimensions",
     "SplitSignals",
     "MergeSignals",
-    "TileSignals"
+    "TileSignals",
+    "GatherSignals"
 ]
