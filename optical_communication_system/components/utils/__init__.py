@@ -12,6 +12,7 @@ from .serial_to_parallel import SerialToParallel
 from .extract_samples import ExtractSamples
 from .lambda_ import Lambda
 from .redistribute_dimensions import RedistributeDimensions
+from .split_signals import SplitSignals
 
 __all__ = [
     "MapComponents",
@@ -24,5 +25,6 @@ __all__ = [
     "SerialToParallel",
     "ExtractSamples",
     "Lambda",
-    "RedistributeDimensions"
+    "RedistributeDimensions",
+    "SplitSignals"
 ]

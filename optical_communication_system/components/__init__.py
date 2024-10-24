@@ -17,7 +17,8 @@ from .filters import BandPassFilter
 from .ber import BERTester
 from .utils import (
     Composition, MapComponents, Identity, Reindex, Fork, Resample, Downsample,
-    ParallelToSerial, SerialToParallel, ExtractSamples, Lambda, RedistributeDimensions
+    ParallelToSerial, SerialToParallel, ExtractSamples, Lambda, RedistributeDimensions,
+    SplitSignals
 )
 from .electrical import (
     ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator,
@@ -67,6 +68,7 @@ __all__ = [
     "ExtractSamples",
     "Lambda",
     "RedistributeDimensions",
+    "SplitSignals",
     "Component",
     "OpticalGain",
     "ChannelLossEstimator"
