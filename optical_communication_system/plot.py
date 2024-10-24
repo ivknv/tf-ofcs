@@ -9,7 +9,7 @@ from typing import Optional
 
 from . import constants
 from .components.datatypes import OpticalSignal, ElectricalSignal
-from .components.utils import timing_to_samples
+from .utils import timing_to_samples
 
 __all__ = [
     "plot_power",

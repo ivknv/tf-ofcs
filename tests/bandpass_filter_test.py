@@ -4,15 +4,14 @@ import math
 import tensorflow as tf
 import numpy as np
 
-from optical_communication_system.components import BandPassFilter, TimingGenerator
-from optical_communication_system.components.datatypes import ElectricalSignal
-from optical_communication_system.components.utils import timing_to_samples
+from optical_communication_system.components import BandPassFilter
+from optical_communication_system.components.datatypes import ElectricalSignal, Timing
+from optical_communication_system.utils import timing_to_samples
 
 
 def test_bandpass_filter() -> None:
     bandpass_filter = BandPassFilter(min_frequency=[0.2, 0.1], max_frequency=[0.5, 0.3])
-    timing_generator = TimingGenerator(sampling_rate=2.0, symbol_rate=1.0)
-    timing = timing_generator(tf.constant(200))
+    timing = Timing(sampling_rate=2.0, sample_count=400)
 
     time = timing_to_samples(timing)
 

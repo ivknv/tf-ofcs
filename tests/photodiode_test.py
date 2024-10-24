@@ -5,7 +5,7 @@ from optical_communication_system.components import Photodiode
 from optical_communication_system.components.datatypes import (
     OpticalSignal, ElectricalSignal, Timing
 )
-from optical_communication_system.components.utils import timing_to_samples
+from optical_communication_system.utils import timing_to_samples
 from optical_communication_system.utils import dbm_to_w
 from optical_communication_system import constants
 

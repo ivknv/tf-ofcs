@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from .utils import adjust_symbol_for_mzm, indices_to_bits, bits_to_indices, pam_constellation
+from ..utils import adjust_symbol_for_mzm, indices_to_bits, bits_to_indices, pam_constellation
 from .component import Component
 
 from .datatypes import (

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from optical_communication_system.components import OpticalAWGN, Laser, TimingGenerator
-from optical_communication_system.components.datatypes import OpticalSignal
+from optical_communication_system.components import OpticalAWGN, Laser
+from optical_communication_system.components.datatypes import OpticalSignal, Timing
 from optical_communication_system.utils import from_db, dbm_to_w
 
 
@@ -13,9 +13,8 @@ def test_optical_awgn() -> None:
     parameter_dims = tf.constant(3)
 
     laser = Laser(power=dbm_to_w(0.0))
-    timing_generator = TimingGenerator(sampling_rate=20.0, symbol_rate=1.0)
+    timing = Timing(sampling_rate=20.0, sample_count=20000)
 
-    timing = timing_generator(tf.constant(1000))
     input_signal = laser(timing, batch_size=2, parameter_dims=parameter_dims)
 
     assert tf.math.reduce_all(tf.shape(input_signal.samples) == (2, parameter_dims, 20000))  # type: ignore

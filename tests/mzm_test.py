@@ -2,18 +2,17 @@
 
 import math
 import tensorflow as tf
-from optical_communication_system.components import (
-    Laser, MachZehnderModulator, TimingGenerator
+from optical_communication_system.components import Laser, MachZehnderModulator
+from optical_communication_system.components.datatypes import (
+    ElectricalSignal, OpticalSignal, Timing
 )
-from optical_communication_system.components.datatypes import ElectricalSignal, OpticalSignal
-from optical_communication_system.components.utils import timing_to_samples
+from optical_communication_system.utils import timing_to_samples
 
 def test_mzm() -> None:
     laser = Laser(power=[1e-3, 2e-3], batch_size=1)
     mzm = MachZehnderModulator(carrier_source=laser)
 
-    timing_generator = TimingGenerator(sampling_rate=10.0, symbol_rate=1.0)
-    timing = timing_generator(tf.constant(10))
+    timing = Timing(sampling_rate=10.0, sample_count=100)
 
     modulation_signal = ElectricalSignal(
         timing=timing,

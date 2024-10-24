@@ -4,7 +4,7 @@ from collections.abc import Sequence
 import tensorflow as tf
 
 from typing import Optional
-from .datatypes import Timing, timing_spec, OpticalSignal
+from .datatypes import ElectricalSignal, Timing, OpticalSignal
 
 from .component import Component
 
@@ -41,19 +41,19 @@ class Laser(Component):
         self.global_parameters = ["batch_size", "parameter_dims"]
         self.local_parameters = [("power", 0), "batch_size", "parameter_dims"]
 
-    @tf.function(input_signature=(
-        timing_spec,
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="power"),
-        tf.TensorSpec(shape=[], dtype=tf.int32, name="batch_size"),
-        tf.TensorSpec(shape=[], dtype=tf.int32, name="parameter_dims")
-    ))
     def implementation(
         self,
-        timing: Timing,
+        timing_or_signal: Timing | ElectricalSignal | OpticalSignal,
+        /,
         power: tf.Tensor,
         batch_size: tf.Tensor,
         parameter_dims: tf.Tensor
-    ) -> tf.Tensor:
+    ) -> OpticalSignal:
+        if isinstance(timing_or_signal, (ElectricalSignal, OpticalSignal)):
+            timing = timing_or_signal.timing
+        else:
+            timing = timing_or_signal
+
         result_shape = [batch_size, parameter_dims, timing.sample_count]
 
         samples = tf.reshape(

@@ -16,10 +16,8 @@ from .datatypes import (
 from .component import Component
 from .mzm import MachZehnderModulator
 from .passive import OpticalCoupler1x2, OpticalCoupler2x1, OpticalCoupler2x2, OpticalPhaseShifter
-from .utils import (
-    Composition, ExtractTiming, Fork, Identity, MapComponent, MapComponents,
-    Reindex, adjust_symbol_for_mzm, indices_to_bits, bits_to_indices
-)
+from .utils import Composition, Fork, Identity, MapComponents, Reindex
+from ..utils import adjust_symbol_for_mzm, indices_to_bits, bits_to_indices
 from .electrical import ElectricalSubtractor
 
 __all__ = ["IQSymbolEncoder", "IQSymbolDecoder", "IQEncoder", "IQModulator", "IQReceiver"]
@@ -207,8 +205,8 @@ class IQEncoder(Component):
 
 class IQModulator(Composition):
     def __init__(self, carrier_source: Component, name=None) -> None:
-        super().__init__(components=[
-            MapComponents(components=[
+        super().__init__([
+            MapComponents([
                 MachZehnderModulator(carrier_source=carrier_source),
                 MachZehnderModulator(
                     carrier_source=Composition(components=[
@@ -241,30 +239,27 @@ class IQReceiver(Composition):
         identity = Identity()
 
         # This is a coherent IQ receiver
-        super().__init__(components=[
+        super().__init__([
             coupler1x2,  # (OpticalSignal, OpticalSignal)
             Fork(shape=[2]),  # 2 * ((OpticalSignal, OpticalSignal))
-            MapComponents(components=[
+            MapComponents([
                 identity,  # (OpticalSignal, OpticalSignal)
                 Composition(components=[
                     Reindex(indices=(0,)),  # OpticalSignal
-                    ExtractTiming(),  # Timing
                     local_oscillator,  # OpticalSignal
                     coupler1x2,  # (OpticalSignal, OpticalSignal)
-                    MapComponents(components=[
+                    MapComponents([
                         OpticalPhaseShifter(phase_shift=math.pi / 2),  # OpticalSignal
                         identity  # OpticalSignal
                     ])  # (OpticalSignal, OpticalSignal)
                 ])
             ]),  # 2 * ((OpticalSignal, OpticalSignal))
             Reindex(indices=[[(1, 1), (0, 0)], [(0, 1), (1, 0)]]),  # 2 * ((OpticalSignal, OpticalSignal),)
-            MapComponent(
-                component=Composition(components=[
-                    OpticalCoupler2x2(flip=True),  # (OpticalSignal, OpticalSignal)
-                    MapComponent(component=photodiode),  # (ElectricalSignal, ElectricalSignal)
-                    ElectricalSubtractor()  # ElectricalSignal
-                ])
-            ),  # (ElectricalSignal, ElectricalSignal)
+            MapComponents(Composition([
+                OpticalCoupler2x2(flip=True),  # (OpticalSignal, OpticalSignal)
+                MapComponents(photodiode),  # (ElectricalSignal, ElectricalSignal)
+                ElectricalSubtractor()  # ElectricalSignal
+            ])),  # (ElectricalSignal, ElectricalSignal)
         ], name=name)
 
 

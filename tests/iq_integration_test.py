@@ -5,7 +5,7 @@ import tensorflow as tf
 from optical_communication_system.components import (
     IQEncoder, IQDecoder, IQSymbolEncoder, IQSymbolDecoder, IQModulator,
     IQReceiver, Composition, Laser, BandPassFilter, OpticalAWGN, OpticalFiber,
-    Photodiode, Quantizer, MapComponent, ElectricalGain
+    Photodiode, Quantizer, MapComponents, ElectricalGain
 )
 from optical_communication_system.utils import dbm_to_w, from_db, wavelength_nm_to_frequency
 
@@ -43,7 +43,7 @@ def test_qam4_system() -> None:
                 adjust_for_mzm=True
             )
         ),
-        MapComponent(lpf),
+        MapComponents(lpf),
         IQModulator(laser),
         OpticalAWGN(relative_db=-snr, rng=rng),
         OpticalFiber(
@@ -58,8 +58,8 @@ def test_qam4_system() -> None:
             photodiode=Composition([Photodiode(), lpf]),
             local_oscillator=local_oscillator
         ),
-        MapComponent(ElectricalGain(1.0 / expected_symbol_scale)),
-        MapComponent(Quantizer(1e-6)),
+        MapComponents(ElectricalGain(1.0 / expected_symbol_scale)),
+        MapComponents(Quantizer(1e-6)),
         IQDecoder(
             data_rate=data_rate,
             symbol_decoder=IQSymbolDecoder(

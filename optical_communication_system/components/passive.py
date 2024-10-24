@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from .datatypes import OpticalSignal, optical_signal_spec
 from .. import constants
-from .utils import fftfreq
+from ..utils import fftfreq
 from .component import Component
 
 __all__ = [

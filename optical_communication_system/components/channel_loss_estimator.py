@@ -3,8 +3,9 @@
 import tensorflow as tf
 from typing import Optional
 
+from .datatypes import Timing
 from .component import Component
-from .utils import Composition, Fork, Lambda, MapComponents, MeanAmplitude, TimingGenerator
+from .utils import Composition, Fork, Lambda, MapComponents
 
 __all__ = ["ChannelLossEstimator"]
 
@@ -30,12 +31,12 @@ class ChannelLossEstimator(Composition):
         sampling_rate: float | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
-        self._timing_generator = TimingGenerator(sampling_rate=sampling_rate, symbol_rate=sampling_rate)
-
         self.laser = laser
         self.channel = channel
         self.photodiode = photodiode
-        mean_amplitude = MeanAmplitude()
+        mean_amplitude = Lambda(
+            lambda signal: tf.math.reduce_mean(tf.abs(signal.samples), axis=-1)
+        )
 
         super().__init__(
             [
@@ -59,9 +60,9 @@ class ChannelLossEstimator(Composition):
     def _generate_timing(self, duration: tf.Tensor, **kwargs) -> tf.Tensor:
         sampling_rate = self.get_component_parameter(kwargs, "sampling_rate")
 
-        return self._timing_generator(
-            tf.cast(duration * sampling_rate, tf.int32),
-            **kwargs
+        return Timing(
+            sampling_rate=sampling_rate,
+            sample_count=tf.cast(duration * sampling_rate, tf.int32)
         )
 
     @tf.function(input_signature=((
