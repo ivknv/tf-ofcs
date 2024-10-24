@@ -13,6 +13,7 @@ from .extract_samples import ExtractSamples
 from .lambda_ import Lambda
 from .redistribute_dimensions import RedistributeDimensions
 from .split_signals import SplitSignals
+from .merge_signals import MergeSignals
 
 __all__ = [
     "MapComponents",
@@ -26,5 +27,6 @@ __all__ = [
     "ExtractSamples",
     "Lambda",
     "RedistributeDimensions",
-    "SplitSignals"
+    "SplitSignals",
+    "MergeSignals"
 ]
