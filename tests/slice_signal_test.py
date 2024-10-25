@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from optical_communication_system.components import GatherSignals
+from optical_communication_system.components import SliceSignal
 from optical_communication_system.components.datatypes import ElectricalSignal, Timing
 
 
-def test_gather_signals() -> None:
+def test_slice_signal() -> None:
     input_signal = ElectricalSignal(
         timing=Timing(sampling_rate=1.0, sample_count=8),
         samples=tf.cast(
@@ -22,6 +22,10 @@ def test_gather_signals() -> None:
                     [
                         [32, 33, 34, 35, 36, 37, 38, 39],
                         [40, 41, 42, 43, 44, 45, 46, 47]
+                    ],
+                    [
+                        [48, 49, 50, 51, 52, 53, 54, 55],
+                        [56, 57, 58, 59, 60, 61, 62, 63]
                     ]
                 ]
             ),
@@ -29,10 +33,10 @@ def test_gather_signals() -> None:
         )
     )
 
-    gather_signals = GatherSignals([0, 2])
-    output_signal = gather_signals(input_signal)
+    slice_signal = SliceSignal(slice=(1, 2), factor=2)
+    output_signal = slice_signal(input_signal)
 
-    expected_samples = tf.gather(input_signal.samples, [0, 2])
+    expected_samples = input_signal.samples[2:4]
 
     assert isinstance(output_signal, ElectricalSignal)
 

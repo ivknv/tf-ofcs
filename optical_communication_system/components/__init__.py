@@ -18,7 +18,7 @@ from .ber import BERTester
 from .utils import (
     Composition, MapComponents, Identity, Reindex, Fork, Resample, Downsample,
     ParallelToSerial, SerialToParallel, ExtractSamples, Lambda, RedistributeDimensions,
-    SplitSignals, MergeSignals, TileSignals, GatherSignals
+    SplitSignals, MergeSignals, TileSignals, SliceSignal
 )
 from .electrical import (
     ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator,
@@ -71,7 +71,7 @@ __all__ = [
     "SplitSignals",
     "MergeSignals",
     "TileSignals",
-    "GatherSignals",
+    "SliceSignal",
     "Component",
     "OpticalGain",
     "ChannelLossEstimator"
