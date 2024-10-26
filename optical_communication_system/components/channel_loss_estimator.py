@@ -3,7 +3,7 @@
 import tensorflow as tf
 from typing import Optional
 
-from .datatypes import Timing
+from ..datatypes import Timing
 from .component import Component
 from .utils import Composition, Fork, Lambda, MapComponents
 

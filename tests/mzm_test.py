@@ -3,9 +3,7 @@
 import math
 import tensorflow as tf
 from optical_communication_system.components import Laser, MachZehnderModulator
-from optical_communication_system.components.datatypes import (
-    ElectricalSignal, OpticalSignal, Timing
-)
+from optical_communication_system.datatypes import ElectricalSignal, OpticalSignal, Timing
 from optical_communication_system.utils import timing_to_samples
 
 def test_mzm() -> None:

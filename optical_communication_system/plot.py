@@ -8,7 +8,7 @@ import tensorflow as tf
 from typing import Optional
 
 from . import constants
-from .components.datatypes import OpticalSignal, ElectricalSignal
+from .datatypes import OpticalSignal, ElectricalSignal
 from .utils import timing_to_samples
 
 __all__ = [
@@ -87,8 +87,8 @@ def plot_envelope(
         time = timing_to_samples(signal.timing) * time_units[0]
         samples = signal.samples[index] * envelope_units[0]
 
-        _plot(ax, time, tf.real(samples), label=f"{label} (real)]", **kwargs)
-        _plot(ax, time, tf.imag(samples), label=f"{label} (imaginary)", **kwargs)
+        _plot(ax, time, tf.math.real(samples), label=f"{label} (real)]", **kwargs)
+        _plot(ax, time, tf.math.imag(samples), label=f"{label} (imaginary)", **kwargs)
     elif isinstance(signal, ElectricalSignal):
         time = timing_to_samples(signal.timing) * time_units[0]
         samples = signal.samples[index] * envelope_units[0]

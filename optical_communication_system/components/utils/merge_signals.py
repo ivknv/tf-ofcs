@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 
-from ..datatypes import ElectricalSignal, OpticalSignal
+from ...datatypes import ElectricalSignal, OpticalSignal
 from ..component import Component
 
 __all__ = ["MergeSignals"]

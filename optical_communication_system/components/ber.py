@@ -3,7 +3,7 @@
 from typing import Optional
 
 import tensorflow as tf
-from .datatypes import bit_sequence_spec, bit_dtype
+from ..datatypes import bit_sequence_spec, bit_dtype
 from .component import Component
 
 __all__ = ["BERTester"]

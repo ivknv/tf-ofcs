@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 from optical_communication_system.components import TileSignals
-from optical_communication_system.components.datatypes import ElectricalSignal, Timing
+from optical_communication_system.datatypes import ElectricalSignal, Timing
 
 
 def test_tile_signals() -> None:

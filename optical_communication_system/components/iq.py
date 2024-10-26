@@ -6,7 +6,7 @@ import math
 
 import tensorflow as tf
 
-from .datatypes import (
+from ..datatypes import (
     bit_dtype, bit_sequence_spec,
     ElectricalSignal,
     IQSignal, iq_signal_spec,

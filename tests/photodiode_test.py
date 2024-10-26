@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 from optical_communication_system.components import Photodiode
-from optical_communication_system.components.datatypes import (
+from optical_communication_system.datatypes import (
     OpticalSignal, ElectricalSignal, Timing
 )
 from optical_communication_system.utils import timing_to_samples

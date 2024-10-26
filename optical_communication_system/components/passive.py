@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from .datatypes import OpticalSignal, optical_signal_spec
+from ..datatypes import OpticalSignal, optical_signal_spec
 from .. import constants
 from ..utils import fftfreq
 from .component import Component

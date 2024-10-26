@@ -5,7 +5,7 @@ import tensorflow as tf
 import numpy as np
 
 from optical_communication_system.components import BandPassFilter
-from optical_communication_system.components.datatypes import ElectricalSignal, Timing
+from optical_communication_system.datatypes import ElectricalSignal, Timing
 from optical_communication_system.utils import timing_to_samples
 
 

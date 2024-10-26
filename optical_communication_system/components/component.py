@@ -3,7 +3,7 @@
 from typing import Any, Optional
 import tensorflow as tf
 
-from .datatypes import ElectricalSignal, OpticalSignal
+from ..datatypes import ElectricalSignal, OpticalSignal
 
 __all__ = ["Component"]
 

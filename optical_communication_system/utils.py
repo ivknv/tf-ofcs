@@ -5,7 +5,7 @@ import math
 import typing
 import tensorflow as tf
 
-from .components.datatypes import Timing, timing_spec, bit_sequence_spec, bit_dtype
+from .datatypes import Timing, timing_spec, bit_sequence_spec, bit_dtype
 from . import constants
 
 __all__ = [
@@ -34,6 +34,7 @@ __all__ = [
     "generate_timing",
     "timing_to_samples",
     "combine_shape",
+    "lorentz_distribution"
 ]
 
 _log_of_10 = tf.math.log(10.0)
@@ -243,3 +244,8 @@ def timing_to_samples(timing: Timing) -> tf.Tensor:
 def combine_shape(shapes: tf.Tensor) -> tf.Tensor:
     combined = tf.concat(shapes, 0)
     return tf.boolean_mask(combined, combined > 0)
+
+
+@tf.function
+def lorentz_distribution(x: tf.Tensor, x_0: tf.Tensor, gamma: tf.Tensor) -> tf.Tensor:
+    return gamma / (math.pi * ((x - x_0) ** 2 + gamma ** 2))

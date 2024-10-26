@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from . import datatypes
 from .laser import Laser
 from .photodiode import Photodiode
 from .mzm import MachZehnderModulator

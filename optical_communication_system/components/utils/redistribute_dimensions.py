@@ -3,7 +3,7 @@
 from typing import Optional
 import tensorflow as tf
 from ..component import Component
-from ..datatypes import ElectricalSignal, OpticalSignal
+from ...datatypes import ElectricalSignal, OpticalSignal
 
 __all__ = ["RedistributeDimensions"]
 

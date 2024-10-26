@@ -5,7 +5,7 @@ from typing import Optional
 import tensorflow as tf
 
 from .component import Component
-from .datatypes import OpticalSignal, optical_signal_spec
+from ..datatypes import OpticalSignal, optical_signal_spec
 
 __all__ = ["OpticalGain"]
 

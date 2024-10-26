@@ -7,7 +7,7 @@ import tensorflow as tf
 from ..utils import fftfreq
 from .component import Component
 
-from .datatypes import Timing, timing_spec, ElectricalSignal, OpticalSignal
+from ..datatypes import Timing, timing_spec, ElectricalSignal, OpticalSignal
 
 __all__ = ["BandPassFilter"]
 

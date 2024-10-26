@@ -7,7 +7,7 @@ import tensorflow as tf
 from .. import constants
 from .component import Component
 
-from .datatypes import (
+from ..datatypes import (
     Timing, ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec
 )
 

@@ -7,7 +7,7 @@ import tensorflow as tf
 from ..utils import adjust_symbol_for_mzm, indices_to_bits, bits_to_indices, pam_constellation
 from .component import Component
 
-from .datatypes import (
+from ..datatypes import (
     bit_sequence_spec,
     Timing,
     ElectricalSignal, electrical_signal_spec,

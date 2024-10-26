@@ -4,7 +4,7 @@ from collections.abc import Sequence
 import tensorflow as tf
 
 from typing import Optional
-from .datatypes import ElectricalSignal, Timing, OpticalSignal
+from ..datatypes import ElectricalSignal, Timing, OpticalSignal
 
 from .component import Component
 

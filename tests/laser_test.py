@@ -3,7 +3,7 @@
 import tensorflow as tf
 
 from optical_communication_system.components import Laser
-from optical_communication_system.components.datatypes import Timing, OpticalSignal
+from optical_communication_system.datatypes import Timing, OpticalSignal
 
 
 def test_laser() -> None:

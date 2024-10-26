@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from .datatypes import ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec
+from ..datatypes import ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec
 from .component import Component
 
 __all__ = ["ElectricalAWGN", "OpticalAWGN"]
