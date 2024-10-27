@@ -111,7 +111,7 @@ class PAMSymbolDecoder(Component):
         self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
 
         if mapping is None:
-            self.mapping = tf.Variable(pam_constellation(self.bits_per_symbol))
+            self.mapping = tf.Variable(pam_constellation(self.bits_per_symbol) ** 2)
         else:
             self.mapping = tf.Variable(tf.constant(mapping))
 
