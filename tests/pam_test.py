@@ -60,14 +60,14 @@ def test_pam_symbol_decoder() -> None:
     expected_pam8_bitseq = tf.reshape(expected_bitseq, (2, 1, 4, 3))
 
     pam2_symbols = tf.cast(expected_bitseq, tf.float32)
-    pam4_symbols = tf.constant([
+    pam4_symbols = (tf.constant([
         [[2.0, 1.0, 0.0, 1.0, 0.0, 3.0]],
         [[0.0, 0.0, 3.0, 1.0, 2.0, 2.0]]
-    ]) / 3.0
-    pam8_symbols = tf.constant([
+    ]) / 3.0) ** 2
+    pam8_symbols = (tf.constant([
         [[4.0, 4.0, 2.0, 3.0]],
         [[0.0, 3.0, 3.0, 2.0]]
-    ]) / 7.0
+    ]) / 7.0) ** 2
 
     decoded_pam2_bitseq = pam2_decoder(pam2_symbols)
     decoded_pam4_bitseq = pam4_decoder(pam4_symbols)
@@ -153,15 +153,24 @@ def test_pam_encoder_decoder() -> None:
 
     pam2_decoder = PAMDecoder(
         data_rate=data_rate,
-        symbol_decoder=PAMSymbolDecoder(bits_per_symbol=1)
+        symbol_decoder=PAMSymbolDecoder(
+            bits_per_symbol=1,
+            mapping=pam2_encoder.symbol_encoder.mapping
+        )
     )
     pam4_decoder = PAMDecoder(
         data_rate=data_rate,
-        symbol_decoder=PAMSymbolDecoder(bits_per_symbol=2)
+        symbol_decoder=PAMSymbolDecoder(
+            bits_per_symbol=2,
+            mapping=pam4_encoder.symbol_encoder.mapping
+        )
     )
     pam8_decoder = PAMDecoder(
         data_rate=data_rate,
-        symbol_decoder=PAMSymbolDecoder(bits_per_symbol=3)
+        symbol_decoder=PAMSymbolDecoder(
+            bits_per_symbol=3,
+            mapping=pam8_encoder.symbol_encoder.mapping
+        )
     )
 
     decoded_pam2_bitseq = pam2_decoder(pam2_signal)

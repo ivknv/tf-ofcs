@@ -26,6 +26,7 @@ from .electrical import (
 from .component import Component
 from .optical_gain import OpticalGain
 from .channel_loss_estimator import ChannelLossEstimator
+from .gaussian_pulse_generator import GaussianPulseGenerator
 
 __all__ = [
     "Laser",
@@ -73,5 +74,6 @@ __all__ = [
     "SliceSignal",
     "Component",
     "OpticalGain",
-    "ChannelLossEstimator"
+    "ChannelLossEstimator",
+    "GaussianPulseGenerator"
 ]
