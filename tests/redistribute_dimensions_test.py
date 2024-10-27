@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 from optical_communication_system.components import RedistributeDimensions
-from optical_communication_system.components.datatypes import ElectricalSignal, Timing
+from optical_communication_system.datatypes import ElectricalSignal, Timing
 
 
 def test_redistribute_dimensions() -> None:

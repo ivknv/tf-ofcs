@@ -99,6 +99,13 @@ class Component(tf.Module):
     ) -> Any:
         return kwargs.get(f"{self.name}__{kwarg_name}", default)
 
+    @tf.function
+    def _broadcast(self, value, rank, parameter_dims):
+        if tf.rank(value) < tf.constant(rank + 1):
+            return tf.broadcast_to(value, tf.concat([[parameter_dims], tf.shape(value)], 0))
+
+        return value
+
     def get_component_parameter(
         self,
         kwargs: dict[str, Any],
@@ -106,7 +113,7 @@ class Component(tf.Module):
         default: Optional[tf.Tensor] = None,
         global_parameter: bool = False,
         rank: int = -1,
-        parameter_dims: tf.Tensor = tf.constant(1)
+        parameter_dims: int = 1
     ) -> Any:
         if global_parameter:
             value = kwargs.get(parameter, default)
@@ -116,13 +123,10 @@ class Component(tf.Module):
         if value is None:
             value = getattr(self, parameter)
 
-        if tf.rank(value) < tf.constant(rank + 1):
-            value = tf.broadcast_to(value, tf.concat([[parameter_dims], tf.shape(value)], 0))
-
-        return value
+        return self._broadcast(value, rank, parameter_dims)
 
     def extract_component_parameters(self, kwargs: dict[str, Any]) -> dict[str, Any]:
-        parameter_dims = kwargs.get("parameter_dims", tf.constant(1))
+        parameter_dims = kwargs.get("parameter_dims", 1)
         component_kwargs: dict[str, Any] = {}
 
         iterables = zip([True, False], [self.global_parameters, self.local_parameters], strict=True)

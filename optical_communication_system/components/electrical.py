@@ -49,10 +49,6 @@ class ArbitraryWaveformGenerator(Component):
         self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
         self.local_parameters = ["sampling_rate"]
 
-    @tf.function(input_signature=(
-        tf.TensorSpec(shape=[None, None], dtype=tf.float32, name="input_samples"),
-        tf.TensorSpec(shape=[], dtype=tf.float32, name="sampling_rate")
-    ))
     def implementation(self, input_samples: tf.Tensor, /, sampling_rate: tf.Tensor) -> ElectricalSignal:
         return ElectricalSignal(
             timing=Timing(

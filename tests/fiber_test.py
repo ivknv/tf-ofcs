@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 from optical_communication_system.components import OpticalFiber
-from optical_communication_system.components.datatypes import OpticalSignal, Timing
+from optical_communication_system.datatypes import OpticalSignal, Timing
 
 
 def test_optical_fiber_attenuation() -> None:
