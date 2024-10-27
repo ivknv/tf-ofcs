@@ -9,3 +9,4 @@ dist/
 .tool-versions
 .ipynb_checkpoints/
 .virtual_documents/
+.logs

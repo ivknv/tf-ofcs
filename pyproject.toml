@@ -1,33 +1,41 @@
-[tool.poetry]
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[project]
 name = "optical-communication-system"
 version = "0.1.0"
 description = ""
-authors = ["Ivan Konovalov <ivknv0@gmail.com>"]
 readme = "README.md"
-package-mode = false
+requires-python = ">=3.10,<3.11"
+authors = [
+    {name = "Ivan Konovalov", email = "ivknv0@gmail.com"}
+]
+dependencies = [
+    "numpy<2",
+    "matplotlib",
+    "pyqt6",
+    "tensorflow==2.15.0"
+]
 
-[tool.poetry.dependencies]
-python = ">=3.10,<3.11"
-numpy = "<2"
-matplotlib = "^3.9.1"
-pyqt6 = "^6.7.1"
-tensorflow = "2.15.0"
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "ipython",
+    "jupyterlab",
+    "jupyterlab-lsp",
+    "python-lsp-server[rope]",
+    "pylsp-mypy",
+    "types-tensorflow>=2.15,<2.16",
+    "pytest"
+]
 
-
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.5.3"
-mypy = "^1.10.1"
-ipython = "^8.26.0"
-jupyterlab = "^4.2.4"
-jupyterlab-lsp = "^5.1.0"
-python-lsp-server = {extras = ["rope"], version = "^1.11.0"}
-pylsp-mypy = "^0.6.8"
-types-tensorflow = ">=2.15,<2.16"
-pytest = "^8.3.3"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[project.urls]
+"Source code" = "https://github.com/ivknv/optical-communication-system"
 
 [tool.mypy]
 packages = ["optical_communication_system"]
