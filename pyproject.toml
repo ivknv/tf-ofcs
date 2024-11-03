@@ -16,7 +16,7 @@ authors = [
 ]
 dependencies = [
     "numpy<2",
-    "matplotlib",
+    "pyplot",
     "pyqt6",
     "tensorflow==2.15.0"
 ]
@@ -31,7 +31,8 @@ dev = [
     "python-lsp-server[rope]",
     "pylsp-mypy",
     "types-tensorflow>=2.15,<2.16",
-    "pytest"
+    "pytest",
+    "ipywidgets"
 ]
 
 [project.urls]

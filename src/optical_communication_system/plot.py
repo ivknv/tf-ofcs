@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-from matplotlib.axes import Axes
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+
 import tensorflow as tf
 
 from typing import Optional
@@ -22,44 +22,32 @@ __all__ = [
 ]
 
 
-def _set_xlabel(ax: Optional[Axes], label: str) -> None:
-    if ax is not None:
-        ax.set_xlabel(label)
-    else:
-        plt.xlabel(label)
-
-
-def _set_ylabel(ax: Optional[Axes], label: str) -> None:
-    if ax is not None:
-        ax.set_ylabel(label)
-    else:
-        plt.ylabel(label)
-
-
-def _plot(ax: Optional[Axes], *args, **kwargs) -> None:
-    plot = ax.plot if ax is not None else plt.plot
-    plot(*args, **kwargs)
-
-
-def _scatter(ax: Optional[Axes], *args, **kwargs) -> None:
-    scatter = ax.scatter if ax is not None else plt.scatter
-    scatter(*args, **kwargs)
-
-
 def plot_power(
     signal: OpticalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
-    ax: Optional[Axes] = None,
+    figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0, 0),
     time_units: tuple[float, str] = (1e9, "ns"),
     power_units: tuple[float, str] = (1e3, "mW"),
     label: str = "Signal power",
+    row: Optional[int] = None,
+    col: Optional[int] = None,
     **kwargs
-) -> None:
+) -> go.Figure:
+    if figure is None:
+        figure = go.Figure(layout=go.Layout(
+            xaxis={"title": f"Time, {time_units[1]}"},
+            yaxis={"title": f"Power, {power_units[1]}"}
+        ))
+
     if isinstance(signal, (ElectricalSignal, OpticalSignal)):
         time = timing_to_samples(signal.timing) * time_units[0]
         samples = tf.abs(signal.samples[index]) ** 2 * power_units[0]
 
-        _plot(ax, time, samples, label=f"{label}", **kwargs)
+        figure.add_trace(
+            go.Scatter(x=time, y=samples, name=label, **kwargs),
+            row=row,
+            col=col
+        )
     else: # IQ signal case
         time_i = timing_to_samples(signal[0].timing) * time_units[0]
         samples_i = tf.abs(signal[0].samples[index]) ** 2 * power_units[0]
@@ -67,33 +55,60 @@ def plot_power(
         time_q = timing_to_samples(signal[1].timing) * time_units[0]
         samples_q = tf.abs(signal[1].samples[index]) ** 2 * power_units[0]
 
-        _plot(ax, time_i, samples_i, label=f"{label} (I)", **kwargs)
-        _plot(ax, time_q, samples_q, label=f"{label} (Q)", **kwargs)
+        figure.add_trace(
+            go.Scatter(x=time_i, y=samples_i, name=f"{label} (I)", **kwargs),
+            row=row,
+            col=col
+        )
+        figure.add_trace(
+            go.Scatter(x=time_q, y=samples_q, name=f"{label} (Q)", **kwargs),
+            row=row,
+            col=col
+        )
 
-    _set_xlabel(ax, f"Time, {time_units[1]}")
-    _set_ylabel(ax, f"Power, {power_units[1]}")
+    return figure
 
 
 def plot_envelope(
     signal: OpticalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
-    ax: Optional[Axes] = None,
+    figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0, 0),
     time_units: tuple[float, str] = (1e9, "ns"),
     envelope_units: tuple[float, str] = (1.0, "AU"),
     label: str = "Signal envelope",
+    row: Optional[int] = None,
+    col: Optional[int] = None,
     **kwargs
-) -> None:
+) -> go.Figure:
+    if figure is None:
+        figure = go.Figure(layout=go.Layout(
+            xaxis={"title": f"Time, {time_units[1]}"},
+            yaxis={"title": f"Envelope, {envelope_units[1]}"}
+        ))
+
     if isinstance(signal, OpticalSignal):
         time = timing_to_samples(signal.timing) * time_units[0]
         samples = signal.samples[index] * envelope_units[0]
 
-        _plot(ax, time, tf.math.real(samples), label=f"{label} (real)]", **kwargs)
-        _plot(ax, time, tf.math.imag(samples), label=f"{label} (imaginary)", **kwargs)
+        figure.add_trace(
+            go.Scatter(x=time, y=tf.math.real(samples), name=f"{label} (real)", **kwargs),
+            row=row,
+            col=col
+        )
+        figure.add_trace(
+            go.Scatter(x=time, y=tf.math.imag(samples), name=f"{label} (imag)", **kwargs),
+            row=row,
+            col=col
+        )
     elif isinstance(signal, ElectricalSignal):
         time = timing_to_samples(signal.timing) * time_units[0]
         samples = signal.samples[index] * envelope_units[0]
 
-        _plot(ax, time, samples, label=f"{label}", **kwargs)
+        figure.add_trace(
+            go.Scatter(x=time, y=samples, name=label, **kwargs),
+            row=row,
+            col=col
+        )
     else: # IQ signal case
         time_i = timing_to_samples(signal[0].timing) * time_units[0]
         samples_i = signal[0].samples[index] * envelope_units[0]
@@ -101,21 +116,36 @@ def plot_envelope(
         time_q = timing_to_samples(signal[1].timing) * time_units[0]
         samples_q = signal[1].samples[index] * envelope_units[0]
 
-        _plot(ax, time_i, samples_i, label=f"{label} (I)", **kwargs)
-        _plot(ax, time_q, samples_q, label=f"{label} (Q)", **kwargs)
+        figure.add_trace(
+            go.Scatter(x=time_i, y=samples_i, name=f"{label} (I)", **kwargs),
+            row=row,
+            col=col
+        )
+        figure.add_trace(
+            go.Scatter(x=time_q, y=samples_q, name=f"{label} (Q)", **kwargs),
+            row=row,
+            col=col
+        )
 
-    _set_xlabel(ax, f"Time, {time_units[1]}")
-    _set_ylabel(ax, f"Envelope, {envelope_units[1]}")
+    return figure
 
 
 def plot_phase(
     signal: OpticalSignal | tuple[ElectricalSignal, ElectricalSignal],
-    ax: Optional[Axes] = None,
+    figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0, 0),
     time_units: tuple[float, str] = (1e9, "ns"),
     label: str = "Signal phase",
+    row: Optional[int] = None,
+    col: Optional[int] = None,
     **kwargs
-) -> None:
+) -> go.Figure:
+    if figure is None:
+        figure = go.Figure(layout=go.Layout(
+            xaxis={"title": f"Time, {time_units[1]}"},
+            yaxis={"title": "Phase, degrees", "range": [-180.0, 180.0]}
+        ))
+
     if isinstance(signal, OpticalSignal):
         timing = signal.timing
         samples = signal.samples
@@ -128,39 +158,55 @@ def plot_phase(
     phase /= constants.pi / 180.0
 
     time = timing_to_samples(timing) * time_units[0]
-    _plot(ax, time, phase, label=f"{label}", **kwargs)
+    figure.add_trace(
+        go.Scatter(x=time, y=phase, name=label, **kwargs),
+        row=row,
+        col=col
+    )
 
-    _set_xlabel(ax, f"Time, {time_units[1]}")
-    _set_ylabel(ax, "Phase, degrees")
+    return figure
 
 
 def plot_bitseq(
     bitseq: tf.Tensor,
-    ax: Optional[Axes] = None,
+    figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0, 0),
     label: str = "Bit sequence",
+    row: Optional[int] = None,
+    col: Optional[int] = None,
     **kwargs
-) -> None:
+) -> go.Figure:
+    if figure is None:
+        figure = go.Figure(layout=go.Layout(
+            xaxis={"title": "Bit index"},
+            yaxis={"title": "Bit value"}
+        ))
+
     upsample_factor = 10
 
     seq = bitseq[index]
     indices = tf.range(0, tf.size(seq), 1.0 / upsample_factor)
 
-    _plot(ax, indices, tf.repeat(seq, upsample_factor), label=f"{label}", **kwargs)
+    figure.add_trace(
+        go.Scatter(x=indices, y=tf.repeat(seq, upsample_factor), name=label, **kwargs),
+        row=row,
+        col=col
+    )
 
-    _set_xlabel(ax, "Bit index")
-    _set_ylabel(ax, "Bit value")
+    return figure
 
 
 def _plot_spectrum(
-    ax: Optional[Axes],
+    figure: go.Figure,
     signal: OpticalSignal | ElectricalSignal,
     index: int | tuple[int, ...],
     frequency_scale: float,
     amplitude_scale: float,
     label: str,
+    row: Optional[int] = None,
+    col: Optional[int] = None,
     **kwargs
-) -> None:
+) -> go.Figure:
     sampling_rate = signal.timing.sampling_rate.numpy()
 
     samples = signal.samples[index].numpy()
@@ -168,36 +214,86 @@ def _plot_spectrum(
     fft = np.fft.fftshift(np.fft.fft(samples)) * amplitude_scale
     freqs = np.fft.fftshift(np.fft.fftfreq(fft.size, 1 / sampling_rate)) * frequency_scale
 
-    _plot(ax, freqs, np.abs(fft), label=f"{label}", **kwargs)
+    figure.add_trace(
+        go.Scatter(x=freqs, y=np.abs(fft), name=label, **kwargs),
+        row=row,
+        col=col
+    )
+    return figure
 
 
 def plot_spectrum(
     signal: OpticalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
-    ax: Optional[Axes] = None,
+    figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0, 0),
     frequency_units: tuple[float, str] = (1e-9, "GHz"),
     amplitude_units: tuple[float, str] = (1.0, "AU"),
     label: str = "Signal spectrum",
+    row: Optional[int] = None,
+    col: Optional[int] = None,
     **kwargs
-) -> None:
-    if isinstance(signal, (OpticalSignal, ElectricalSignal)):
-        _plot_spectrum(ax, signal, index, frequency_units[0], amplitude_units[0], label, **kwargs)
-    else: # IQ signal case
-        _plot_spectrum(ax, signal[0], index, frequency_units[0], amplitude_units[0], f"{label} (I)", **kwargs)
-        _plot_spectrum(ax, signal[1], index, frequency_units[0], amplitude_units[0], f"{label} (Q)", **kwargs)
+) -> go.Figure:
+    if figure is None:
+        figure = go.Figure(layout=go.Layout(
+            xaxis={"title": f"Frequency, {frequency_units[1]}"},
+            yaxis={"title": f"Amplitude, {amplitude_units[1]}"}
+        ))
 
-    _set_xlabel(ax, f"Frequency, {frequency_units[1]}")
-    _set_ylabel(ax, f"Amplitude, {amplitude_units[1]}")
+    if isinstance(signal, (OpticalSignal, ElectricalSignal)):
+        _plot_spectrum(
+            figure,
+            signal,
+            index,
+            frequency_units[0],
+            amplitude_units[0],
+            label,
+            row=row,
+            col=col,
+            **kwargs
+        )
+    else: # IQ signal case
+        _plot_spectrum(
+            figure,
+            signal[0],
+            index,
+            frequency_units[0],
+            amplitude_units[0],
+            f"{label} (I)",
+            row=row,
+            col=col,
+            **kwargs
+        )
+        _plot_spectrum(
+            figure,
+            signal[1],
+            index,
+            frequency_units[0],
+            amplitude_units[0],
+            f"{label} (Q)",
+            row=row,
+            col=col,
+            **kwargs
+        )
+
+    return figure
 
 
 def plot_iq_constellation(
     signal_or_constellation: tuple[ElectricalSignal, ElectricalSignal] | tf.Tensor,
-    ax: Optional[Axes] = None,
+    figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0, 0),
     iq_units: tuple[float, str] = (1.0, "AU"),
     label: str = "IQ signal constellation",
+    row: Optional[int] = None,
+    col: Optional[int] = None,
     **kwargs
-) -> None:
+) -> go.Figure:
+    if figure is None:
+        figure = go.Figure(layout=go.Layout(
+            xaxis={"title": f"I, {iq_units[1]}"},
+            yaxis={"title": f"Q, {iq_units[1]}"}
+        ))
+
     if isinstance(signal_or_constellation, tf.Tensor):
         constellation = signal_or_constellation
         iq_symbols = constellation
@@ -208,29 +304,46 @@ def plot_iq_constellation(
     iq_symbols = tf.reshape(iq_symbols, (tf.size(iq_symbols) // 2, 2))
     iq_symbols *= iq_units[0]
 
-    _scatter(ax, iq_symbols[:,0], iq_symbols[:,1], label=f"{label}", **kwargs)
+    kwargs.setdefault("mode", "markers")
 
-    _set_xlabel(ax, f"I, {iq_units[1]}")
-    _set_ylabel(ax, f"Q, {iq_units[1]}")
+    figure.add_trace(
+        go.Scatter(x=iq_symbols[:,0], y=iq_symbols[:,1], name=label, **kwargs),
+        row=row,
+        col=col
+    )
+    return figure
 
 
 def plot_eye_diagram(
     signal: ElectricalSignal,
     symbol_rate: float | tf.Tensor,
-    ax: Optional[Axes] = None,
+    figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0, 0),
     time_units: tuple[float, str] = (1e9, "ns"),
-    label: str = "Signal eye diagram",
+    row: Optional[int] = None,
+    col: Optional[int] = None,
     **kwargs
-) -> None:
+) -> go.Figure:
+    if figure is None:
+        figure = go.Figure(layout=go.Layout(
+            xaxis={"title": f"Time, {time_units[1]}"},
+            yaxis={"title": "Envelope (unitless)"},
+            showlegend=False
+        ))
+
     T_sym = int((signal.timing.sampling_rate / symbol_rate))
 
     samples = signal.samples[index][T_sym // 2:].numpy()
 
-    pattern: list[np.ndarray] = []
+    time = np.linspace(0.0, 2.0, T_sym * 2)
 
     for i in range(samples.size // (T_sym * 2)):
         wave = samples[i * T_sym * 2:(i + 1) * T_sym * 2]
-        pattern.append(wave)
 
-    _plot(ax, np.linspace(0.0, 2.0, T_sym * 2), np.array(pattern).T, label=f"{label}", **kwargs)
+        figure.add_trace(
+            go.Scatter(x=time, y=wave, **kwargs),
+            row=row,
+            col=col
+        )
+
+    return figure
