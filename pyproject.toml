@@ -38,7 +38,7 @@ dev = [
 "Source code" = "https://github.com/ivknv/optical-communication-system"
 
 [tool.mypy]
-packages = ["src"]
+packages = ["optical_communication_system", "tests"]
 
 [tool.ruff]
 line-length = 120
