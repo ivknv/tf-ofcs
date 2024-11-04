@@ -19,7 +19,7 @@ def test_optical_multiplexer() -> None:
     expected_output_signal = tf.cast([
         [[ 48,  52,  56,  60,  64,  68,  72,  76]],
         [[176, 180, 184, 188, 192, 196, 200, 204]]
-    ], tf.complex64)
+    ], tf.complex64) / tf.cast(4 ** 0.5, tf.complex64)
 
     output_signal = omux(input_signal)
 
