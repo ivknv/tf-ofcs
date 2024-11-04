@@ -16,8 +16,7 @@ authors = [
 ]
 dependencies = [
     "numpy<2",
-    "pyplot",
-    "pyqt6",
+    "plotly",
     "tensorflow==2.15.0"
 ]
 
@@ -39,7 +38,7 @@ dev = [
 "Source code" = "https://github.com/ivknv/optical-communication-system"
 
 [tool.mypy]
-packages = ["optical_communication_system"]
+packages = ["src"]
 
 [tool.ruff]
 line-length = 120
