@@ -27,6 +27,7 @@ from .component import Component
 from .optical_gain import OpticalGain
 from .channel_loss_estimator import ChannelLossEstimator
 from .gaussian_pulse_generator import GaussianPulseGenerator
+from .wdm import OpticalMultiplexer, OpticalDemultiplexer
 
 __all__ = [
     "Laser",
@@ -75,5 +76,7 @@ __all__ = [
     "Component",
     "OpticalGain",
     "ChannelLossEstimator",
-    "GaussianPulseGenerator"
+    "GaussianPulseGenerator",
+    "OpticalMultiplexer",
+    "OpticalDemultiplexer"
 ]
