@@ -10,7 +10,7 @@ from .iq import (
 from .noise import ElectricalAWGN, OpticalAWGN
 from .passive import (
     OpticalFiber, OpticalPhaseShifter, OpticalCoupler1x2,
-    OpticalCoupler2x2, OpticalCoupler2x1
+    OpticalCoupler2x2, OpticalCoupler2x1, OpticalMultiplexer, OpticalDemultiplexer
 )
 from .filters import BandPassFilter
 from .ber import BERTester
@@ -27,7 +27,6 @@ from .component import Component
 from .optical_gain import OpticalGain
 from .channel_loss_estimator import ChannelLossEstimator
 from .gaussian_pulse_generator import GaussianPulseGenerator
-from .wdm import OpticalMultiplexer, OpticalDemultiplexer
 
 __all__ = [
     "Laser",

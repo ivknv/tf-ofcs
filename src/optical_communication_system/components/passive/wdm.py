@@ -4,9 +4,9 @@ from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from ..utils import fftfreq, from_db
-from ..datatypes import OpticalSignal
-from .component import Component
+from ...utils import fftfreq, from_db
+from ...datatypes import OpticalSignal
+from ..component import Component
 
 __all__ = ["OpticalMultiplexer", "OpticalDemultiplexer"]
 
