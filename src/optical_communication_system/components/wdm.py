@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from ..utils import fftfreq
+from ..utils import fftfreq, from_db
 from ..datatypes import OpticalSignal
 from .component import Component
 
@@ -59,27 +59,33 @@ class OpticalDemultiplexer(Component):
     #: number of output ports
     frequencies: tf.Variable  # shape=[None]; dtype=tf.float32
 
-    #: Multiplexing step in Hz
-    step: tf.Variable  # shape=[]; dtype=tf.float32
+    #: Channel width in Hz
+    channel_width: tf.Variable  # shape=[]; dtype=tf.float32
+
+    #: Crosstalk attenuation in dB. This value applies to all adjacent channels
+    crosstalk_attenuation: tf.Variable  # shape=[]; dtype=tf.float32
 
     def __init__(
         self,
         frequencies: Sequence[float] | tf.Tensor,
-        step: float | tf.Tensor,
+        channel_width: float | tf.Tensor,
+        crosstalk_attenuation: float | tf.Tensor = float("inf"),
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.frequencies = tf.Variable(tf.constant(frequencies))
-        self.step = tf.Variable(tf.constant(step))
-        self.local_parameters = ["frequencies", "step"]
+        self.channel_width = tf.Variable(tf.constant(channel_width))
+        self.crosstalk_attenuation = tf.Variable(tf.constant(crosstalk_attenuation))
+        self.local_parameters = ["frequencies", "channel_width", "crosstalk_attenuation"]
 
     def implementation(
         self,
         input_signal: OpticalSignal,
         /,
         frequencies: tf.Tensor,
-        step: tf.Tensor
+        channel_width: tf.Tensor,
+        crosstalk_attenuation: tf.Tensor
     ) -> OpticalSignal:
         fft = tf.signal.fft(input_signal.samples)
         fft_freqs = fftfreq(tf.shape(fft)[-1], 1.0 / input_signal.timing.sampling_rate)
@@ -93,11 +99,11 @@ class OpticalDemultiplexer(Component):
                 tf.math.logical_and(
                     tf.math.greater_equal(
                         fft_freqs,
-                        tf.expand_dims(frequencies - step * 0.5, -1)
+                        tf.expand_dims(frequencies - channel_width * 0.5, -1)
                     ),
                     tf.math.less(
                         fft_freqs,
-                        tf.expand_dims(frequencies + step * 0.5, -1)
+                        tf.expand_dims(frequencies + channel_width * 0.5, -1)
                     )
                 ),
                 1
@@ -107,8 +113,18 @@ class OpticalDemultiplexer(Component):
 
         fft = tf.tile(fft, [n, 1, 1])
 
+        # Coefficient needed for the total power to be conserved
+        c = tf.math.sqrt(tf.cast(n, tf.float32))
+
+        attenuation = from_db(-crosstalk_attenuation * 0.5)
+        passband_coeff = c * tf.math.sqrt(1.0 - (c * attenuation) ** 2)
+
         samples = tf.signal.ifft(
-            tf.where(pass_mask, fft, tf.complex(0.0, 0.0))
-        ) * tf.math.sqrt(tf.cast(n, tf.complex64))
+            fft * tf.where(
+                pass_mask,
+                tf.complex(passband_coeff, 0.0),
+                tf.complex(attenuation, 0.0)
+            )
+        )
 
         return OpticalSignal(timing=input_signal.timing, samples=samples)

@@ -35,7 +35,7 @@ def test_optical_demultiplexer() -> None:
     freqs = [-1e9, 0.0, 1e9]
 
     laser = Laser(power=1e-3, frequency=freqs, parameter_dims=len(freqs), batch_size=2)
-    odemux = OpticalDemultiplexer(frequencies=freqs, step=0.5e9)
+    odemux = OpticalDemultiplexer(frequencies=freqs, channel_width=0.5e9)
     omux = OpticalMultiplexer(3)
 
     timing = Timing(sampling_rate=10e9, sample_count=1000)
