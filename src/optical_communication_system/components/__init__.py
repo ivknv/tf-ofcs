@@ -15,9 +15,10 @@ from .passive import (
 from .filters import BandPassFilter
 from .ber import BERTester
 from .utils import (
-    Composition, MapComponents, Identity, Reindex, Fork, Resample, Downsample,
-    ParallelToSerial, SerialToParallel, ExtractSamples, Lambda, RedistributeDimensions,
-    SplitSignals, MergeSignals, TileSignals, SliceSignal
+    Composition, MapComponents, Identity, Reindex, Fork, Downsample,
+    Upsample, ParallelToSerial, SerialToParallel, ExtractSamples, Lambda,
+    RedistributeDimensions, SplitSignals, MergeSignals, TileSignals,
+    SliceSignal
 )
 from .electrical import (
     ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator,
@@ -63,6 +64,7 @@ __all__ = [
     "ElectricalGain",
     "Resample",
     "Downsample",
+    "Upsample",
     "ParallelToSerial",
     "SerialToParallel",
     "ExtractSamples",

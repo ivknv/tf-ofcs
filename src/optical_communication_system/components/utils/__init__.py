@@ -5,8 +5,8 @@ from .identity import Identity
 from .reindex import Reindex
 from .map_components import MapComponents
 from .fork import Fork
-from .resample import Resample
 from .downsample import Downsample
+from .upsample import Upsample
 from .parallel_to_serial import ParallelToSerial
 from .serial_to_parallel import SerialToParallel
 from .extract_samples import ExtractSamples
@@ -22,8 +22,8 @@ __all__ = [
     "Identity",
     "Reindex",
     "Fork",
-    "Resample",
     "Downsample",
+    "Upsample",
     "ParallelToSerial",
     "SerialToParallel",
     "ExtractSamples",
