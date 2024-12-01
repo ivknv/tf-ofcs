@@ -129,7 +129,7 @@ class TransmissionLayer(keras.layers.Layer):
         )
 
 
-class IMDDAutoencoder(keras.Model):
+class IMDDAutoencoder(keras.Sequential):
     """
         An IM/DD autoencoder model based on [1]. It consists of 3 sections:
         1) Transmitter;
@@ -150,11 +150,6 @@ class IMDDAutoencoder(keras.Model):
     N: int
 
     def __init__(self, M: int, n: int, N: int, name: Optional[str] = None) -> None:
-        super().__init__(name=name)
-
-        if N % 2 != 1:
-            raise ValueError("N must be odd")
-
         self._bits_per_symbol = int(math.log2(M))
         self.sampling_rate = 336e9
 
@@ -167,40 +162,38 @@ class IMDDAutoencoder(keras.Model):
         #: Number of ANN blocks
         self.N = N
 
+        if N % 2 != 1:
+            raise ValueError("N must be odd")
+
+        super().__init__(name=name)
+
         self._tx1_layer = keras.layers.Dense(2 * M, activation="relu", name="tx1")
         self._tx2_layer = keras.layers.Dense(2 * M, activation="relu", name="tx2")
         self._tx3_layer = keras.layers.Dense(n, activation=_clip, name="tx3")
 
-        self._transmission_layer = TransmissionLayer(
-            sampling_rate=self.sampling_rate,
-            N=N,
-            M=M,
-            n=n,
-            encoder=lambda inp: self._tx3_layer(self._tx2_layer(self._tx1_layer(inp))),
-            name="transmission"
+        self.add(keras.Input(shape=(M,)))
+        self.add(self._tx1_layer)
+        self.add(self._tx2_layer)
+        self.add(self._tx3_layer)
+
+        self.add(
+            TransmissionLayer(
+                sampling_rate=self.sampling_rate,
+                N=N,
+                M=M,
+                n=n,
+                encoder=lambda inp: self._tx3_layer(self._tx2_layer(self._tx1_layer(inp))),
+                name="transmission"
+            )
         )
 
         self._rx1_layer = keras.layers.Dense(2 * M, activation="relu", name="rx1")
         self._rx2_layer = keras.layers.Dense(2 * M, activation="relu", name="rx2")
         self._rx3_layer = keras.layers.Dense(M, activation="softmax", name="rx3")
 
-    def call(
-        self,
-        inputs: tf.Tensor,
-        training: Optional[tf.Tensor] = None,
-        mask: Optional[tf.Tensor] = None
-    ) -> tf.Tensor:
-        x = self._tx1_layer(inputs)
-        x = self._tx2_layer(x)
-        x = self._tx3_layer(x)
-
-        x = self._transmission_layer(x)
-
-        x = self._rx1_layer(x)
-        x = self._rx2_layer(x)
-        x = self._rx3_layer(x)
-
-        return x
+        self.add(self._rx1_layer)
+        self.add(self._rx2_layer)
+        self.add(self._rx3_layer)
 
     def encode_input(self, bitseq: tf.Tensor) -> ElectricalSignal:
         bitseq_size = tf.size(bitseq)
