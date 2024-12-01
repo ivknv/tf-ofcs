@@ -1,0 +1,61 @@
+# -*- coding: utf-8
+
+import argparse
+
+import keras
+import tensorflow as tf
+
+from .models import IMDDAutoencoder
+
+
+def main(args: list) -> int:
+    parser = argparse.ArgumentParser(
+        description="Train an IM/DD autoencoder"
+    )
+
+    parser.add_argument("--epochs", type=int, default=50, help="number of epochs to train for")
+    parser.add_argument("--batch-size", type=int, default=256, help="batch size for training")
+    parser.add_argument("--store", help="store trained model in a .keras file")
+    parser.add_argument("--load", help="load trained model from a .keras file")
+    parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
+    parser.add_argument("-M", default=64, help="M value")
+    parser.add_argument("-N", default=11, help="N value")
+    parser.add_argument("-n", default=48, help="n value")
+
+    ns = parser.parse_args(args)
+
+    with tf.device(ns.device):
+        model = IMDDAutoencoder(M=int(ns.M), n=int(ns.n), N=int(ns.N))
+        optimizer = keras.optimizers.Adam()
+        model.compile(optimizer=optimizer, loss="binary_crossentropy")
+        model.build((1, model.M))
+
+        model.summary()
+
+        # Create a training dataset of ~256000 input messages
+        tile_factor = 256000 // model.M
+        dataset = tf.tile(
+            tf.cast(tf.one_hot(tf.range(model.M), model.M), tf.float32),
+            [tile_factor, 1]
+        )
+
+        if ns.load:
+            model.load_weights(ns.load)
+
+        model.fit(
+            dataset,
+            dataset,
+            epochs=ns.epochs,
+            batch_size=ns.batch_size,
+            shuffle=True
+        )
+
+        if ns.store:
+            model.save_weights(ns.store, overwrite=True)
+
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main(sys.argv[1:]))
