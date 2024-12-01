@@ -38,15 +38,15 @@ class Laser(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.power = tf.Variable(tf.constant(power))
-        self.frequency = tf.Variable(tf.constant(frequency))
+        self.power = tf.Variable(tf.constant(power), name=f"{self.name}__power")
+        self.frequency = tf.Variable(tf.constant(frequency), name=f"{self.name}__frequency")
 
-        self.batch_size = tf.Variable(tf.constant(batch_size))
+        self.batch_size = tf.Variable(tf.constant(batch_size), name=f"{self.name}__batch_size")
 
         if parameter_dims is None:
-            self.parameter_dims = tf.Variable(tf.size(self.power))
+            self.parameter_dims = tf.Variable(tf.size(self.power), name=f"{self.name}__parameter_dims")
         else:
-            self.parameter_dims = tf.Variable(tf.constant(parameter_dims))
+            self.parameter_dims = tf.Variable(tf.constant(parameter_dims), name=f"{self.name}__parameter_dims")
 
         self.global_parameters = ["batch_size", "parameter_dims"]
         self.local_parameters = [

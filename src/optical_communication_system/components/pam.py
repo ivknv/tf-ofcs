@@ -45,15 +45,15 @@ class PAMSymbolEncoder(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
+        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol), name=f"{self.name}__bits_per_symbol")
 
         if mapping is None:
-            self.mapping = tf.Variable(pam_constellation(self.bits_per_symbol))
+            self.mapping = tf.Variable(pam_constellation(self.bits_per_symbol), name=f"{self.name}__mapping")
         else:
-            self.mapping = tf.Variable(tf.constant(mapping))
+            self.mapping = tf.Variable(tf.constant(mapping), name=f"{self.name}__mapping")
 
-        self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
-        self.parameter_dims = tf.Variable(tf.constant(parameter_dims))
+        self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm), name=f"{self.name}__adjust_for_mzm")
+        self.parameter_dims = tf.Variable(tf.constant(parameter_dims), name=f"{self.name}__parameter_dims")
 
         self.local_parameters = [
             "mapping", "bits_per_symbol", "adjust_for_mzm", "parameter_dims"
@@ -108,12 +108,12 @@ class PAMSymbolDecoder(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
+        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol), name=f"{self.name}__bits_per_symbol")
 
         if mapping is None:
-            self.mapping = tf.Variable(pam_constellation(self.bits_per_symbol) ** 2)
+            self.mapping = tf.Variable(pam_constellation(self.bits_per_symbol) ** 2, name=f"{self.name}__mapping")
         else:
-            self.mapping = tf.Variable(tf.constant(mapping))
+            self.mapping = tf.Variable(tf.constant(mapping), name=f"{self.name}__mapping")
 
         self.local_parameters = ["bits_per_symbol", "mapping"]
 
@@ -168,8 +168,8 @@ class PAMEncoder(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
-        self.data_rate = tf.Variable(tf.constant(data_rate))
+        self.sampling_rate = tf.Variable(tf.constant(sampling_rate), name=f"{self.name}__sampling_rate")
+        self.data_rate = tf.Variable(tf.constant(data_rate), name=f"{self.name}__data_rate")
         self.symbol_encoder = symbol_encoder
 
         self.local_parameters = ["sampling_rate", "data_rate"]
@@ -221,7 +221,7 @@ class PAMDecoder(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.data_rate = tf.Variable(tf.constant(data_rate))
+        self.data_rate = tf.Variable(tf.constant(data_rate), name=f"{self.name}__data_rate")
         self.symbol_decoder = symbol_decoder
 
         self.local_parameters = ["data_rate"]

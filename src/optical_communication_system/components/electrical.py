@@ -41,12 +41,11 @@ class ArbitraryWaveformGenerator(Component):
     def __init__(
         self,
         sampling_rate: float | tf.Tensor,
-        symbol_rate: float | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
+        self.sampling_rate = tf.Variable(tf.constant(sampling_rate), name=f"{self.name}__sampling_rate")
         self.local_parameters = ["sampling_rate"]
 
     def implementation(self, input_samples: tf.Tensor, /, sampling_rate: tf.Tensor) -> ElectricalSignal:
@@ -69,7 +68,7 @@ class Quantizer(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.step = tf.Variable(tf.constant(step))
+        self.step = tf.Variable(tf.constant(step), name=f"{self.name}__step")
         self.local_parameters = [("step", 0)]
 
     @tf.function(input_signature=(
@@ -93,7 +92,7 @@ class ElectricalGain(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.gain = tf.Variable(tf.constant(gain))
+        self.gain = tf.Variable(tf.constant(gain), name=f"{self.name}__gain")
         self.local_parameters = [("gain", 0)]
 
     @tf.function(input_signature=(

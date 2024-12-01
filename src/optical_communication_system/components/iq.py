@@ -44,11 +44,11 @@ class IQSymbolEncoder(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
+        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol), name=f"{self.name}__bits_per_symbol")
 
-        self.mapping = tf.Variable(tf.constant(mapping))
-        self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm))
-        self.parameter_dims = tf.Variable(tf.constant(parameter_dims))
+        self.mapping = tf.Variable(tf.constant(mapping), name=f"{self.name}__mapping")
+        self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm), name=f"{self.name}__adjust_for_mzm")
+        self.parameter_dims = tf.Variable(tf.constant(parameter_dims), name=f"{self.name}__parameter_dims")
 
         self.local_parameters = [
             "mapping", "bits_per_symbol", "adjust_for_mzm", "parameter_dims"
@@ -103,8 +103,8 @@ class IQSymbolDecoder(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol))
-        self.mapping = tf.Variable(tf.constant(mapping))
+        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol), name=f"{self.name}__bits_per_symbol")
+        self.mapping = tf.Variable(tf.constant(mapping), name=f"{self.name}__mapping")
 
         self.local_parameters = ["bits_per_symbol", "mapping"]
 
@@ -159,8 +159,8 @@ class IQEncoder(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.sampling_rate = tf.Variable(tf.constant(sampling_rate))
-        self.data_rate = tf.Variable(tf.constant(data_rate))
+        self.sampling_rate = tf.Variable(tf.constant(sampling_rate), name=f"{self.name}__sampling_rate")
+        self.data_rate = tf.Variable(tf.constant(data_rate), name=f"{self.name}__data_rate")
         self.symbol_encoder = symbol_encoder
 
         self.local_parameters = ["sampling_rate", "data_rate"]
@@ -232,35 +232,64 @@ class IQReceiver(Composition):
         local_oscillator: Component,
         name: Optional[str] = None
     ) -> None:
+        super().__init__([], name=name)
+
         self.photodiode = photodiode
         self.local_oscillator = local_oscillator
 
-        coupler1x2 = OpticalCoupler1x2()
-        identity = Identity()
+        coupler1x2 = OpticalCoupler1x2(name=f"{self.name}__optical_coupler1x2")
+        identity = Identity(f"{self.name}__identity")
 
         # This is a coherent IQ receiver
-        super().__init__([
+        self.components = [
             coupler1x2,  # (OpticalSignal, OpticalSignal)
-            Fork(shape=[2]),  # 2 * ((OpticalSignal, OpticalSignal))
-            MapComponents([
-                identity,  # (OpticalSignal, OpticalSignal)
-                Composition(components=[
-                    Reindex(indices=(0,)),  # OpticalSignal
-                    local_oscillator,  # OpticalSignal
-                    coupler1x2,  # (OpticalSignal, OpticalSignal)
-                    MapComponents([
-                        OpticalPhaseShifter(phase_shift=math.pi / 2),  # OpticalSignal
-                        identity  # OpticalSignal
-                    ])  # (OpticalSignal, OpticalSignal)
-                ])
-            ]),  # 2 * ((OpticalSignal, OpticalSignal))
-            Reindex(indices=[[(1, 1), (0, 0)], [(0, 1), (1, 0)]]),  # 2 * ((OpticalSignal, OpticalSignal),)
-            MapComponents(Composition([
-                OpticalCoupler2x2(flip=True),  # (OpticalSignal, OpticalSignal)
-                MapComponents(photodiode),  # (ElectricalSignal, ElectricalSignal)
-                ElectricalSubtractor()  # ElectricalSignal
-            ])),  # (ElectricalSignal, ElectricalSignal)
-        ], name=name)
+            Fork(shape=[2], name=f"{self.name}__fork"),  # 2 * ((OpticalSignal, OpticalSignal))
+            MapComponents(
+                [
+                    identity,  # (OpticalSignal, OpticalSignal)
+                    Composition(
+                        components=[
+                            Reindex(indices=(0,), name=f"{self.name}__reindex1"),  # OpticalSignal
+                            local_oscillator,  # OpticalSignal
+                            coupler1x2,  # (OpticalSignal, OpticalSignal)
+                            MapComponents(
+                                [
+                                    OpticalPhaseShifter(
+                                        phase_shift=math.pi / 2,
+                                        name=f"{self.name}__optical_phase_shifter"
+                                    ),  # OpticalSignal
+                                    identity  # OpticalSignal
+                                ],
+                                name=f"{self.name}__map_components2"
+                            )  # (OpticalSignal, OpticalSignal)
+                        ],
+                        name=f"{self.name}__composition1"
+                    )
+                ],
+                name=f"{self.name}__map_components1"
+            ),  # 2 * ((OpticalSignal, OpticalSignal))
+            Reindex(
+                indices=[[(1, 1), (0, 0)], [(0, 1), (1, 0)]],
+                name=f"{self.name}__reindex2"
+            ),  # 2 * ((OpticalSignal, OpticalSignal),)
+            MapComponents(
+                Composition(
+                    [
+                        OpticalCoupler2x2(
+                            flip=True,
+                            name=f"{self.name}__optical_coupler2x2"
+                        ),  # (OpticalSignal, OpticalSignal)
+                        MapComponents(
+                            photodiode,
+                            name=f"{self.name}__map_components4"
+                        ),  # (ElectricalSignal, ElectricalSignal)
+                        ElectricalSubtractor(name=f"{self.name}__electrical_subtractor")  # ElectricalSignal
+                    ],
+                    name=f"{self.name}__composition2"
+                ),
+                name=f"{self.name}__map_components3"
+            ),  # (ElectricalSignal, ElectricalSignal)
+        ]
 
 
 class IQDecoder(Component):
@@ -278,7 +307,7 @@ class IQDecoder(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.data_rate = tf.Variable(tf.constant(data_rate))
+        self.data_rate = tf.Variable(tf.constant(data_rate), name=f"{self.name}__data_rate")
         self.symbol_decoder = symbol_decoder
 
         self.local_parameters = ["data_rate"]

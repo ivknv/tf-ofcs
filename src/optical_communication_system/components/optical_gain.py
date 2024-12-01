@@ -16,7 +16,7 @@ class OpticalGain(Component):
     def __init__(self, gain: float | Sequence[float] | tf.Tensor, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
-        self.gain = tf.Variable(tf.constant(gain))
+        self.gain = tf.Variable(tf.constant(gain), name=f"{self.name}__gain")
         self.local_parameters = [("gain", 0)]
 
     @tf.function(input_signature=(

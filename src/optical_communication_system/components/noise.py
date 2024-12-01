@@ -30,8 +30,8 @@ class ElectricalAWGN(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.absolute_db = tf.Variable(tf.constant(absolute_db))
-        self.relative_db = tf.Variable(tf.constant(relative_db))
+        self.absolute_db = tf.Variable(tf.constant(absolute_db), name=f"{self.name}__absolute_db")
+        self.relative_db = tf.Variable(tf.constant(relative_db), name=f"{self.name}__relative_db")
         self.local_parameters = [("absolute_db", 0), ("relative_db", 0)]
 
         if rng is None:
@@ -100,8 +100,8 @@ class OpticalAWGN(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.absolute_dbm = tf.Variable(tf.constant(absolute_dbm))
-        self.relative_db = tf.Variable(tf.constant(relative_db))
+        self.absolute_dbm = tf.Variable(tf.constant(absolute_dbm), name=f"{self.name}__absolute_dbm")
+        self.relative_db = tf.Variable(tf.constant(relative_db), name=f"{self.name}__relative_db")
         self.local_parameters = [("absolute_dbm", 0), ("relative_db", 0)]
 
         if rng is None:

@@ -27,8 +27,8 @@ class SliceSignal(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.slice = tf.Variable(tf.constant(slice))
-        self.factor = tf.Variable(tf.constant(factor))
+        self.slice = tf.Variable(tf.constant(slice), name=f"{self.name}__slice")
+        self.factor = tf.Variable(tf.constant(factor), name=f"{self.name}__factor")
         self.local_parameters = ["slice", "factor"]
 
     def implementation(

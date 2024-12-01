@@ -27,8 +27,8 @@ class BandPassFilter(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.min_frequency = tf.Variable(tf.constant(min_frequency))
-        self.max_frequency = tf.Variable(tf.constant(max_frequency))
+        self.min_frequency = tf.Variable(tf.constant(min_frequency), name=f"{self.name}__min_frequency")
+        self.max_frequency = tf.Variable(tf.constant(max_frequency), name=f"{self.name}__max_frequency")
         self.local_parameters = [("min_frequency", 0), ("max_frequency", 0)]
 
     def implementation(

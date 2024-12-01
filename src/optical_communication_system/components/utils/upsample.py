@@ -19,7 +19,7 @@ class Upsample(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.factor = tf.Variable(tf.constant(factor))
+        self.factor = tf.Variable(tf.constant(factor), name=f"{self.name}__factor")
         self.local_parameters = ["factor"]
 
     def implementation(

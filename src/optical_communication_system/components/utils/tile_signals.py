@@ -20,7 +20,7 @@ class TileSignals(Component):
     def __init__(self, multiples: tuple[int, int] | tf.Tensor, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
-        self.multiples = tf.Variable(tf.constant(multiples))
+        self.multiples = tf.Variable(tf.constant(multiples), name=f"{self.name}__multiples")
         self.local_parameters = ["multiples"]
 
     def implementation(

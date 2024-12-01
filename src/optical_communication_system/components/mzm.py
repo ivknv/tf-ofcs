@@ -28,7 +28,7 @@ class MachZehnderModulator(Component):
         super().__init__(name=name)
 
         self.carrier_source = carrier_source
-        self.extinction_ratio = tf.Variable(tf.constant(extinction_ratio))
+        self.extinction_ratio = tf.Variable(tf.constant(extinction_ratio), name=f"{self.name}__extinction_ratio")
 
         self.local_parameters = [("extinction_ratio", 0)]
 

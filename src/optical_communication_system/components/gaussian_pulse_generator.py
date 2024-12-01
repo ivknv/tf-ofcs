@@ -32,9 +32,9 @@ class GaussianPulseGenerator(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.fwhm_duration = tf.Variable(tf.constant(fwhm_duration))
-        self.power = tf.Variable(tf.constant(power))
-        self.batch_size = tf.Variable(tf.constant(batch_size))
+        self.fwhm_duration = tf.Variable(tf.constant(fwhm_duration), name=f"{self.name}__fwhm_duration")
+        self.power = tf.Variable(tf.constant(power), name=f"{self.name}__power")
+        self.batch_size = tf.Variable(tf.constant(batch_size), name=f"{self.name}__batch_size")
         self.local_parameters = [("power", 0), ("fwhm_duration", 0), "batch_size"]
         self.global_parameters = ["batch_size"]
 

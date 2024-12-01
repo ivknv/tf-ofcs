@@ -35,7 +35,7 @@ class BERTester(Component):
         else:
             self.rng = rng
 
-        self.n_iterations = tf.Variable(tf.constant(n_iterations))
+        self.n_iterations = tf.Variable(tf.constant(n_iterations), name=f"{self.name}__n_iterations")
         self.local_parameters = ["n_iterations"]
 
     @tf.function(input_signature=(

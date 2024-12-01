@@ -27,7 +27,7 @@ class OpticalPhaseShifter(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.phase_shift = tf.Variable(tf.constant(phase_shift))
+        self.phase_shift = tf.Variable(tf.constant(phase_shift), name=f"{self.name}__phase_shift")
         self.local_parameters = [("phase_shift", 0)]
 
     @tf.function(input_signature=(
@@ -79,12 +79,21 @@ class OpticalFiber(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.attenuation = tf.Variable(tf.constant(attenuation))
-        self.chromatic_dispersion = tf.Variable(tf.constant(chromatic_dispersion))
-        self.eff_non_linear_coeff = tf.Variable(tf.constant(eff_non_linear_coeff))
-        self.length = tf.Variable(tf.constant(length))
-        self.central_frequency = tf.Variable(tf.constant(central_frequency))
-        self.step_count = tf.Variable(tf.constant(step_count))
+        self.attenuation = tf.Variable(tf.constant(attenuation), name=f"{self.name}__attenuation")
+        self.chromatic_dispersion = tf.Variable(
+            tf.constant(chromatic_dispersion),
+            name=f"{self.name}__chromatic_dispersion"
+        )
+        self.eff_non_linear_coeff = tf.Variable(
+            tf.constant(eff_non_linear_coeff),
+            name=f"{self.name}__eff_non_linear_coeff"
+        )
+        self.length = tf.Variable(tf.constant(length), name=f"{self.name}__length")
+        self.central_frequency = tf.Variable(
+            tf.constant(central_frequency),
+            name=f"{self.name}__central_frequency"
+        )
+        self.step_count = tf.Variable(tf.constant(step_count), name=f"{self.name}__step_count")
 
         self.local_parameters = [
             ("attenuation", 0),
@@ -201,7 +210,7 @@ class OpticalCoupler2x2(Component):
     def __init__(self, flip: bool | tf.Tensor = False, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
-        self.flip = tf.Variable(tf.constant(flip))
+        self.flip = tf.Variable(tf.constant(flip), name=f"{self.name}__flip")
         self.local_parameters = ["flip"]
 
     @tf.function(input_signature=(

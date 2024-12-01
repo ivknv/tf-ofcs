@@ -23,8 +23,8 @@ class Downsample(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.factor = tf.Variable(tf.constant(factor))
-        self.time_offset = tf.Variable(tf.constant(time_offset))
+        self.factor = tf.Variable(tf.constant(factor), name=f"{self.name}__factor")
+        self.time_offset = tf.Variable(tf.constant(time_offset), name=f"{self.name}__time_offset")
         self.local_parameters = ["factor", "time_offset"]
 
     def implementation(

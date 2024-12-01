@@ -31,29 +31,31 @@ class ChannelLossEstimator(Composition):
         sampling_rate: float | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
+        super().__init__([], name=name)
+
         self.laser = laser
         self.channel = channel
         self.photodiode = photodiode
         mean_amplitude = Lambda(
-            lambda signal: tf.math.reduce_mean(tf.abs(signal.samples), axis=-1)
+            lambda signal: tf.math.reduce_mean(tf.abs(signal.samples), axis=-1),
+            name=f"{self.name}__lambda1"
         )
 
-        super().__init__(
-            [
-                # We set the name to forward kwargs to the Lambda component
-                Lambda(self._generate_timing, allow_kwargs=True, name=name),
-                laser,
-                Fork(shape=[2]),
-                MapComponents([
-                    mean_amplitude,
-                    Composition([channel, photodiode, mean_amplitude])
-                ]),
-                Lambda(self._estimate_attenuation)
-            ],
-            name=name
-        )
+        self.components = [
+            Lambda(self._generate_timing, allow_kwargs=True, name=f"{self.name}__lambda2"),
+            laser,
+            Fork(shape=[2], name=f"{self.name}__fork"),
+            MapComponents([
+                mean_amplitude,
+                Composition(
+                    [channel, photodiode, mean_amplitude],
+                    name=f"{self.name}__composition"
+                )
+            ], name=f"{self.name}__map_components"),
+            Lambda(self._estimate_attenuation, name=f"{self.name}__lambda3")
+        ]
 
-        self.sampling_rate = tf.Variable(tf.constant(float(sampling_rate)))
+        self.sampling_rate = tf.Variable(tf.constant(float(sampling_rate)), name=f"{self.name}__sampling_rate")
 
         self.local_parameters = ["sampling_rate"]
 

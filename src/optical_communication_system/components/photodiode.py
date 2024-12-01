@@ -24,8 +24,8 @@ class Photodiode(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.sensitivity = tf.Variable(tf.constant(sensitivity))
-        self.maximum_power = tf.Variable(tf.constant(maximum_power))
+        self.sensitivity = tf.Variable(tf.constant(sensitivity), name=f"{self.name}__sensitivity")
+        self.maximum_power = tf.Variable(tf.constant(maximum_power), name=f"{self.name}__maximum_power")
 
         self.local_parameters = [("sensitivity", 0), ("maximum_power", 0)]
 

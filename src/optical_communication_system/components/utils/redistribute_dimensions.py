@@ -26,7 +26,7 @@ class RedistributeDimensions(Component):
     ) -> None:
         super().__init__(name=name)
 
-        self.factors = tf.Variable(tf.constant(factors))
+        self.factors = tf.Variable(tf.constant(factors), name=f"{self.name}__factors")
         self.local_parameters = ["factors"]
 
     def implementation(
