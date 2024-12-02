@@ -62,7 +62,6 @@ __all__ = [
     "ArbitraryWaveformGenerator",
     "Quantizer",
     "ElectricalGain",
-    "Resample",
     "Downsample",
     "Upsample",
     "ParallelToSerial",

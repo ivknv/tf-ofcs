@@ -212,13 +212,17 @@ class IMDDAutoencoder(keras.Sequential):
         bits_per_batch = tf.shape(bitseq)[1]
         batch_size = tf.shape(bitseq)[0]
         symbols_per_batch = bits_per_batch // self._bits_per_symbol
-        x = tf.reshape(x, (batch_size, self.n * symbols_per_batch))
+        x = tf.reshape(x, (batch_size, 1, self.n * symbols_per_batch))
 
-        return self._transmission_layer.waveform_generator(x)
+        return ElectricalSignal(
+            timing=Timing(sampling_rate=self.sampling_rate, sample_count=self.n * symbols_per_batch),
+            samples=x
+        )
 
     def decode_signal(self, input_signal: ElectricalSignal) -> tf.Tensor:
         sample_count = tf.size(input_signal.samples)
         batch_size = tf.shape(input_signal.samples)[0]
+        parameter_dims = tf.shape(input_signal.samples)[1]
 
         samples = tf.reshape(input_signal.samples, (sample_count // self.n, self.n))
 
@@ -228,4 +232,4 @@ class IMDDAutoencoder(keras.Sequential):
 
         bitseq = indices_to_bits(tf.cast(tf.argmax(x, axis=1), tf.int32), self._bits_per_symbol)
 
-        return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
+        return tf.reshape(bitseq, (batch_size, parameter_dims, tf.size(bitseq) // batch_size // parameter_dims))
