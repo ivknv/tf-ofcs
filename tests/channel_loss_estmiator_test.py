@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from optical_communication_system.components import (
+from tf_ofcs.components import (
     ChannelLossEstimator, Laser, Photodiode, OpticalFiber
 )
-from optical_communication_system.utils import from_db
+from tf_ofcs.utils import from_db
 
 
 def test_channel_loss_estimator() -> None:

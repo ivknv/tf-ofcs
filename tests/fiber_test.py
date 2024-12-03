@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from optical_communication_system.components import OpticalFiber, GaussianPulseGenerator
-from optical_communication_system.datatypes import OpticalSignal, Timing
-from optical_communication_system import constants
+from tf_ofcs.components import OpticalFiber, GaussianPulseGenerator
+from tf_ofcs.datatypes import OpticalSignal, Timing
+from tf_ofcs import constants
 
 
 def test_optical_fiber_attenuation() -> None:

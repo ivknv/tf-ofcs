@@ -2,10 +2,10 @@
 
 import tensorflow as tf
 
-from optical_communication_system.components import (
+from tf_ofcs.components import (
     OpticalMultiplexer, Laser, OpticalDemultiplexer, RedistributeDimensions
 )
-from optical_communication_system.datatypes import OpticalSignal, Timing
+from tf_ofcs.datatypes import OpticalSignal, Timing
 
 
 def test_optical_multiplexer() -> None:

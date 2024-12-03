@@ -4,9 +4,9 @@ import math
 import tensorflow as tf
 import numpy as np
 
-from optical_communication_system.components import BandPassFilter
-from optical_communication_system.datatypes import ElectricalSignal, Timing
-from optical_communication_system.utils import timing_to_samples
+from tf_ofcs.components import BandPassFilter
+from tf_ofcs.datatypes import ElectricalSignal, Timing
+from tf_ofcs.utils import timing_to_samples
 
 
 def test_bandpass_filter() -> None:

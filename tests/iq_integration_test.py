@@ -2,12 +2,12 @@
 
 import tensorflow as tf
 
-from optical_communication_system.components import (
+from tf_ofcs.components import (
     IQEncoder, IQDecoder, IQSymbolEncoder, IQSymbolDecoder, IQModulator,
     IQReceiver, Composition, Laser, BandPassFilter, OpticalAWGN, OpticalFiber,
     Photodiode, Quantizer, MapComponents, ElectricalGain
 )
-from optical_communication_system.utils import dbm_to_w, from_db, wavelength_nm_to_frequency
+from tf_ofcs.utils import dbm_to_w, from_db, wavelength_nm_to_frequency
 
 
 def test_qam4_system() -> None:

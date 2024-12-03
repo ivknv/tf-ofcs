@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 package-dir = {"" = "src"}
 
 [project]
-name = "optical-communication-system"
+name = "tf-ofcs"
 version = "0.1.0"
 description = ""
 readme = "README.md"
@@ -35,10 +35,10 @@ dev = [
 ]
 
 [project.urls]
-"Source code" = "https://github.com/ivknv/optical-communication-system"
+"Source code" = "https://github.com/ivknv/tf-ofcs"
 
 [tool.mypy]
-packages = ["optical_communication_system", "tests"]
+packages = ["tf_ofcs", "tests"]
 
 [tool.ruff]
 line-length = 120

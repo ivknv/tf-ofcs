@@ -2,12 +2,12 @@
 
 import tensorflow as tf
 
-from optical_communication_system.components import (
+from tf_ofcs.components import (
     PAMEncoder, PAMDecoder, PAMSymbolEncoder, PAMSymbolDecoder,
     Composition, Laser, BandPassFilter, MachZehnderModulator, OpticalAWGN,
     OpticalFiber, Photodiode, Quantizer, ElectricalGain
 )
-from optical_communication_system.utils import dbm_to_w, from_db, wavelength_nm_to_frequency
+from tf_ofcs.utils import dbm_to_w, from_db, wavelength_nm_to_frequency
 
 
 def test_pam2_system() -> None:

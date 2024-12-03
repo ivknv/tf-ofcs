@@ -3,8 +3,8 @@
 import itertools
 import tensorflow as tf
 
-from optical_communication_system.datatypes import Timing, ElectricalSignal
-from optical_communication_system.components import (
+from tf_ofcs.datatypes import Timing, ElectricalSignal
+from tf_ofcs.components import (
     IQSymbolEncoder, IQSymbolDecoder, IQEncoder, IQDecoder
 )
 

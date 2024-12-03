@@ -2,10 +2,10 @@
 
 import tensorflow as tf
 
-from optical_communication_system import constants
-from optical_communication_system.components import Laser
-from optical_communication_system.datatypes import Timing, OpticalSignal
-from optical_communication_system.utils import timing_to_samples
+from tf_ofcs import constants
+from tf_ofcs.components import Laser
+from tf_ofcs.datatypes import Timing, OpticalSignal
+from tf_ofcs.utils import timing_to_samples
 
 
 def test_laser() -> None:

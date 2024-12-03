@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from optical_communication_system.components import Photodiode
-from optical_communication_system.datatypes import (
+from tf_ofcs.components import Photodiode
+from tf_ofcs.datatypes import (
     OpticalSignal, ElectricalSignal, Timing
 )
-from optical_communication_system.utils import timing_to_samples
-from optical_communication_system.utils import dbm_to_w
-from optical_communication_system import constants
+from tf_ofcs.utils import timing_to_samples
+from tf_ofcs.utils import dbm_to_w
+from tf_ofcs import constants
 
 
 def test_photodiode() -> None:

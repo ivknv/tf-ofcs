@@ -2,9 +2,9 @@
 
 import math
 import tensorflow as tf
-from optical_communication_system.components import Laser, MachZehnderModulator
-from optical_communication_system.datatypes import ElectricalSignal, OpticalSignal, Timing
-from optical_communication_system.utils import timing_to_samples
+from tf_ofcs.components import Laser, MachZehnderModulator
+from tf_ofcs.datatypes import ElectricalSignal, OpticalSignal, Timing
+from tf_ofcs.utils import timing_to_samples
 
 def test_mzm() -> None:
     laser = Laser(power=[1e-3, 2e-3], batch_size=1)

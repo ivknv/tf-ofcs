@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from optical_communication_system.components import ParallelToSerial
-from optical_communication_system.datatypes import ElectricalSignal, Timing
+from tf_ofcs.components import ParallelToSerial
+from tf_ofcs.datatypes import ElectricalSignal, Timing
 
 
 def test_parallel_to_serial() -> None:

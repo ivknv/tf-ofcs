@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from optical_communication_system.components import SliceSignal
-from optical_communication_system.datatypes import ElectricalSignal, Timing
+from tf_ofcs.components import SliceSignal
+from tf_ofcs.datatypes import ElectricalSignal, Timing
 
 
 def test_slice_signal() -> None:

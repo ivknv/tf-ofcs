@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from optical_communication_system.components import OpticalAWGN, Laser
-from optical_communication_system.datatypes import OpticalSignal, Timing
-from optical_communication_system.utils import from_db, dbm_to_w
+from tf_ofcs.components import OpticalAWGN, Laser
+from tf_ofcs.datatypes import OpticalSignal, Timing
+from tf_ofcs.utils import from_db, dbm_to_w
 
 
 def test_optical_awgn() -> None:

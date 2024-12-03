@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from optical_communication_system.components import (
+from tf_ofcs.components import (
     PAMSymbolEncoder, PAMSymbolDecoder, PAMEncoder, PAMDecoder
 )
 
