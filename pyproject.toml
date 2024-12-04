@@ -10,6 +10,7 @@ name = "tf-ofcs"
 version = "0.1.0"
 description = ""
 readme = "README.md"
+license = "GPLv3"
 requires-python = ">=3.10,<3.11"
 authors = [
     {name = "Ivan Konovalov", email = "ivknv0@gmail.com"}
