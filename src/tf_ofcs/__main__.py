@@ -97,6 +97,17 @@ class TrainCommand(Command):
 
             model.summary()
 
+            callbacks: list[keras.callbacks.Callback] = []
+
+            if ns.store:
+                callbacks.append(keras.callbacks.ModelCheckpoint(
+                    ns.store,
+                    monitor="loss",
+                    save_best_only=True,
+                    save_weights_only=True,
+                    save_freq="epoch"
+                ))
+
             # Create a training dataset of ~256000 input messages
             tile_factor = 256000 // M
             dataset = tf.tile(
@@ -112,11 +123,9 @@ class TrainCommand(Command):
                 dataset,
                 epochs=ns.epochs,
                 batch_size=ns.batch_size,
-                shuffle=True
+                shuffle=True,
+                callbacks=callbacks
             )
-
-            if ns.store:
-                model.save_weights(ns.store, overwrite=True)
 
         return 0
 
