@@ -49,6 +49,21 @@ def _load_profile(path: str) -> Any:
     for key, value in transmission_layer_parameters.items():
         transmission_layer_parameters[key] = tf.constant(value)
 
+    parameter_distributions = model_parameters.setdefault("parameter_distributions", {})
+
+    dtype_map = {
+        "int8": tf.int8,
+        "int16": tf.int16,
+        "int32": tf.int32,
+        "int64": tf.int64,
+        "float16": tf.float16,
+        "float32": tf.float32,
+        "float64": tf.float64
+    }
+
+    for value in parameter_distributions.values():
+        value["dtype"] = dtype_map[value["dtype"]]
+
     return profile
 
 

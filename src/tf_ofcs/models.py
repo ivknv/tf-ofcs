@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 import math
 from typing import Any, Optional
 import tensorflow as tf
@@ -26,7 +26,7 @@ from .utils import dbm_to_w
 
 from .components import (
     Composition, OpticalFiber, OpticalAWGN, MachZehnderModulator, Laser,
-    Photodiode, BandPassFilter, ArbitraryWaveformGenerator, Lambda
+    Photodiode, BandPassFilter, ArbitraryWaveformGenerator, Lambda, RandomizeParameters
 )
 
 __all__ = ["IMDDAutoencoder"]
@@ -56,6 +56,7 @@ class TransmissionLayer(keras.layers.Layer):
         n: int,
         encoder: Callable[[tf.Tensor], tf.Tensor],
         parameters: dict[str, Any],
+        parameter_distributions: Mapping[str, Mapping[str, Any]],
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name, trainable=False)
@@ -100,6 +101,12 @@ class TransmissionLayer(keras.layers.Layer):
             Lambda(function=lambda x: _slice_signal(x, n * central_index, n * (central_index + 1)))
         ])
 
+        self._system_with_randomization = RandomizeParameters(
+            self._communication_system,
+            shape=[1],
+            distributions=parameter_distributions
+        )
+
         self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
 
         self._encoder = encoder
@@ -134,8 +141,9 @@ class TransmissionLayer(keras.layers.Layer):
         inputs = tf.reshape(inputs, [1, batch_size, self._N * sample_count])
 
         return tf.reshape(
-            self._communication_system(
+            self._system_with_randomization(
                 inputs,
+                randomize_parameters__shape=tf.expand_dims(batch_size, 0),
                 batch_size=1,
                 parameter_dims=batch_size,
                 **self.parameters
@@ -170,6 +178,7 @@ class IMDDAutoencoder(keras.Sequential):
         n: int,
         N: int,
         transmission_layer_parameters: dict[str, Any],
+        parameter_distributions: Mapping[str, Mapping[str, Any]],
         name: Optional[str] = None
     ) -> None:
         self._bits_per_symbol = int(math.log2(M))
@@ -206,6 +215,7 @@ class IMDDAutoencoder(keras.Sequential):
                 n=n,
                 encoder=lambda inp: self._tx3_layer(self._tx2_layer(self._tx1_layer(inp))),
                 parameters=transmission_layer_parameters,
+                parameter_distributions=parameter_distributions,
                 name="transmission"
             )
         )
