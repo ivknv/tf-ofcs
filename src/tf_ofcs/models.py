@@ -55,11 +55,12 @@ class TransmissionLayer(keras.layers.Layer):
         N: int,
         n: int,
         encoder: Callable[[tf.Tensor], tf.Tensor],
+        parameters: dict[str, Any],
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name, trainable=False)
 
-        self.parameters = {}
+        self.parameters = parameters
 
         bandwidth = 32e9 # Hz
         central_frequency = 193.414e12
@@ -163,7 +164,14 @@ class IMDDAutoencoder(keras.Sequential):
     n: int
     N: int
 
-    def __init__(self, M: int, n: int, N: int, name: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        M: int,
+        n: int,
+        N: int,
+        transmission_layer_parameters: dict[str, Any],
+        name: Optional[str] = None
+    ) -> None:
         self._bits_per_symbol = int(math.log2(M))
         self.sampling_rate = 336e9
 
@@ -197,6 +205,7 @@ class IMDDAutoencoder(keras.Sequential):
                 M=M,
                 n=n,
                 encoder=lambda inp: self._tx3_layer(self._tx2_layer(self._tx1_layer(inp))),
+                parameters=transmission_layer_parameters,
                 name="transmission"
             )
         )
