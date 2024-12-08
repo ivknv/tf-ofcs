@@ -75,8 +75,10 @@ class TransmissionLayer(keras.layers.Layer):
             sensitivity=dbm_to_w(-20.0)
         )
 
+        awgn = OpticalAWGN(relative_db=-33.0)
+
         channel = Composition([
-            OpticalAWGN(relative_db=-30.0),
+            awgn,
             OpticalFiber(
                 length=40.0,
                 attenuation=0.22,
@@ -84,7 +86,8 @@ class TransmissionLayer(keras.layers.Layer):
                 eff_non_linear_coeff=0.0,
                 step_count=1,
                 central_frequency=central_frequency
-            )
+            ),
+            awgn
         ])
 
         self.waveform_generator = ArbitraryWaveformGenerator(sampling_rate=sampling_rate)

@@ -17,7 +17,7 @@
 import argparse
 import math
 import json
-from typing import Any
+from typing import Any, Optional
 
 import h5py
 import keras
@@ -43,6 +43,7 @@ def _load_profile(path: str) -> Any:
     with open(path, "rb") as profile_file:
         profile = json.load(profile_file)
 
+    profile.setdefault("optimizer_parameters", {})
     model_parameters = profile.setdefault("model_parameters", {})
     transmission_layer_parameters = model_parameters.setdefault("transmission_layer_parameters", {})
 
@@ -73,6 +74,28 @@ def _create_model(profile: dict[str, Any]) -> keras.Model:
     return mapping[profile["model_type"]](**profile["model_parameters"])
 
 
+class RevertToBest(keras.callbacks.Callback):
+    def __init__(self, model: keras.models.Model, treshold=1.3) -> None:
+        self._model = model
+        self._best_loss = float("inf")
+        self._best_weights = None
+        self._treshold = treshold
+
+    def on_epoch_end(self, epoch: int, logs: Optional[dict[str, Any]] = None) -> None:
+        if logs is None:
+            return
+
+        loss = logs["loss"]
+
+        if loss < self._best_loss:
+            self._best_loss, self._best_weights = loss, self._model.get_weights()
+        elif loss / self._best_loss >= self._treshold:
+            assert self._best_weights is not None
+            print()
+            print(f"Reverting weights to previous best: loss={self._best_loss}")
+            self._model.set_weights(self._best_weights)
+
+
 class TrainCommand(Command):
     description = "Train an IM/DD autoencoder"
 
@@ -91,7 +114,7 @@ class TrainCommand(Command):
             model = _create_model(profile)
             M = profile["model_parameters"]["M"]
 
-            optimizer = keras.optimizers.Adam()
+            optimizer = keras.optimizers.Adam(**profile["optimizer_parameters"])
             model.compile(optimizer=optimizer, loss="binary_crossentropy")
             model.build((1, M))
 
@@ -108,8 +131,10 @@ class TrainCommand(Command):
                     save_freq="epoch"
                 ))
 
-            # Create a training dataset of ~256000 input messages
-            tile_factor = 256000 // M
+            callbacks.append(RevertToBest(model, treshold=1.3))
+
+            # Create a training dataset of ~512000 input messages
+            tile_factor = 512000 // M
             dataset = tf.tile(
                 tf.cast(tf.one_hot(tf.range(M), M), tf.float32),
                 [tile_factor, 1]
@@ -224,9 +249,10 @@ class BEROverParameterCommand(Command):
 
                 ber_values.append(ber)
 
-            with h5py.File(ns.output, "w") as hdf5:
-                hdf5.create_dataset("ber", data=ber_values)
-                hdf5.create_dataset(ns.parameter, data=parameter_values)
+            if ns.output is not None:
+                with h5py.File(ns.output, "w") as hdf5:
+                    hdf5.create_dataset("ber", data=ber_values)
+                    hdf5.create_dataset(ns.parameter, data=parameter_values)
 
         return 0
 
