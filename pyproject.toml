@@ -33,7 +33,8 @@ dev = [
     "pylsp-mypy",
     "types-tensorflow>=2.15,<2.16",
     "pytest",
-    "ipywidgets"
+    "ipywidgets",
+    "kaleido"
 ]
 
 [project.urls]
