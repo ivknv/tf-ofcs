@@ -29,7 +29,8 @@ __all__ = [
     "BandPassFilter",
     "FFTFilter",
     "BrickwallFrequencyResponse",
-    "WDMBrickwallFrequencyResponse"
+    "WDMBrickwallFrequencyResponse",
+    "GaussianFrequencyResponse"
 ]
 
 
@@ -280,4 +281,80 @@ class WDMBrickwallFrequencyResponse(Component):
                 [1, parameter_dims, 1]
             ),
             tf.complex64
+        )
+
+
+class GaussianFrequencyResponse(Component):
+    """Frequency response function of a Gaussian filter."""
+
+    #: Filter's central frequency in Hz
+    central_frequency: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+
+    #: Filter's 3 dB bandwidth in Hz
+    bandwidth: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+
+    #: Gaussian filter's order
+    order: tf.Variable  # shape=[] or [None]; dtype=tf.int32
+
+    batch_size: tf.Variable  # shape=[]; dtype=tf.int32
+    parameter_dims: tf.Variable  # shape=[]; dtype=tf.int32
+
+    def __init__(
+        self,
+        central_frequency: float | Sequence[float] | tf.Tensor,
+        bandwidth: float | Sequence[float] | tf.Tensor,
+        order: float | Sequence[float] | tf.Tensor,
+        batch_size: float | tf.Tensor = 1,
+        parameter_dims: float | tf.Tensor = 1,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.central_frequency = tf.Variable(
+            tf.constant(central_frequency),
+            name=f"{self.name}__central_frequency"
+        )
+        self.bandwidth = tf.Variable(tf.constant(bandwidth), name=f"{self.name}__bandwidth")
+        self.order = tf.Variable(tf.constant(order), name=f"{self.name}__order")
+        self.batch_size = tf.Variable(tf.constant(batch_size), name=f"{self.name}__batch_size")
+        self.parameter_dims = tf.Variable(tf.constant(parameter_dims), name=f"{self.name}__parameter_dims")
+
+        self.local_parameters = [
+            ("central_frequency", 0),
+            ("bandwidth", 0),
+            ("order", 0),
+            "batch_size",
+            "parameter_dims"
+        ]
+
+        self.global_parameters = ["batch_size", "parameter_dims"]
+
+    def implementation(
+        self,
+        frequencies: tf.Tensor,
+        /,
+        central_frequency: tf.Tensor,
+        bandwidth: tf.Tensor,
+        order: tf.Tensor,
+        batch_size: tf.Tensor,
+        parameter_dims: tf.Tensor
+    ) -> tf.Tensor:
+        central_frequency = tf.expand_dims(central_frequency, -1)
+        bandwidth = tf.expand_dims(bandwidth, -1)
+        order = tf.cast(tf.expand_dims(order, -1), tf.float32)
+
+        return tf.tile(
+            tf.expand_dims(
+                tf.cast(
+                    tf.math.exp(
+                        tf.math.divide(
+                            -0.5 * tf.math.log(2.0) * tf.constant(2.0) ** (2.0 * order),
+                            bandwidth ** (2.0 * order)
+                        ) * (frequencies - central_frequency) ** (2.0 * order)
+                    ),
+                    tf.complex64
+                ),
+                0
+            ),
+            [batch_size, 1, 1]
         )
