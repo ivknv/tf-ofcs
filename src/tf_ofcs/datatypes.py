@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import tensorflow as tf
+from typing import Protocol
 
 __all__ = [
     "Timing",
@@ -26,7 +27,8 @@ __all__ = [
     "bit_dtype",
     "bit_sequence_spec",
     "IQSignal",
-    "iq_signal_spec"
+    "iq_signal_spec",
+    "FrequencyResponseFunction"
 ]
 
 
@@ -76,3 +78,31 @@ bit_sequence_spec = tf.TensorSpec(shape=[None, None], dtype=bit_dtype)
 
 IQSignal = tuple[ElectricalSignal, ElectricalSignal]
 iq_signal_spec = (electrical_signal_spec, electrical_signal_spec)
+
+
+class FrequencyResponseFunction(Protocol):
+    """
+        Protocol for a function, describing filter's frequency response.
+
+        :param frequencies: `tf.Tensor`, shape=[n], dtype=tf.float32, tensor of
+                            input frequencies in Hz, where n is the number of
+                            frequencies
+        :param batch_size: `tf.Tensor`, expected batch_size dimension of the output
+        :param parameter_dims: `tf.Tensor`, expected parameter_dims dimension of the output
+        :param kwargs: other arguments passed from components
+
+        .. note::
+
+           batch_size and parameter_dims might not correspond to the actual
+           signal's shape, they only indicate the desired shape of frequency response.
+
+        :returns: a `tf.Tensor` with shape=[batch_size, parameter_dims, n], dtype=tf.complex64
+    """
+
+    def __call__(
+        self,
+        frequencies: tf.Tensor,
+        /,
+        **kwargs
+    ) -> tf.Tensor:
+        ...

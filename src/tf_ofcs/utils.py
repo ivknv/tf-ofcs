@@ -48,7 +48,8 @@ __all__ = [
     "generate_timing",
     "timing_to_samples",
     "combine_shape",
-    "lorentz_distribution"
+    "lorentz_distribution",
+    "brickwall_frequency_response"
 ]
 
 _log_of_10 = tf.math.log(10.0)
@@ -263,3 +264,25 @@ def combine_shape(shapes: tf.Tensor) -> tf.Tensor:
 @tf.function
 def lorentz_distribution(x: tf.Tensor, x_0: tf.Tensor, gamma: tf.Tensor) -> tf.Tensor:
     return gamma / (math.pi * ((x - x_0) ** 2 + gamma ** 2))
+
+
+def brickwall_frequency_response(
+    frequencies: tf.Tensor,
+    shape: tf.Tensor,
+    *,
+    min_frequency: tf.Tensor,
+    max_frequency: tf.Tensor
+) -> tf.Tensor:
+    return tf.cast(
+        tf.tile(
+            tf.expand_dims(
+                tf.math.logical_and(
+                    tf.math.greater_equal(frequencies, min_frequency),
+                    tf.math.less(frequencies, max_frequency)
+                ),
+                1
+            ),
+            [shape[0], shape[1], 1]
+        ),
+        tf.complex64
+    )

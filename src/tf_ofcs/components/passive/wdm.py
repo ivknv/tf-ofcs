@@ -14,12 +14,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from ...utils import fftfreq, from_db
-from ...datatypes import OpticalSignal
+from ...utils import fftfreq
+from ...datatypes import FrequencyResponseFunction, OpticalSignal
 from ..component import Component
 
 __all__ = ["OpticalMultiplexer", "OpticalDemultiplexer"]
@@ -69,76 +68,51 @@ class OpticalDemultiplexer(Component):
         Every output signal corresponds to some specific frequency.
     """
 
-    #: Frequencies of the output ports, this parameter also determines the
-    #: number of output ports
-    frequencies: tf.Variable  # shape=[None]; dtype=tf.float32
+    n_outputs: tf.Variable  # shape=[]; dtype=tf.int32
 
-    #: Channel width in Hz
-    channel_width: tf.Variable  # shape=[]; dtype=tf.float32
-
-    #: Crosstalk attenuation in dB. This value applies to all adjacent channels
-    crosstalk_attenuation: tf.Variable  # shape=[]; dtype=tf.float32
+    #: Optical filters for each corresponding output port
+    frequency_response_function: FrequencyResponseFunction
 
     def __init__(
         self,
-        frequencies: Sequence[float] | tf.Tensor,
-        channel_width: float | tf.Tensor,
-        crosstalk_attenuation: float | tf.Tensor = float("inf"),
+        n_outputs: int | tf.Tensor,
+        frequency_response_function: FrequencyResponseFunction,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.frequencies = tf.Variable(tf.constant(frequencies))
-        self.channel_width = tf.Variable(tf.constant(channel_width))
-        self.crosstalk_attenuation = tf.Variable(tf.constant(crosstalk_attenuation))
-        self.local_parameters = ["frequencies", "channel_width", "crosstalk_attenuation"]
+        self.n_outputs = tf.Variable(tf.constant(n_outputs), name=f"{self.name}__n_outputs")
+        self.frequency_response_function = frequency_response_function
 
-    def implementation(
+        self.local_parameters = ["n_outputs"]
+
+    def call(
         self,
         input_signal: OpticalSignal,
         /,
-        frequencies: tf.Tensor,
-        channel_width: tf.Tensor,
-        crosstalk_attenuation: tf.Tensor
+        **kwargs
     ) -> OpticalSignal:
         fft = tf.signal.fft(input_signal.samples)
         fft_freqs = fftfreq(tf.shape(fft)[-1], 1.0 / input_signal.timing.sampling_rate)
 
-        batch_size = tf.shape(fft)[0]
-        n = tf.size(frequencies)
+        n_outputs = self.get_component_parameter(kwargs, "n_outputs")
+        batch_size, parameter_dims, _ = tf.shape(fft)
 
-        # shape=[batch_size * n, 1, sample_count]
-        pass_mask = tf.tile(
-            tf.expand_dims(
-                tf.math.logical_and(
-                    tf.math.greater_equal(
-                        fft_freqs,
-                        tf.expand_dims(frequencies - channel_width * 0.5, -1)
-                    ),
-                    tf.math.less(
-                        fft_freqs,
-                        tf.expand_dims(frequencies + channel_width * 0.5, -1)
-                    )
-                ),
-                1
+        # We need override these parameters, so we drop them from kwargs
+        kwargs.pop("batch_size", None)
+        kwargs.pop("parameter_dims", None)
+
+        frequency_response = tf.tile(
+            self.frequency_response_function(
+                fft_freqs,
+                batch_size=n_outputs,
+                parameter_dims=parameter_dims,
+                **kwargs
             ),
             [batch_size, 1, 1]
-        )
+        ) * tf.math.sqrt(tf.cast(n_outputs, tf.complex64))
 
-        fft = tf.tile(fft, [n, 1, 1])
-
-        # Coefficient needed for the total power to be conserved
-        c = tf.math.sqrt(tf.cast(n, tf.float32))
-
-        attenuation = from_db(-crosstalk_attenuation * 0.5)
-        passband_coeff = c * tf.math.sqrt(1.0 - (c * attenuation) ** 2)
-
-        samples = tf.signal.ifft(
-            fft * tf.where(
-                pass_mask,
-                tf.complex(passband_coeff, 0.0),
-                tf.complex(attenuation, 0.0)
-            )
-        )
+        fft = tf.tile(fft, [n_outputs, 1, 1])
+        samples = tf.signal.ifft(frequency_response * fft)
 
         return OpticalSignal(timing=input_signal.timing, samples=samples)

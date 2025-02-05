@@ -26,7 +26,10 @@ from .passive import (
     OpticalFiber, OpticalPhaseShifter, OpticalCoupler1x2,
     OpticalCoupler2x2, OpticalCoupler2x1, OpticalMultiplexer, OpticalDemultiplexer
 )
-from .filters import BandPassFilter, FFTFilter
+from .filters import (
+    BandPassFilter, FFTFilter, BrickwallFrequencyResponse,
+    WDMBrickwallFrequencyResponse
+)
 from .ber import BERTester
 from .utils import (
     Composition, MapComponents, Identity, Reindex, Fork, Downsample,
@@ -67,6 +70,8 @@ __all__ = [
     "BandPassFilter",
     "FFTFilter",
     "BERTester",
+    "BrickwallFrequencyResponse",
+    "WDMBrickwallFrequencyResponse",
     "Composition",
     "MapComponents",
     "Identity",

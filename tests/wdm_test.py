@@ -3,7 +3,8 @@
 import tensorflow as tf
 
 from tf_ofcs.components import (
-    OpticalMultiplexer, Laser, OpticalDemultiplexer, RedistributeDimensions
+    OpticalMultiplexer, Laser, OpticalDemultiplexer, RedistributeDimensions,
+    WDMBrickwallFrequencyResponse
 )
 from tf_ofcs.datatypes import OpticalSignal, Timing
 
@@ -35,7 +36,13 @@ def test_optical_demultiplexer() -> None:
     freqs = [-1e9, 0.0, 1e9]
 
     laser = Laser(power=1e-3, frequency=freqs, parameter_dims=len(freqs), batch_size=2)
-    odemux = OpticalDemultiplexer(frequencies=freqs, channel_width=0.5e9)
+
+    frequency_response = WDMBrickwallFrequencyResponse(channel_frequencies=freqs, channel_width=0.5e9)
+    odemux = OpticalDemultiplexer(
+        n_outputs=len(freqs),
+        frequency_response_function=frequency_response
+    )
+
     omux = OpticalMultiplexer(3)
 
     timing = Timing(sampling_rate=10e9, sample_count=1000)
