@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections.abc import Sequence
-from typing import Optional
+from typing import Optional, Protocol
 import tensorflow as tf
 
 from ..utils import fftfreq
@@ -23,7 +23,53 @@ from .component import Component
 
 from ..datatypes import Timing, timing_spec, ElectricalSignal, OpticalSignal
 
-__all__ = ["BandPassFilter"]
+__all__ = ["BandPassFilter", "FFTFilter"]
+
+
+class _FrequencyResponseFunction(Protocol):
+    def __call__(self, frequencies: tf.Tensor, parameter_dims: tf.Tensor, **kwargs) -> tf.Tensor:
+        ...
+
+
+class FFTFilter(Component):
+    """
+        This component performs a Fourier transform, multiplies the signal
+        by the frequency response defined by a function, and then performs
+        the inverse Fourier transform.
+    """
+
+    #: Function that defines the filter's frequency response
+    #: Signature: (frequencies: tf.Tensor, parameter_dims: tf.Tensor, **kwargs) -> tf.Tensor.
+    #: Must accept a tensor of frequencies (in Hz) and output a tensor with
+    #: shape=[parameter_dims, n], dtype=tf.complex64, where n is the number of
+    #: frequencies. `**kwargs` can be used to pass arbitrary additional arguments
+    #: from components
+    frequency_response_function: _FrequencyResponseFunction
+
+    def __init__(
+        self,
+        frequency_response_function: _FrequencyResponseFunction,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.frequency_response_function = frequency_response_function
+
+    def implementation(self, signal: ElectricalSignal | OpticalSignal, /) -> ElectricalSignal | OpticalSignal:
+        Signal = signal.__class__
+
+        parameter_dims = tf.shape(signal.samples)[1]
+
+        fft = tf.signal.fft(tf.cast(signal.samples, tf.complex64))
+        freqs = tf.abs(fftfreq(tf.shape(fft)[-1], 1.0 / signal.timing.sampling_rate))
+
+        frequency_response = self.frequency_response_function(freqs, parameter_dims)
+        filtered_samples = tf.signal.ifft(frequency_response * fft)
+
+        if isinstance(signal, ElectricalSignal):
+            filtered_samples = tf.cast(tf.math.real(filtered_samples), tf.float32)
+
+        return Signal(timing=signal.timing, samples=filtered_samples)
 
 
 class BandPassFilter(Component):
