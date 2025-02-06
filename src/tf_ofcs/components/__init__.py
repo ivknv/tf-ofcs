@@ -28,7 +28,8 @@ from .passive import (
 )
 from .filters import (
     BandPassFilter, FFTFilter, BrickwallFrequencyResponse,
-    WDMBrickwallFrequencyResponse, GaussianFrequencyResponse
+    WDMBrickwallFrequencyResponse, GaussianFrequencyResponse,
+    BesselFrequencyResponse
 )
 from .ber import BERTester
 from .utils import (
@@ -73,6 +74,7 @@ __all__ = [
     "BrickwallFrequencyResponse",
     "WDMBrickwallFrequencyResponse",
     "GaussianFrequencyResponse",
+    "BesselFrequencyResponse",
     "Composition",
     "MapComponents",
     "Identity",

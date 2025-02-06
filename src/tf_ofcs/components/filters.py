@@ -30,7 +30,8 @@ __all__ = [
     "FFTFilter",
     "BrickwallFrequencyResponse",
     "WDMBrickwallFrequencyResponse",
-    "GaussianFrequencyResponse"
+    "GaussianFrequencyResponse",
+    "BesselFrequencyResponse"
 ]
 
 
@@ -353,6 +354,129 @@ class GaussianFrequencyResponse(Component):
                         ) * (frequencies - central_frequency) ** (2.0 * order)
                     ),
                     tf.complex64
+                ),
+                0
+            ),
+            [batch_size, 1, 1]
+        )
+
+
+class BesselFrequencyResponse(Component):
+    """Frequency response function of Bessel bandpass filter."""
+
+    #: Filter's central frequency in Hz
+    central_frequency: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+
+    #: Bessel filter's bandwidth
+    bandwidth: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+
+    #: Bessel filter's order
+    order: tf.Variable  # shape=[]; dtype=tf.int32
+
+    batch_size: tf.Variable  # shape=[]; dtype=tf.int32
+    parameter_dims: tf.Variable  # shape=[]; dtype=tf.int32
+
+    def __init__(
+        self,
+        central_frequency: float | Sequence[float] | tf.Tensor,
+        bandwidth: float | Sequence[float] | tf.Tensor,
+        order: float | Sequence[float] | tf.Tensor,
+        batch_size: float | tf.Tensor = 1,
+        parameter_dims: float | tf.Tensor = 1,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.central_frequency = tf.Variable(
+            tf.constant(central_frequency),
+            name=f"{self.name}__central_frequency"
+        )
+        self.bandwidth = tf.Variable(tf.constant(bandwidth), name=f"{self.name}__bandwidth")
+        self.order = tf.Variable(tf.constant(order), name=f"{self.name}__order")
+        self.batch_size = tf.Variable(tf.constant(batch_size), name=f"{self.name}__batch_size")
+        self.parameter_dims = tf.Variable(tf.constant(parameter_dims), name=f"{self.name}__parameter_dims")
+
+        self.local_parameters = [
+            ("central_frequency", 0),
+            ("bandwidth", 0),
+            "order",
+            "batch_size",
+            "parameter_dims"
+        ]
+
+        self.global_parameters = ["batch_size", "parameter_dims"]
+
+    def _factorial(self, n: tf.Tensor) -> tf.Tensor:
+        tf.debugging.assert_greater_equal(n, 0)
+
+        # assume n is int32, so we can't compute big factorials
+        tf.debugging.assert_less(n, 13)
+
+        shape = tf.shape(n)
+        n = tf.reshape(n, [tf.size(n)])
+
+        n = tf.math.maximum(n, 1)
+        f = tf.map_fn(lambda i: tf.reduce_prod(tf.range(1, i + 1)), n)
+
+        return tf.reshape(f, shape)
+
+    def _a(self, k: tf.Tensor, n: tf.Tensor) -> tf.Tensor:
+        return tf.divide(
+            self._factorial(2 * n - k),
+            tf.math.multiply(
+                tf.math.pow(2, n - k) * self._factorial(k),
+                self._factorial(n - k)
+            )
+        )
+
+    def _theta(self, s: tf.Tensor, n: tf.Tensor) -> tf.Tensor:
+        k = tf.range(n)  # shape=[n]
+
+        # shape=[n, parameter_dims, f]
+        s_k = s ** tf.expand_dims(tf.expand_dims(tf.cast(k, tf.complex64), -1), -1)
+
+        # Avoid NaN due to 0.0 ** 0.0
+        s_k = tf.concat(
+            [
+                tf.fill(tf.concat([[1], tf.shape(s_k)[1:]], 0), tf.cast(1.0, tf.complex64)),
+                s_k[1:]
+            ],
+            0
+        )
+
+        return tf.reduce_sum(
+            tf.multiply(
+                # shape=[n, 1, 1]
+                tf.expand_dims(tf.expand_dims(tf.cast(self._a(k, n), tf.complex64), -1), -1),
+                s_k
+            ),
+            axis=0
+        )
+
+    def _theta_0(self, n: tf.Tensor) -> tf.Tensor:
+        return tf.multiply(
+            tf.cast(self._a(tf.constant(0), n), tf.complex64),
+            tf.cast(1.0, tf.complex64)
+        )
+
+    def implementation(
+        self,
+        frequencies: tf.Tensor,
+        /,
+        central_frequency: tf.Tensor,
+        bandwidth: tf.Tensor,
+        order: tf.Tensor,
+        batch_size: tf.Tensor,
+        parameter_dims: tf.Tensor
+    ) -> tf.Tensor:
+        central_frequency = tf.expand_dims(central_frequency, -1)
+        bandwidth = tf.expand_dims(bandwidth, -1)
+
+        return tf.tile(
+            tf.expand_dims(
+                tf.divide(
+                    self._theta_0(order),
+                    self._theta(tf.complex(0.0, (frequencies - central_frequency) / bandwidth), order)
                 ),
                 0
             ),
