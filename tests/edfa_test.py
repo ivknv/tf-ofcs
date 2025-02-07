@@ -21,12 +21,12 @@ def test_edfa() -> None:
     assert tf.math.reduce_all(tf.shape(amplified_signal.samples) == [2, 2, 1000])  # type: ignore[operator]
 
     amplification = tf.abs(amplified_signal.samples / tf.tile(input_signal.samples, [1, 2, 1]))
-    error = tf.concat(
+    error = tf.abs(tf.concat(
         [
-            amplification[:, 0, :] - 10.0,
-            amplification[:, 0, :] - 20.0
+            amplification[:, 0, :] - 10.0 ** 0.5,
+            amplification[:, 1, :] - 20.0 ** 0.5
         ],
         1
-    )
+    ))
 
     assert tf.math.reduce_all(tf.math.less(error, 0.0001))  # type: ignore[operator]
