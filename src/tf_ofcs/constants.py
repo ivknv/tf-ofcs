@@ -17,10 +17,13 @@
 import math
 import tensorflow as tf
 
-__all__ = ["c", "pi", "e"]
+__all__ = ["c", "pi", "e", "h"]
 
 #: Speed of light in vacuum in m/s
 c = tf.Variable(tf.constant(2.99792458E8))
 
 pi = tf.Variable(tf.constant(math.pi))
 e = tf.Variable(tf.constant(math.e))
+
+#: Planck constant
+h = 6.62607015E-34
