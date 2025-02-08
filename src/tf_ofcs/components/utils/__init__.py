@@ -32,6 +32,7 @@ from .tile_signals import TileSignals
 from .slice_signal import SliceSignal
 from .randomize_parameters import RandomizeParameters
 from .pad_signal import PadSignal
+from .loop import Loop
 
 __all__ = [
     "MapComponents",
@@ -50,5 +51,6 @@ __all__ = [
     "TileSignals",
     "SliceSignal",
     "RandomizeParameters",
-    "PadSignal"
+    "PadSignal",
+    "Loop"
 ]
