@@ -36,7 +36,7 @@ from .utils import (
     Composition, MapComponents, Identity, Reindex, Fork, Downsample,
     Upsample, ParallelToSerial, SerialToParallel, ExtractSamples, Lambda,
     RedistributeDimensions, SplitSignals, MergeSignals, TileSignals,
-    SliceSignal, RandomizeParameters
+    SliceSignal, RandomizeParameters, PadSignal
 )
 from .electrical import (
     ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator,
@@ -98,6 +98,7 @@ __all__ = [
     "TileSignals",
     "SliceSignal",
     "RandomizeParameters",
+    "PadSignal",
     "Component",
     "OpticalGain",
     "ChannelLossEstimator",

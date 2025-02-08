@@ -31,6 +31,7 @@ from .merge_signals import MergeSignals
 from .tile_signals import TileSignals
 from .slice_signal import SliceSignal
 from .randomize_parameters import RandomizeParameters
+from .pad_signal import PadSignal
 
 __all__ = [
     "MapComponents",
@@ -48,5 +49,6 @@ __all__ = [
     "MergeSignals",
     "TileSignals",
     "SliceSignal",
-    "RandomizeParameters"
+    "RandomizeParameters",
+    "PadSignal"
 ]
