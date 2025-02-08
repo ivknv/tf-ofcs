@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2024 Ivan Konovalov
+# Copyright (C) 2025 Ivan Konovalov
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,11 +20,11 @@ from typing import Any, Optional
 import tensorflow as tf
 import keras  # type: ignore[import-untyped]
 
-from .datatypes import ElectricalSignal, Timing
-from .utils import bits_to_indices, indices_to_bits
-from .utils import dbm_to_w
+from ..datatypes import ElectricalSignal, Timing
+from ..utils import bits_to_indices, indices_to_bits
+from ..utils import dbm_to_w
 
-from .components import (
+from ..components import (
     Composition, OpticalFiber, OpticalAWGN, MachZehnderModulator, Laser,
     Photodiode, BandPassFilter, ArbitraryWaveformGenerator, Lambda, RandomizeParameters
 )
