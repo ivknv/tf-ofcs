@@ -13,12 +13,10 @@ def test_fftfilter() -> None:
     def frequency_response(
         frequencies: tf.Tensor,
         /,
-        batch_size: tf.Tensor,
-        parameter_dims: tf.Tensor,
         **kwargs
     ) -> tf.Tensor:
         return tf.fill(
-            [batch_size, parameter_dims, tf.size(frequencies)],
+            [1, 1, tf.size(frequencies)],
             tf.cast(0.5, tf.complex64)
         )
 
@@ -37,7 +35,7 @@ def test_fftfilter() -> None:
         ] * 2]
     )
 
-    filtered_signal = fft_filter(input_signal, batch_size=1)
+    filtered_signal = fft_filter(input_signal)
 
     assert isinstance(filtered_signal, ElectricalSignal)
     assert tf.math.reduce_all(tf.shape(filtered_signal.samples) == [1, 2, 400])  # type: ignore[operator]
