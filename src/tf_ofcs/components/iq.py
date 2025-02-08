@@ -219,18 +219,21 @@ class IQEncoder(Component):
 
 class IQModulator(Composition):
     def __init__(self, carrier_source: Component, name=None) -> None:
-        super().__init__([
+        super().__init__([], name=name)
+
+        self.components = [
             MapComponents([
-                MachZehnderModulator(carrier_source=carrier_source),
+                MachZehnderModulator(carrier_source=carrier_source, name=f"{self.name}__mzm_i"),
                 MachZehnderModulator(
                     carrier_source=Composition(components=[
                         carrier_source,
-                        OpticalPhaseShifter(phase_shift=0.5 * math.pi)
-                    ])
+                        OpticalPhaseShifter(phase_shift=0.5 * math.pi, name=f"{self.name}__phase_shifter")
+                    ], name=f"{self.name}__carrier_source_q"),
+                    name=f"{self.name}__mzm_q"
                 )
             ]),
-            OpticalCoupler2x1()
-        ], name=name)
+            OpticalCoupler2x1(name=f"{self.name}__coupler_2x1")
+        ]
 
 
 class IQReceiver(Composition):
