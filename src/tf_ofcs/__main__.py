@@ -19,8 +19,8 @@ import math
 import json
 from typing import Any, Optional
 
-import h5py
-import keras
+import h5py  # type: ignore[import-untyped]
+import keras  # type: ignore[import-untyped]
 import tensorflow as tf
 
 from .utils import dbm_to_w

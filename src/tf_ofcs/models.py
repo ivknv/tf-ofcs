@@ -18,7 +18,7 @@ from collections.abc import Callable, Mapping
 import math
 from typing import Any, Optional
 import tensorflow as tf
-import keras
+import keras  # type: ignore[import-untyped]
 
 from .datatypes import ElectricalSignal, Timing
 from .utils import bits_to_indices, indices_to_bits
