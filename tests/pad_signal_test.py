@@ -15,7 +15,7 @@ def test_pad_signal() -> None:
         )
     )
 
-    pad_signal = PadSignal(left_padding=2.0, right_padding=3.0)
+    pad_signal = PadSignal(left_padding=2, right_padding=3)
     padded_signal = pad_signal(input_signal)
 
     assert isinstance(padded_signal, ElectricalSignal)
@@ -24,3 +24,10 @@ def test_pad_signal() -> None:
     assert tf.math.reduce_all(padded_signal.samples[:, :, :20] == 0.0)  # type: ignore[operator]
     assert tf.math.reduce_all(padded_signal.samples[:, :, 30:] == 0.0)  # type: ignore[operator]
     assert tf.math.reduce_all(padded_signal.samples[:, :, 20:30] == input_signal.samples)  # type: ignore[operator]
+
+    unpad_signal = PadSignal(left_padding=2, right_padding=3, unpad=True)
+    unpadded_signal = unpad_signal(padded_signal)
+
+    assert isinstance(unpadded_signal, ElectricalSignal)
+    assert tf.math.reduce_all(tf.shape(unpadded_signal.samples) == [2, 3, 10])  # type: ignore[operator]
+    assert tf.math.reduce_all(unpadded_signal.samples == input_signal.samples)  # type: ignore[operator]
