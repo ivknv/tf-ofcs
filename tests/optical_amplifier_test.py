@@ -2,13 +2,13 @@
 
 import tensorflow as tf
 
-from tf_ofcs.components import EDFA
+from tf_ofcs.components import OpticalAmplifier
 from tf_ofcs.datatypes import OpticalSignal, Timing
 
 
 def test_edfa() -> None:
     rng = tf.random.Generator.from_seed(123, alg="philox")
-    edfa = EDFA(gain=[10.0, 20.0], noise_figure=[4.0, 7.0], rng=rng)
+    edfa = OpticalAmplifier(gain=[10.0, 20.0], noise_figure=[4.0, 7.0], rng=rng)
 
     input_signal = OpticalSignal(
         timing=Timing(sampling_rate=1000.0, sample_count=1000),

@@ -46,7 +46,7 @@ from .component import Component
 from .optical_gain import OpticalGain
 from .channel_loss_estimator import ChannelLossEstimator
 from .gaussian_pulse_generator import GaussianPulseGenerator
-from .edfa import EDFA
+from .optical_amplifier import OpticalAmplifier
 
 __all__ = [
     "Laser",
@@ -106,5 +106,5 @@ __all__ = [
     "GaussianPulseGenerator",
     "OpticalMultiplexer",
     "OpticalDemultiplexer",
-    "EDFA"
+    "OpticalAmplifier"
 ]

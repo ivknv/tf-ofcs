@@ -22,11 +22,11 @@ from .component import Component
 from ..datatypes import OpticalSignal
 from .. import constants
 
-__all__ = ["EDFA"]
+__all__ = ["OpticalAmplifier"]
 
 
-class EDFA(Component):
-    """Erbium-Doped Fiber Amplifier."""
+class OpticalAmplifier(Component):
+    """Generic optical amplifier."""
 
     #: Amplifier gain (unitless)
     gain: tf.Variable  # shape=[] or [None]; dtype=tf.float32
