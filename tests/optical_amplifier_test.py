@@ -6,21 +6,21 @@ from tf_ofcs.components import OpticalAmplifier
 from tf_ofcs.datatypes import OpticalSignal, Timing
 
 
-def test_edfa() -> None:
+def test_optical_amplifier() -> None:
     rng = tf.random.Generator.from_seed(123, alg="philox")
-    edfa = OpticalAmplifier(gain=[10.0, 20.0], noise_figure=[4.0, 7.0], rng=rng)
+    amplifier = OpticalAmplifier(gain=[10.0, 20.0], noise_figure=[4.0, 7.0], rng=rng)
 
     input_signal = OpticalSignal(
         timing=Timing(sampling_rate=1000.0, sample_count=1000),
-        samples=tf.cast(tf.fill([2, 1, 1000], 1.0), tf.complex64)
+        samples=tf.cast(tf.fill([2, 2, 1000], 1.0), tf.complex64)
     )
 
-    amplified_signal = edfa(input_signal)
+    amplified_signal = amplifier(input_signal)
 
     assert isinstance(amplified_signal, OpticalSignal)
     assert tf.math.reduce_all(tf.shape(amplified_signal.samples) == [2, 2, 1000])  # type: ignore[operator]
 
-    amplification = tf.abs(amplified_signal.samples / tf.tile(input_signal.samples, [1, 2, 1]))
+    amplification = tf.abs(amplified_signal.samples / input_signal.samples)
     error = tf.abs(tf.concat(
         [
             amplification[:, 0, :] - 10.0 ** 0.5,
