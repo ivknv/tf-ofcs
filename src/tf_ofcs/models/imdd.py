@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 import math
 from typing import Any, Optional
 import tensorflow as tf
@@ -25,8 +25,9 @@ from ..utils import bits_to_indices, indices_to_bits
 from ..utils import dbm_to_w
 
 from ..components import (
-    Composition, OpticalFiber, OpticalAWGN, MachZehnderModulator, Laser,
-    Photodiode, BandPassFilter, ArbitraryWaveformGenerator, Lambda, RandomizeParameters
+    Component, Composition, OpticalFiber, OpticalAWGN, MachZehnderModulator,
+    Laser, Photodiode, BandPassFilter, ArbitraryWaveformGenerator, Lambda,
+    RandomizeParameters, ElectricalGain, ExtractSamples
 )
 
 __all__ = ["IMDDAutoencoder"]
@@ -50,58 +51,27 @@ class TransmissionLayer(keras.layers.Layer):
 
     def __init__(
         self,
-        sampling_rate: float | tf.Tensor,
-        M: int,
-        N: int,
-        n: int,
-        encoder: Callable[[tf.Tensor], tf.Tensor],
+        autoencoder: "IMDDAutoencoder",
         parameters: dict[str, Any],
         parameter_distributions: Mapping[str, Mapping[str, Any]],
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name, trainable=False)
 
+        M = autoencoder.M
+        N = autoencoder.N
+        n = autoencoder.n
+
         self.parameters = parameters
-
-        bandwidth = 32e9 # Hz
-        central_frequency = 193.414e12
-
-        lpf = BandPassFilter(min_frequency=0.0, max_frequency=bandwidth)
-
-        laser = Laser(power=dbm_to_w(2.0))
-
-        photodiode = Photodiode(
-            maximum_power=dbm_to_w(3.0),
-            sensitivity=dbm_to_w(-20.0)
-        )
-
-        awgn = OpticalAWGN(relative_db=-33.0)
-
-        channel = Composition([
-            awgn,
-            OpticalFiber(
-                length=40.0,
-                attenuation=0.22,
-                chromatic_dispersion=17.0,
-                eff_non_linear_coeff=0.0,
-                step_count=1,
-                central_frequency=central_frequency
-            ),
-            awgn
-        ])
-
-        self.waveform_generator = ArbitraryWaveformGenerator(sampling_rate=sampling_rate)
 
         central_index = (N - 1) // 2
 
         self._communication_system = Composition([
-            self.waveform_generator,
-            lpf,
-            MachZehnderModulator(carrier_source=laser),
-            channel,
-            photodiode,
-            lpf,
-            Lambda(function=lambda x: _slice_signal(x, n * central_index, n * (central_index + 1)))
+            autoencoder.transmitter,
+            autoencoder.channel,
+            autoencoder.receiver,
+            Lambda(function=lambda x: _slice_signal(x, n * central_index, n * (central_index + 1))),
+            ExtractSamples()
         ])
 
         self._system_with_randomization = RandomizeParameters(
@@ -112,15 +82,16 @@ class TransmissionLayer(keras.layers.Layer):
 
         self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
 
-        self._encoder = encoder
+        self._encoder_network = autoencoder.encoder_network
         self._N = N
         self._M = M
+        self._sampling_rate = autoencoder.sampling_rate
 
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
         batch_size = tf.shape(inputs)[0]
         sample_count = tf.shape(inputs)[1]
 
-        adjacent_inputs = self._encoder(
+        adjacent_inputs = self._encoder_network(
             tf.cast(
                 tf.one_hot(
                     self.rng.uniform(((self._N - 1) * batch_size,), 0, self._M, dtype=tf.int32),
@@ -150,7 +121,7 @@ class TransmissionLayer(keras.layers.Layer):
                 batch_size=1,
                 parameter_dims=batch_size,
                 **self.parameters
-            ).samples * 1e6,
+            ),
             (batch_size, sample_count)
         )
 
@@ -163,9 +134,17 @@ class IMDDAutoencoder(keras.Sequential):
         3) Receiver.
 
         :ivar M: `int`, number of values a single message (symbol) carries
-        :ivar n: `int`, number of samples per symbol produces by the transmitter
+        :ivar n: `int`, number of samples per symbol produced by the transmitter
         :ivar N: `int`, number of adjacent symbols transmitted during training (must be odd)
         :ivar sampling_rate: `float`, sampling rate of the system in samples/second
+
+        :ivar encoder: `Component`, component that encodes a bit sequence into a tensor
+        :ivar encoder_network: `Component`, transmitter layers of the neural network
+        :ivar transmitter: `Component`, component that converts `ElectricalSignal` into an `OpticalSignal`
+        :ivar channel: `Component`, component that represents the channel
+        :ivar receiver: `Component`, component that converts an `OpticalSignal` into `ElectricSignal`
+        :ivar decoder: `Component`, component that decodes the `ElectricalSignal` into a bit sequence
+        :ivar decoder_network: `Component`, receiver layers of the neural network
 
         [1] 2018. Karanov et al. End-to-End Deep Learning of Optical Fiber Communications.
     """
@@ -174,6 +153,16 @@ class IMDDAutoencoder(keras.Sequential):
     M: int
     n: int
     N: int
+
+    encoder: Component
+    encoder_network: Component
+
+    decoder: Component
+    decoder_network: Component
+
+    transmitter: Component
+    channel: Component
+    receiver: Component
 
     def __init__(
         self,
@@ -210,13 +199,52 @@ class IMDDAutoencoder(keras.Sequential):
         self.add(self._tx2_layer)
         self.add(self._tx3_layer)
 
+        bandwidth = 32e9 # Hz
+        central_frequency = 193.414e12
+
+        lpf = BandPassFilter(min_frequency=0.0, max_frequency=bandwidth)
+        awgn = OpticalAWGN(relative_db=-33.0)
+
+        self.transmitter = Composition([
+            ArbitraryWaveformGenerator(sampling_rate=self.sampling_rate),
+            lpf,
+            MachZehnderModulator(carrier_source=Laser(power=dbm_to_w(2.0)))
+        ], name="transmitter")
+
+        self.channel = Composition([
+            awgn,
+            OpticalFiber(
+                length=40.0,
+                attenuation=0.22,
+                chromatic_dispersion=17.0,
+                eff_non_linear_coeff=0.0,
+                step_count=1,
+                central_frequency=central_frequency
+            ),
+            awgn
+        ], name="channel")
+
+        self.receiver = Composition([
+            Photodiode(maximum_power=dbm_to_w(3.0), sensitivity=dbm_to_w(-20.0)),
+            lpf,
+            ElectricalGain(gain=1e6)
+        ], name="receiver")
+
+        self.encoder_network = Lambda(
+            lambda x: self._tx3_layer(self._tx2_layer(self._tx1_layer(x))),
+            name="encoder_network"
+        )
+        self.decoder_network = Lambda(
+            lambda x: self._rx3_layer(self._rx2_layer(self._rx1_layer(x))),
+            name="decoder_network"
+        )
+
+        self.encoder = Lambda(self.encode_input)
+        self.decoder = Lambda(self.decode_signal)
+
         self.add(
             TransmissionLayer(
-                sampling_rate=self.sampling_rate,
-                N=N,
-                M=M,
-                n=n,
-                encoder=lambda inp: self._tx3_layer(self._tx2_layer(self._tx1_layer(inp))),
+                autoencoder=self,
                 parameters=transmission_layer_parameters,
                 parameter_distributions=parameter_distributions,
                 name="transmission"
@@ -231,7 +259,7 @@ class IMDDAutoencoder(keras.Sequential):
         self.add(self._rx2_layer)
         self.add(self._rx3_layer)
 
-    def encode_input(self, bitseq: tf.Tensor) -> ElectricalSignal:
+    def encode_input(self, bitseq: tf.Tensor) -> tf.Tensor:
         bitseq_size = tf.size(bitseq)
 
         inputs = tf.one_hot(
@@ -241,19 +269,13 @@ class IMDDAutoencoder(keras.Sequential):
             ),
             self.M
         )
-        x = self._tx1_layer(inputs)
-        x = self._tx2_layer(x)
-        x = self._tx3_layer(x)
+        x = self.encoder_network(inputs)
 
         bits_per_batch = tf.shape(bitseq)[1]
         batch_size = tf.shape(bitseq)[0]
         symbols_per_batch = bits_per_batch // self._bits_per_symbol
-        x = tf.reshape(x, (batch_size, 1, self.n * symbols_per_batch))
 
-        return ElectricalSignal(
-            timing=Timing(sampling_rate=self.sampling_rate, sample_count=self.n * symbols_per_batch),
-            samples=x
-        )
+        return tf.reshape(x, (batch_size, 1, self.n * symbols_per_batch))
 
     def decode_signal(self, input_signal: ElectricalSignal) -> tf.Tensor:
         sample_count = tf.size(input_signal.samples)
@@ -262,9 +284,7 @@ class IMDDAutoencoder(keras.Sequential):
 
         samples = tf.reshape(input_signal.samples, (sample_count // self.n, self.n))
 
-        x = self._rx1_layer(samples)
-        x = self._rx2_layer(x)
-        x = self._rx3_layer(x) # shape=[None, M]
+        x = self.decoder_network(samples)  # shape=[None, M]
 
         bitseq = indices_to_bits(tf.cast(tf.argmax(x, axis=1), tf.int32), self._bits_per_symbol)
 

@@ -23,10 +23,9 @@ import h5py  # type: ignore[import-untyped]
 import keras  # type: ignore[import-untyped]
 import tensorflow as tf
 
-from .utils import dbm_to_w
-
-from .models import IMDDAutoencoder
+from .models import AutoencoderModel, IMDDAutoencoder, IQAutoencoder
 from . import components
+from .utils import indices_to_bits
 
 
 class Command:
@@ -69,7 +68,10 @@ def _load_profile(path: str) -> Any:
 
 
 def _create_model(profile: dict[str, Any]) -> keras.Model:
-    mapping = {"IMDDAutoencoder": IMDDAutoencoder}
+    mapping = {
+        "IMDDAutoencoder": IMDDAutoencoder,
+        "IQAutoencoder": IQAutoencoder
+    }
 
     return mapping[profile["model_type"]](**profile["model_parameters"])
 
@@ -182,46 +184,44 @@ class BEROverParameterCommand(Command):
         profile = _load_profile(ns.profile)
 
         with tf.device(ns.device):
-            model = _create_model(profile)
+            model: AutoencoderModel = _create_model(profile)
             model.load_weights(ns.model)
             M = profile["model_parameters"]["M"]
 
-            encoder = components.Lambda(model.encode_input)
-            decoder = components.Lambda(model.decode_signal)
+            bits_per_symbol = int(math.log2(M))
 
-            lpf = components.BandPassFilter(min_frequency=0.0, max_frequency=32e9)
-            laser = components.Laser(power=dbm_to_w(2.0))
-            photodiode = components.Photodiode(
-                maximum_power=dbm_to_w(3.0),
-                sensitivity=dbm_to_w(-20.0)
-            )
+            # Autoencoder's encoder only takes one symbol per batch
+            def reshape_for_encoder(x: tf.Tensor) -> tf.Tensor:
+                batch_size, symbol_count, one_hot_size = tf.shape(x)
 
-            channel = components.Composition([
-                components.OpticalAWGN(relative_db=-30.0),
-                components.OpticalFiber(
-                    length=40.0,
-                    attenuation=0.22,
-                    chromatic_dispersion=17.0,
-                    eff_non_linear_coeff=0.0,
-                    step_count=1,
-                    central_frequency=193.414e12
-                )
+                return tf.reshape(x, [batch_size * symbol_count, one_hot_size])
+
+            def reshape_for_transmitter(x: tf.Tensor) -> tf.Tensor:
+                batch_size, sample_count = tf.shape(x)
+                symbol_count = ns.bitseq_length // bits_per_symbol
+
+                return tf.reshape(x, [batch_size // symbol_count, 1, sample_count * symbol_count])
+
+            def reshape_for_decoder(x: tf.Tensor) -> tf.Tensor:
+                batch_size, parameter_dims, sample_count = tf.shape(x)
+                symbol_count = ns.bitseq_length // bits_per_symbol
+
+                tf.debugging.assert_equal(parameter_dims, 1)
+
+                return tf.reshape(x, [batch_size * symbol_count, sample_count // symbol_count])
+
+            def decode_one_hot(x: tf.Tensor) -> tf.Tensor:
+                bitseq = indices_to_bits(tf.cast(tf.argmax(x, axis=1), tf.int32), bits_per_symbol)
+
+                return tf.reshape(bitseq, (ns.batch_size, 1, ns.bitseq_length))
+
+            system = components.Composition([
+                model.encoder,
+                model.transmitter,
+                model.channel,
+                model.receiver,
+                model.decoder
             ])
-
-            transmitter = components.Composition([
-                encoder,
-                lpf,
-                components.MachZehnderModulator(carrier_source=laser)
-            ])
-
-            receiver = components.Composition([
-                photodiode,
-                lpf,
-                components.ElectricalGain(gain=1e6),
-                decoder
-            ])
-
-            system = components.Composition([transmitter, channel, receiver])
 
             ber_tester = components.BERTester(
                 system,
@@ -234,7 +234,7 @@ class BEROverParameterCommand(Command):
             parameter_values = tf.range(ns.start, ns.end, ns.step)
 
             if ns.bitseq_length is None:
-                bitseq_length = tf.constant(int(math.log2(M) * 100))
+                bitseq_length = tf.constant(bits_per_symbol * 100)
             else:
                 bitseq_length = tf.constant(ns.bitseq_length)
 
