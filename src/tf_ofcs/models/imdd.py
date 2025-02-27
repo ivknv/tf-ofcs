@@ -27,7 +27,8 @@ from ..utils import dbm_to_w
 from ..components import (
     Component, Composition, OpticalFiber, OpticalAWGN, MachZehnderModulator,
     Laser, Photodiode, BandPassFilter, ArbitraryWaveformGenerator, Lambda,
-    RandomizeParameters, ElectricalGain, ExtractSamples
+    RandomizeParameters, ElectricalGain, ExtractSamples, Fork, Identity,
+    MapComponents
 )
 
 __all__ = ["IMDDAutoencoder"]
@@ -142,7 +143,7 @@ class IMDDAutoencoder(keras.Sequential):
         :ivar encoder_network: `Component`, transmitter layers of the neural network
         :ivar transmitter: `Component`, component that converts `ElectricalSignal` into an `OpticalSignal`
         :ivar channel: `Component`, component that represents the channel
-        :ivar receiver: `Component`, component that converts an `OpticalSignal` into `ElectricSignal`
+        :ivar receiver: `Component`, component that converts an `OpticalSignal` into `ElectricalSignal`
         :ivar decoder: `Component`, component that decodes the `ElectricalSignal` into a bit sequence
         :ivar decoder_network: `Component`, receiver layers of the neural network
 
@@ -208,7 +209,12 @@ class IMDDAutoencoder(keras.Sequential):
         self.transmitter = Composition([
             ArbitraryWaveformGenerator(sampling_rate=self.sampling_rate),
             lpf,
-            MachZehnderModulator(carrier_source=Laser(power=dbm_to_w(2.0)))
+            Fork(shape=[2]),
+            MapComponents([
+                Laser(power=dbm_to_w(2.0)),
+                Identity()
+            ]),
+            MachZehnderModulator()
         ], name="transmitter")
 
         self.channel = Composition([

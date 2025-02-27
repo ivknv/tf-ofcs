@@ -22,57 +22,56 @@ from .. import constants
 from .component import Component
 
 from ..datatypes import (
-    Timing, ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec
+    ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec
 )
 
 __all__ = ["MachZehnderModulator"]
 
 
 class MachZehnderModulator(Component):
-    carrier_source: Callable[[Timing], OpticalSignal]
+    """
+        Mach-Zehnder modulator (MZM) implementation.
+
+        Expects a `tuple[OpticalSignal, ElectricalSignal]` as input.
+        The first tuple element is the carrier signal, the second is the
+        modulation signal.
+
+        The modulation signal's samples must be in range `[0.0, 1.0]`.
+        Value of `0` corresponds to a phase shift of `0`, while a value of `1`
+        corresponds to a phase shift of `math.pi`.
+
+        :ivar extinction_ratio: `tf.Variable` (`dtype=tf.float32`), modulator's
+                                extinction ratio
+    """
+
     extinction_ratio: tf.Variable  # shape=[None] or []; dtype=float32
 
     def __init__(
         self,
         *,
-        carrier_source: Callable[[Timing], OpticalSignal],
         extinction_ratio: float | Sequence[float] | tf.Tensor = float("inf"),
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.carrier_source = carrier_source
-        self.extinction_ratio = tf.Variable(tf.constant(extinction_ratio), name=f"{self.name}__extinction_ratio")
-
+        self.extinction_ratio = tf.Variable(
+            tf.constant(extinction_ratio),
+            name=f"{self.name}__extinction_ratio"
+        )
         self.local_parameters = [("extinction_ratio", 0)]
 
-    def call(self, modulation_signal: ElectricalSignal, /, **kwargs) -> OpticalSignal:
-        carrier_signal = self.carrier_source(modulation_signal.timing, **kwargs)
-
-        extinction_ratio = self.get_local_kwarg(kwargs, "extinction_ratio")
-
-        if extinction_ratio is None:
-            extinction_ratio = self.extinction_ratio
-
-        extinction_ratio = tf.broadcast_to(extinction_ratio, [tf.shape(carrier_signal.samples)[1]])
-
-        return self._implementation(
-            modulation_signal,
-            carrier_signal,
-            extinction_ratio=extinction_ratio
-        )
-
     @tf.function(input_signature=(
-        electrical_signal_spec,
-        optical_signal_spec,
+        (optical_signal_spec, electrical_signal_spec),
         tf.TensorSpec([None], tf.float32)
     ))
-    def _implementation(
+    def implementation(
         self,
-        modulation_signal: ElectricalSignal,
-        carrier_signal: OpticalSignal,
+        inputs: tuple[OpticalSignal, ElectricalSignal],
+        /,
         extinction_ratio: tf.Tensor
     ) -> OpticalSignal:
+        carrier_signal, modulation_signal = inputs
+
         k = tf.expand_dims(1.0 / extinction_ratio, -1)
 
         # Modulation signal is expected to be in range [0.0, 1.0]
@@ -84,7 +83,4 @@ class MachZehnderModulator(Component):
             ),
         )
 
-        return OpticalSignal(
-            timing=carrier_signal.timing,
-            samples=modulated_signal
-        )
+        return OpticalSignal(timing=carrier_signal.timing, samples=modulated_signal)

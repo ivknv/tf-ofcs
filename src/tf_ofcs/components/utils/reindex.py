@@ -21,6 +21,21 @@ __all__ = ["Reindex"]
 
 
 class Reindex(Component):
+    """
+        Takes a `tuple` as an input, produces a new tuple with indices as specified
+        in the `indices` parameter.
+
+        :ivar indices: `list | tuple[int, ...]`, indices of the output tuple.
+                       If indices is a tuple, it represents a single index.
+                       If indices is a list, it will create a tuple of indices,
+                       this works recursively.
+
+        Example 1: specifying `indices=(0, 3, 2)` is the same as `inputs[0][3][2]`.
+        Example 2: specifying `indices=[(0, 1), (1, 0)]` will produce `(inputs[0][1], inputs[1][0])`.
+        Example 3: specifying `indices=[[(0, 0), (1, 0)], [(1, 0), (1, 1)]]` will
+        produce `((inputs[0][0], inputs[1][0]), (inputs[0][1], inputs[1][1]))`.
+    """
+
     indices: list | tuple[int, ...]
 
     def __init__(

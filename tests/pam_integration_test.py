@@ -5,7 +5,8 @@ import tensorflow as tf
 from tf_ofcs.components import (
     PAMEncoder, PAMDecoder, PAMSymbolEncoder, PAMSymbolDecoder,
     Composition, Laser, BandPassFilter, MachZehnderModulator, OpticalAWGN,
-    OpticalFiber, Photodiode, Quantizer, ElectricalGain
+    OpticalFiber, Photodiode, Quantizer, ElectricalGain, Fork, MapComponents,
+    Identity
 )
 from tf_ofcs.utils import dbm_to_w, from_db, wavelength_nm_to_frequency
 
@@ -37,10 +38,15 @@ def test_pam2_system() -> None:
                 mapping=mapping,
                 adjust_for_mzm=True
             )
-        ),
-        lpf,
-        MachZehnderModulator(carrier_source=Laser(power=input_power, batch_size=batch_size)),
-        OpticalAWGN(relative_db=-snr, rng=rng),
+        ),  # ElectricalSignal
+        lpf,  # ElectricalSignal
+        Fork(shape=[2]),  # (ElectricalSignal, ElectricalSignal)
+        MapComponents([
+            Laser(power=input_power, batch_size=batch_size),
+            Identity()
+        ]),  # (OpticalSignal, ElectricalSignal)
+        MachZehnderModulator(),  # OpticalSignal
+        OpticalAWGN(relative_db=-snr, rng=rng),  # OpticalSignal
         OpticalFiber(
              attenuation=attenuation,
              chromatic_dispersion=4.0,
@@ -48,21 +54,21 @@ def test_pam2_system() -> None:
              length=length,
              central_frequency=wavelength_nm_to_frequency(1550.0),
              step_count=100
-        ),
+        ),  # OpticalSignal
         Photodiode(
             sensitivity=dbm_to_w(-15.0),
             maximum_power=dbm_to_w(-1.0)
-        ),
-        lpf,
-        Quantizer(step=1e-6),
-        ElectricalGain(1.0 / expected_symbol_scale),
+        ),  # ElectricalSignal
+        lpf,  # ElectricalSignal
+        Quantizer(step=1e-6),  # ElectricalSignal
+        ElectricalGain(1.0 / expected_symbol_scale),  # ElectricalSignal
         PAMDecoder(
             data_rate=data_rate,
             symbol_decoder=PAMSymbolDecoder(
                 bits_per_symbol=bits_per_symbol,
                 mapping=mapping ** 2
             )
-        )
+        )  # tf.Tensor, dtype=tf.int32
     ])
 
     input_sequence = tf.constant([

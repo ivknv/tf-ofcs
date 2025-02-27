@@ -218,21 +218,38 @@ class IQEncoder(Component):
 
 
 class IQModulator(Composition):
-    def __init__(self, carrier_source: Component, name=None) -> None:
+    """
+        IQ modulator. Expects a `tuple[OpticalSignal, (ElectricalSignal, ElectricalSignal)]`
+        as input. The first tuple element is the carrier signal, the second is
+        the modulation signal.
+    """
+
+    def __init__(self, *, mzm: Optional[Component] = None, name: Optional[str] = None) -> None:
         super().__init__([], name=name)
 
+        if mzm is None:
+            mzm = MachZehnderModulator(name=f"{self.name}__mzm")
+
+        identity = Identity(name=f"{self.name}__identity")
+
         self.components = [
+            # input: (OpticalSignal, (ElectricalSignal, ElectricalSignal))
             MapComponents([
-                MachZehnderModulator(carrier_source=carrier_source, name=f"{self.name}__mzm_i"),
-                MachZehnderModulator(
-                    carrier_source=Composition(components=[
-                        carrier_source,
+                Composition([
+                    OpticalCoupler1x2(name=f"{self.name}__coupler1x2"),  # (OpticalSignal, OpticalSignal)
+                    MapComponents([
+                        identity,
                         OpticalPhaseShifter(phase_shift=0.5 * math.pi, name=f"{self.name}__phase_shifter")
-                    ], name=f"{self.name}__carrier_source_q"),
-                    name=f"{self.name}__mzm_q"
-                )
-            ]),
-            OpticalCoupler2x1(name=f"{self.name}__coupler_2x1")
+                    ])
+                ]),  # (OpticalSignal, OpticalSignal)
+                identity  # (ElectricalSignal, ElectricalSignal)
+            ]),  # ((OpticalSignal 0, OpticalSignal 1), (ElectricalSignal 0, ElectricalSignal 1))
+
+            Reindex(indices=[[(0, 0), (1, 0)], [(0, 1), (1, 1)]], name=f"{self.name}__reindex"),
+            # reindex output: ((OpticalSignal 0, ElectricalSignal 0), (OpticalSignal 1, ElectricalSignal 1))
+
+            MapComponents(mzm),  # (OpticalSignal, OpticalSignal)
+            OpticalCoupler2x1(name=f"{self.name}__coupler_2x1")  # OpticalSignal
         ]
 
 

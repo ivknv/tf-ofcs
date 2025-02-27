@@ -27,7 +27,7 @@ from ..utils import dbm_to_w
 from ..components import (
     Component, Composition, OpticalFiber, OpticalAWGN, IQModulator, Laser,
     IQReceiver, Photodiode, BandPassFilter, ArbitraryWaveformGenerator, Lambda,
-    RandomizeParameters, MapComponents, ElectricalGain
+    RandomizeParameters, MapComponents, ElectricalGain, Fork, Identity, Reindex
 )
 
 __all__ = ["IQAutoencoder"]
@@ -36,13 +36,6 @@ __all__ = ["IQAutoencoder"]
 @tf.function
 def _clip(x: tf.Tensor) -> tf.Tensor:
     return tf.clip_by_value(x, 0.0, 1.0)
-
-
-def _slice_signal(signal: ElectricalSignal, start: int, end: int) -> ElectricalSignal:
-    return ElectricalSignal(
-        timing=Timing(sample_count=end - start, sampling_rate=signal.timing.sampling_rate),
-        samples=signal.samples[:, :, start:end]
-    )
 
 
 def _to_iq(samples: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
@@ -193,7 +186,7 @@ class IQAutoencoder(keras.models.Sequential):
         :ivar encoder_network: `Component`, transmitter layers of the neural network
         :ivar transmitter: `Component`, component that converts `ElectricalSignal` into an `OpticalSignal`
         :ivar channel: `Component`, component that represents the channel
-        :ivar receiver: `Component`, component that converts an `OpticalSignal` into `ElectricSignal`
+        :ivar receiver: `Component`, component that converts an `OpticalSignal` into `ElectricalSignal`
         :ivar decoder: `Component`, component that decodes the `ElectricalSignal` into a bit sequence
         :ivar decoder_network: `Component`, receiver layers of the neural network
     """
@@ -282,7 +275,15 @@ class IQAutoencoder(keras.models.Sequential):
                 name="iq_waveform_generator"
             ),
             lpf,
-            IQModulator(carrier_source=Laser(power=dbm_to_w(2.0))),
+            Fork(shape=[2]),
+            MapComponents([
+                Composition([
+                    Reindex(indices=(0,)),
+                    Laser(power=dbm_to_w(2.0))
+                ]),
+                Identity()
+            ]),
+            IQModulator(),
         ], name="transmitter")
 
         self.receiver = Composition([

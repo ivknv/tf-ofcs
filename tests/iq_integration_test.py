@@ -5,7 +5,7 @@ import tensorflow as tf
 from tf_ofcs.components import (
     IQEncoder, IQDecoder, IQSymbolEncoder, IQSymbolDecoder, IQModulator,
     IQReceiver, Composition, Laser, BandPassFilter, OpticalAWGN, OpticalFiber,
-    Photodiode, Quantizer, MapComponents, ElectricalGain
+    Photodiode, Quantizer, MapComponents, ElectricalGain, Fork, Reindex, Identity
 )
 from tf_ofcs.utils import dbm_to_w, from_db, wavelength_nm_to_frequency
 
@@ -42,10 +42,18 @@ def test_qam4_system() -> None:
                 mapping=mapping,
                 adjust_for_mzm=True
             )
-        ),
-        MapComponents(lpf),
-        IQModulator(laser),
-        OpticalAWGN(relative_db=-snr, rng=rng),
+        ),  # (ElectricalSignal, ElectricalSignal)
+        MapComponents(lpf),  # (ElectricalSignal, ElectricalSignal)
+        Fork(shape=[2]),  # ((ElectricalSignal, ElectricalSignal), (ElectricalSignal, ElectricalSignal))
+        MapComponents([
+            Composition([
+                Reindex(indices=(0,)),  # ElectricalSignal
+                laser  # OpticalSignal
+            ]),
+            Identity()  # (ElectricalSignal, ElectricalSignal)
+        ]),  # (OpticalSignal, (ElectricalSignal, ElectricalSignal))
+        IQModulator(),  # OpticalSignal
+        OpticalAWGN(relative_db=-snr, rng=rng),  # OpticalSignal
         OpticalFiber(
              attenuation=attenuation,
              chromatic_dispersion=4.0,
@@ -53,20 +61,20 @@ def test_qam4_system() -> None:
              length=length,
              central_frequency=wavelength_nm_to_frequency(1550.0),
              step_count=100
-        ),
+        ),  # OpticalSignal
         IQReceiver(
             photodiode=Composition([Photodiode(), lpf]),
             local_oscillator=local_oscillator
-        ),
-        MapComponents(ElectricalGain(1.0 / expected_symbol_scale)),
-        MapComponents(Quantizer(1e-6)),
+        ),  # (ElectricalSignal, ElectricalSignal)
+        MapComponents(ElectricalGain(1.0 / expected_symbol_scale)),  # (ElectricalSignal, ElectricalSignal)
+        MapComponents(Quantizer(1e-6)),  # (ElectricalSignal, ElectricalSignal)
         IQDecoder(
             data_rate=data_rate,
             symbol_decoder=IQSymbolDecoder(
                 bits_per_symbol=bits_per_symbol,
                 mapping=mapping
             )
-        )
+        )  # tf.Tensor, dtype=tf.int32
     ])
 
     input_sequence = tf.constant([
@@ -75,7 +83,7 @@ def test_qam4_system() -> None:
         [1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0]
     ])
 
-    output_sequence = system(input_sequence, parameter_dims=2)
+    output_sequence = system.trace(input_sequence, parameter_dims=2)
     expected_output_sequence = tf.tile(tf.expand_dims(input_sequence, 1), [1, 2, 1])
 
     assert isinstance(output_sequence, tf.Tensor)

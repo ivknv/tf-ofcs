@@ -8,10 +8,11 @@ from tf_ofcs.utils import timing_to_samples
 
 def test_mzm() -> None:
     laser = Laser(power=[1e-3, 2e-3], batch_size=1)
-    mzm = MachZehnderModulator(carrier_source=laser)
+    mzm = MachZehnderModulator()
 
     timing = Timing(sampling_rate=10.0, sample_count=100)
 
+    carrier_signal = laser(timing)
     modulation_signal = ElectricalSignal(
         timing=timing,
         samples=[
@@ -19,7 +20,7 @@ def test_mzm() -> None:
         ]
     )
 
-    modulated_signal = mzm(modulation_signal)
+    modulated_signal = mzm((carrier_signal, modulation_signal))
     expected_signal: tf.Tensor = tf.math.cos(math.pi * modulation_signal.samples)
 
     assert isinstance(modulated_signal, OpticalSignal)
