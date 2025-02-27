@@ -17,7 +17,9 @@
 import argparse
 import math
 import json
+import os
 from typing import Any, Optional
+import datetime
 
 import h5py  # type: ignore[import-untyped]
 import keras  # type: ignore[import-untyped]
@@ -136,8 +138,9 @@ class TrainCommand(Command):
                 ))
 
             if ns.tensorboard:
+                now = datetime.datetime.now()
                 callbacks.append(keras.callbacks.TensorBoard(
-                    log_dir=ns.tensorboard_log_dir,
+                    log_dir=os.path.join(ns.tensorboard_log_dir, now.strftime("%Y-%m-%d-%H-%M-%S")),
                     histogram_freq=1
                 ))
 
