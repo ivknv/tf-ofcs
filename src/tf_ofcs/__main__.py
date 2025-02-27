@@ -99,7 +99,7 @@ class RevertToBest(keras.callbacks.Callback):
 
 
 class TrainCommand(Command):
-    description = "Train an IM/DD autoencoder"
+    description = "Train an autoencoder model"
 
     def setup(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--epochs", type=int, default=50, help="number of epochs to train for")
@@ -108,6 +108,8 @@ class TrainCommand(Command):
         parser.add_argument("--load", help="load trained model from a .keras file")
         parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
         parser.add_argument("--profile", help="simulation profile (JSON file)")
+        parser.add_argument("--tensorboard", action="store_true", help="enable TensorBoard")
+        parser.add_argument("--tensorboard-log-dir", default=".logs", help="TensorBoard log directory")
 
     def __call__(self, ns: argparse.Namespace) -> int:
         profile = _load_profile(ns.profile)
@@ -131,6 +133,12 @@ class TrainCommand(Command):
                     save_best_only=True,
                     save_weights_only=True,
                     save_freq="epoch"
+                ))
+
+            if ns.tensorboard:
+                callbacks.append(keras.callbacks.TensorBoard(
+                    log_dir=ns.tensorboard_log_dir,
+                    histogram_freq=1
                 ))
 
             callbacks.append(RevertToBest(model, treshold=1.3))
