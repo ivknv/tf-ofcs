@@ -172,6 +172,9 @@ class TransmissionLayer(keras.layers.Layer):
             [batch_size, 2, sample_count]
         )
 
+    def get_config(self) -> dict:
+        return {}
+
 
 class IQAutoencoder(keras.models.Sequential):
     """

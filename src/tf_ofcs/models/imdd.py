@@ -126,6 +126,9 @@ class TransmissionLayer(keras.layers.Layer):
             (batch_size, sample_count)
         )
 
+    def get_config(self) -> dict:
+        return {}
+
 
 class IMDDAutoencoder(keras.Sequential):
     """
