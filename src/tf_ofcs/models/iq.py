@@ -128,7 +128,6 @@ class TransmissionLayer(keras.layers.Layer):
 
         self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
 
-        self._encoder_network = autoencoder.encoder_network
         self._N = N
         self._M = M
 
@@ -136,15 +135,10 @@ class TransmissionLayer(keras.layers.Layer):
         batch_size = tf.shape(inputs)[0]
         sample_count = tf.shape(inputs)[-1]
 
-        adjacent_inputs = self._encoder_network(
-            tf.cast(
-                tf.one_hot(
-                    self.rng.uniform(((self._N - 1) * batch_size,), 0, self._M, dtype=tf.int32),
-                    self._M
-                ),
-                tf.float32
-            )
-        )  # shape=[batch_size * (N - 1), 2, n // 2]
+        adjacent_inputs = tf.gather(
+            inputs,
+            self.rng.uniform(((self._N - 1) * batch_size,), 0, batch_size, dtype=tf.int32)
+        )  # shape=[batch_size * (N - 1), 2, n]
 
         # shape=[batch_size, 2, (N - 1) * n // 2]
         adjacent_inputs = tf.reshape(adjacent_inputs, [batch_size, 2, tf.size(adjacent_inputs) // batch_size // 2])
