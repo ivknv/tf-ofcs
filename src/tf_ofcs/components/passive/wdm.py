@@ -17,8 +17,8 @@
 from typing import Optional
 import tensorflow as tf
 
-from ...utils import fftfreq
-from ...datatypes import FrequencyResponseFunction, OpticalSignal
+from ...utils import fftfreq, to_tensor
+from ...datatypes import FrequencyResponseFunction, OpticalSignal, TensorCompatible
 from ..component import Component
 
 __all__ = ["OpticalMultiplexer", "OpticalDemultiplexer"]
@@ -27,18 +27,16 @@ __all__ = ["OpticalMultiplexer", "OpticalDemultiplexer"]
 class OpticalMultiplexer(Component):
     """
         Multiplexes multiple optical signals into one.
-
-        Works similar to `ParallelToSerial` in a sense that it produces
-        `batch_size // n` signals at the output.
+        Produces `batch_size // n` signals at the output.
     """
 
     #: Number of signals to multiplex (number of input ports)
     n: tf.Variable  # shape=[]; dtype=tf.int32
 
-    def __init__(self, n: int | tf.Tensor, name: Optional[str] = None) -> None:
+    def __init__(self, n: TensorCompatible, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
-        self.n = tf.Variable(tf.constant(n))
+        self.n = tf.Variable(to_tensor(n), name=f"{self.name}__n")
         self.local_parameters = ["n"]
 
     def implementation(self, input_signal: OpticalSignal, /, n: tf.Tensor) -> OpticalSignal:
@@ -75,13 +73,13 @@ class OpticalDemultiplexer(Component):
 
     def __init__(
         self,
-        n_outputs: int | tf.Tensor,
+        n_outputs: TensorCompatible,
         frequency_response_function: FrequencyResponseFunction,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.n_outputs = tf.Variable(tf.constant(n_outputs), name=f"{self.name}__n_outputs")
+        self.n_outputs = tf.Variable(to_tensor(n_outputs), name=f"{self.name}__n_outputs")
         self.frequency_response_function = frequency_response_function
 
         self.local_parameters = ["n_outputs"]
@@ -96,23 +94,21 @@ class OpticalDemultiplexer(Component):
         fft_freqs = fftfreq(tf.shape(fft)[-1], 1.0 / input_signal.timing.sampling_rate)
 
         n_outputs = self.get_component_parameter(kwargs, "n_outputs")
-        batch_size, parameter_dims, _ = tf.shape(fft)
+        batch_size = tf.shape(fft)[0]
 
         # We need override these parameters, so we drop them from kwargs
         kwargs.pop("batch_size", None)
-        kwargs.pop("parameter_dims", None)
 
         frequency_response = tf.tile(
             self.frequency_response_function(
                 fft_freqs,
                 batch_size=n_outputs,
-                parameter_dims=parameter_dims,
                 **kwargs
             ),
-            [batch_size, 1, 1]
+            [batch_size, 1]
         ) * tf.math.sqrt(tf.cast(n_outputs, tf.complex64))
 
-        fft = tf.tile(fft, [n_outputs, 1, 1])
+        fft = tf.tile(fft, [n_outputs, 1])
         samples = tf.signal.ifft(frequency_response * fft)
 
         return OpticalSignal(timing=input_signal.timing, samples=samples)

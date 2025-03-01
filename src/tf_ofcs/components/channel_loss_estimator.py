@@ -52,11 +52,11 @@ class ChannelLossEstimator(Composition):
         self.photodiode = photodiode
         mean_amplitude = Lambda(
             lambda signal: tf.math.reduce_mean(tf.abs(signal.samples), axis=-1),
-            name=f"{self.name}__lambda1"
+            name=f"{self.name}__mean_amplitude"
         )
 
         self.components = [
-            Lambda(self._generate_timing, allow_kwargs=True, name=f"{self.name}__lambda2"),
+            Lambda(self._generate_timing, allow_kwargs=True, name=f"{self.name}__generate_timing"),
             laser,
             Fork(shape=[2], name=f"{self.name}__fork"),
             MapComponents([
@@ -66,7 +66,7 @@ class ChannelLossEstimator(Composition):
                     name=f"{self.name}__composition"
                 )
             ], name=f"{self.name}__map_components"),
-            Lambda(self._estimate_attenuation, name=f"{self.name}__lambda3")
+            Lambda(self._estimate_attenuation, name=f"{self.name}__estimate_attenuation")
         ]
 
         self.sampling_rate = tf.Variable(tf.constant(float(sampling_rate)), name=f"{self.name}__sampling_rate")
@@ -82,8 +82,8 @@ class ChannelLossEstimator(Composition):
         )
 
     @tf.function(input_signature=((
-        tf.TensorSpec(shape=[None, None], dtype=tf.float32),
-        tf.TensorSpec(shape=[None, None], dtype=tf.float32)
+        tf.TensorSpec(shape=[None], dtype=tf.float32),
+        tf.TensorSpec(shape=[None], dtype=tf.float32)
     ),))
     def _estimate_attenuation(self, inputs: tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
         input_amplitude, output_power = inputs

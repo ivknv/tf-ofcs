@@ -14,10 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
-from ..datatypes import ElectricalSignal, OpticalSignal, optical_signal_spec
+from ..datatypes import (
+    ElectricalSignal, OpticalSignal, optical_signal_spec, TensorCompatible
+)
+from ..utils import to_tensor
 from .component import Component
 
 __all__ = ["Photodiode"]
@@ -25,23 +27,23 @@ __all__ = ["Photodiode"]
 
 class Photodiode(Component):
     #: Minimum power (in watts) that can be converted into a current
-    sensitivity: tf.Variable  # shape=[] or [None]; dtype=float32
+    sensitivity: tf.Variable  # shape=[None]; dtype=float32
 
     #: Maximum power the diode can convert (anything above will be clipped)
-    maximum_power: tf.Variable  # shape=[] or [None]; dtype=float32
+    maximum_power: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(
         self,
-        sensitivity: float | Sequence[float] | tf.Tensor = 1e-5,
-        maximum_power: float | Sequence[float] | tf.Tensor = 2e-3,
+        sensitivity: TensorCompatible = tf.constant([1e-5]),
+        maximum_power: TensorCompatible = tf.constant([2e-3]),
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.sensitivity = tf.Variable(tf.constant(sensitivity), name=f"{self.name}__sensitivity")
-        self.maximum_power = tf.Variable(tf.constant(maximum_power), name=f"{self.name}__maximum_power")
+        self.sensitivity = tf.Variable(to_tensor(sensitivity), name=f"{self.name}__sensitivity")
+        self.maximum_power = tf.Variable(to_tensor(maximum_power), name=f"{self.name}__maximum_power")
 
-        self.local_parameters = [("sensitivity", 0), ("maximum_power", 0)]
+        self.local_parameters = ["sensitivity", "maximum_power"]
 
     @tf.function(input_signature=(
         optical_signal_spec,

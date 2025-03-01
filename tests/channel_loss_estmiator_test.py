@@ -8,7 +8,7 @@ from tf_ofcs.utils import from_db
 
 
 def test_channel_loss_estimator() -> None:
-    laser = Laser(power=[1e-3, 2e-3], batch_size=3)
+    laser = Laser(power=[1e-3, 2e-3], batch_size=2)
     photodiode = Photodiode()
     channel = OpticalFiber(
         attenuation=[0.22, 0.3],
@@ -35,8 +35,8 @@ def test_channel_loss_estimator() -> None:
     losses = loss_estimator(probe_duration)
 
     assert isinstance(losses, tf.Tensor)
-    assert tf.math.reduce_all(tf.shape(losses) == (3, 2))  # type: ignore
+    assert tf.math.reduce_all(tf.shape(losses) == (2,))  # type: ignore[operator]
 
-    actual_loss = tf.math.reduce_mean(loss_estimator(probe_duration), axis=[0])
+    actual_loss = loss_estimator(probe_duration)
 
-    assert tf.math.reduce_all(tf.abs(actual_loss - expected_loss) < 1e-3)  # type: ignore
+    assert tf.math.reduce_all(tf.abs(actual_loss - expected_loss) < 1e-3)  # type: ignore[operator]

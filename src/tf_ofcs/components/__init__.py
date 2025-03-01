@@ -33,10 +33,9 @@ from .filters import (
 )
 from .ber import BERTester
 from .utils import (
-    Composition, MapComponents, Identity, Reindex, Fork, Downsample,
-    Upsample, ParallelToSerial, SerialToParallel, ExtractSamples, Lambda,
-    RedistributeDimensions, SplitSignals, MergeSignals, TileSignals,
-    SliceSignal, RandomizeParameters, PadSignal, Loop
+    Composition, MapComponents, Identity, Reindex, Fork, Downsample, Upsample,
+    ExtractSamples, Lambda, SplitSignals, MergeSignals, TileSignals,
+    RandomizeParameters, PadSignal, Loop
 )
 from .electrical import (
     ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator,
@@ -88,15 +87,11 @@ __all__ = [
     "ElectricalGain",
     "Downsample",
     "Upsample",
-    "ParallelToSerial",
-    "SerialToParallel",
     "ExtractSamples",
     "Lambda",
-    "RedistributeDimensions",
     "SplitSignals",
     "MergeSignals",
     "TileSignals",
-    "SliceSignal",
     "RandomizeParameters",
     "PadSignal",
     "Loop",

@@ -14,17 +14,21 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from ..utils import adjust_symbol_for_mzm, indices_to_bits, bits_to_indices, pam_constellation
+from ..utils import (
+    adjust_symbol_for_mzm, indices_to_bits, bits_to_indices, pam_constellation,
+    to_tensor
+)
 from .component import Component
 
 from ..datatypes import (
     bit_sequence_spec,
     Timing,
-    ElectricalSignal, electrical_signal_spec,
+    ElectricalSignal,
+    electrical_signal_spec,
+    TensorCompatible
 )
 
 __all__ = [
@@ -38,7 +42,7 @@ __all__ = [
 class PAMSymbolEncoder(Component):
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=[]; dtype=int32
-    mapping: tf.Variable  # shape=(2 ** bits_per_symbol,); dtype=float32
+    mapping: tf.Variable  # shape=[2 ** bits_per_symbol]; dtype=float32
 
     #: Sample count at the output
     sample_count: tf.Variable  # shape=[]; dtype=int32
@@ -46,63 +50,51 @@ class PAMSymbolEncoder(Component):
     #: If true, the constellation will be adjusted for MZM
     adjust_for_mzm: tf.Variable  # shape=[]; dtype=bool
 
-    parameter_dims: tf.Variable  # shape=[]; dtype=int32
-
     def __init__(
         self,
         *,
         bits_per_symbol: int | tf.Tensor,
-        mapping: Optional[Sequence[float] | tf.Tensor] = None,
+        mapping: Optional[TensorCompatible] = None,
         adjust_for_mzm: bool | tf.Tensor = False,
-        parameter_dims: int | tf.Tensor = 1,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol), name=f"{self.name}__bits_per_symbol")
+        self.bits_per_symbol = tf.Variable(to_tensor(bits_per_symbol), name=f"{self.name}__bits_per_symbol")
 
         if mapping is None:
             self.mapping = tf.Variable(pam_constellation(self.bits_per_symbol), name=f"{self.name}__mapping")
         else:
-            self.mapping = tf.Variable(tf.constant(mapping), name=f"{self.name}__mapping")
+            self.mapping = tf.Variable(to_tensor(mapping), name=f"{self.name}__mapping")
 
-        self.adjust_for_mzm = tf.Variable(tf.constant(adjust_for_mzm), name=f"{self.name}__adjust_for_mzm")
-        self.parameter_dims = tf.Variable(tf.constant(parameter_dims), name=f"{self.name}__parameter_dims")
+        self.adjust_for_mzm = tf.Variable(to_tensor(adjust_for_mzm), name=f"{self.name}__adjust_for_mzm")
 
-        self.local_parameters = [
-            "mapping", "bits_per_symbol", "adjust_for_mzm", "parameter_dims"
-        ]
-        self.global_parameters = ["parameter_dims"]
+        self.local_parameters = ["mapping", "bits_per_symbol", "adjust_for_mzm"]
 
     @tf.function(input_signature=(
         bit_sequence_spec,
         tf.TensorSpec(shape=[None], dtype=tf.float32, name="mapping"),
         tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
-        tf.TensorSpec(shape=[], dtype=tf.bool, name="adjust_for_mzm"),
-        tf.TensorSpec(shape=[], dtype=tf.int32, name="parameter_dims")
+        tf.TensorSpec(shape=[], dtype=tf.bool, name="adjust_for_mzm")
     ))
     def implementation(
         self,
         bitseq: tf.Tensor,
         mapping: tf.Tensor,
         bits_per_symbol: tf.Tensor,
-        adjust_for_mzm: tf.Tensor,
-        parameter_dims: tf.Tensor
+        adjust_for_mzm: tf.Tensor
     ) -> tf.Tensor:
         batch_size = tf.shape(bitseq)[0]
         bit_count = tf.shape(bitseq)[1]
 
         symbol_indices = bits_to_indices(bitseq, bits_per_symbol)
 
-        symbols = tf.tile(
-            tf.reshape(
-                tf.gather(mapping, symbol_indices),
-                (batch_size, 1, bit_count // bits_per_symbol)
-            ),
-            [1, parameter_dims, 1]
+        symbols = tf.reshape(
+            tf.gather(mapping, symbol_indices),
+            (batch_size, bit_count // bits_per_symbol)
         )
 
-        if adjust_for_mzm:  # type: ignore
+        if adjust_for_mzm:  # type: ignore[operator]
             return adjust_symbol_for_mzm(symbols)
         else:
             return symbols
@@ -116,23 +108,23 @@ class PAMSymbolDecoder(Component):
     def __init__(
         self,
         *,
-        bits_per_symbol: int | tf.Tensor,
-        mapping: Optional[Sequence[float] | tf.Tensor] = None,
+        bits_per_symbol: TensorCompatible,
+        mapping: Optional[TensorCompatible] = None,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.bits_per_symbol = tf.Variable(tf.constant(bits_per_symbol), name=f"{self.name}__bits_per_symbol")
+        self.bits_per_symbol = tf.Variable(to_tensor(bits_per_symbol), name=f"{self.name}__bits_per_symbol")
 
         if mapping is None:
             self.mapping = tf.Variable(pam_constellation(self.bits_per_symbol) ** 2, name=f"{self.name}__mapping")
         else:
-            self.mapping = tf.Variable(tf.constant(mapping), name=f"{self.name}__mapping")
+            self.mapping = tf.Variable(to_tensor(mapping), name=f"{self.name}__mapping")
 
         self.local_parameters = ["bits_per_symbol", "mapping"]
 
     @tf.function(input_signature=(
-        tf.TensorSpec(shape=[None, None, None], dtype=tf.float32, name="symbols"),
+        tf.TensorSpec(shape=[None, None], dtype=tf.float32, name="symbols"),
         tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
         tf.TensorSpec(shape=[None], dtype=tf.float32, name="mapping"),
     ))
@@ -143,8 +135,7 @@ class PAMSymbolDecoder(Component):
         mapping: tf.Tensor
     ) -> tf.Tensor:
         batch_size = tf.shape(symbols)[0]
-        parameter_dims = tf.shape(symbols)[1]
-        symbol_count = tf.shape(symbols)[2]
+        symbol_count = tf.shape(symbols)[-1]
 
         best_indices = tf.cast(
             tf.argmin(
@@ -159,7 +150,7 @@ class PAMSymbolDecoder(Component):
                 tf.reshape(best_indices, (tf.size(best_indices),)),
                 bits_per_symbol
             ),
-            (batch_size, parameter_dims, symbol_count, bits_per_symbol)
+            (batch_size, symbol_count, bits_per_symbol)
         )
 
 
@@ -175,15 +166,15 @@ class PAMEncoder(Component):
 
     def __init__(
         self,
-        sampling_rate: float | tf.Tensor,
-        data_rate: float | tf.Tensor,
+        sampling_rate: TensorCompatible,
+        data_rate: TensorCompatible,
         symbol_encoder: PAMSymbolEncoder,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.sampling_rate = tf.Variable(tf.constant(sampling_rate), name=f"{self.name}__sampling_rate")
-        self.data_rate = tf.Variable(tf.constant(data_rate), name=f"{self.name}__data_rate")
+        self.sampling_rate = tf.Variable(to_tensor(sampling_rate), name=f"{self.name}__sampling_rate")
+        self.data_rate = tf.Variable(to_tensor(data_rate), name=f"{self.name}__data_rate")
         self.symbol_encoder = symbol_encoder
 
         self.local_parameters = ["sampling_rate", "data_rate"]
@@ -216,7 +207,7 @@ class PAMEncoder(Component):
                     tf.int32
                 ),
                 axis=-1
-            )[:,:,:sample_count]
+            )[:,:sample_count]
         )
 
 
@@ -229,13 +220,13 @@ class PAMDecoder(Component):
 
     def __init__(
         self,
-        data_rate: float | tf.Tensor,
+        data_rate: TensorCompatible,
         symbol_decoder: PAMSymbolDecoder,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.data_rate = tf.Variable(tf.constant(data_rate), name=f"{self.name}__data_rate")
+        self.data_rate = tf.Variable(to_tensor(data_rate), name=f"{self.name}__data_rate")
         self.symbol_decoder = symbol_decoder
 
         self.local_parameters = ["data_rate"]
@@ -270,10 +261,9 @@ class PAMDecoder(Component):
         )
 
         batch_size = tf.shape(symbols)[0]
-        parameter_dims = tf.shape(symbols)[1]
-        symbol_count = tf.shape(symbols)[2]
+        symbol_count = tf.shape(symbols)[-1]
 
         return tf.reshape(
             self.symbol_decoder(symbols, tracing_level=tracing_level + 1, **kwargs),
-            (batch_size, parameter_dims, symbol_count * bits_per_symbol,)
+            (batch_size, symbol_count * bits_per_symbol,)
         )

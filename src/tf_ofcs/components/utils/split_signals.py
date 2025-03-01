@@ -25,8 +25,8 @@ __all__ = ["SplitSignals"]
 
 class SplitSignals(Component):
     """
-        Splits signal with shape (batch_size, parameter_dims, sample_count)
-        into `n` tuples of shape (batch_size // n, parameter_dims, sample_count).
+        Splits signal with shape (batch_size, sample_count)
+        into `n` tuples of shape (batch_size // n, sample_count).
 
     """
 

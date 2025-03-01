@@ -42,10 +42,10 @@ class Component(tf.Module):
     #: the minimum tensor rank (when specified as tuple).
     #: If the minimum rank is specified, the parameter may be automatically
     #: broadcasted to the desired shape based on the `parameter_dims` value.
-    local_parameters: list[str | tuple[str, int]]
+    local_parameters: list[str]
 
     #: Parameters that can be passed normally as ({parameter name})
-    global_parameters: list[str | tuple[str, int]]
+    global_parameters: list[str]
 
     trace_debug_enabled_by_default: bool = False
 
@@ -126,8 +126,6 @@ class Component(tf.Module):
         parameter: str,
         default: Optional[tf.Tensor] = None,
         global_parameter: bool = False,
-        rank: int = -1,
-        parameter_dims: int = 1
     ) -> Any:
         if global_parameter:
             value = kwargs.get(parameter, default)
@@ -137,28 +135,20 @@ class Component(tf.Module):
         if value is None:
             value = getattr(self, parameter)
 
-        return self._broadcast(value, rank, parameter_dims)
+        return value
 
     def extract_component_parameters(self, kwargs: dict[str, Any]) -> dict[str, Any]:
-        parameter_dims = kwargs.get("parameter_dims", 1)
         component_kwargs: dict[str, Any] = {}
 
         iterables = zip([True, False], [self.global_parameters, self.local_parameters], strict=True)
 
         for global_parameter, parameters in iterables:
             for parameter in parameters:
-                if isinstance(parameter, tuple):
-                    parameter, rank = parameter
-                else:
-                    parameter, rank = parameter, -1
-
                 component_kwargs[parameter] = self.get_component_parameter(
                     kwargs,
                     parameter,
                     default=component_kwargs.get(parameter),
-                    global_parameter=global_parameter,
-                    rank=rank,
-                    parameter_dims=parameter_dims
+                    global_parameter=global_parameter
                 )
 
         return component_kwargs

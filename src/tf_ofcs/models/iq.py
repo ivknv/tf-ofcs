@@ -40,21 +40,18 @@ def _clip(x: tf.Tensor) -> tf.Tensor:
 
 def _to_iq(samples: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
     batch_size = tf.shape(samples)[0]
-    parameter_dims = tf.shape(samples)[1]
     sample_count = tf.shape(samples)[-1]
-    shape = [batch_size, parameter_dims, sample_count]
+    shape = [batch_size, sample_count]
 
-    return tf.reshape(samples[:, :, 0, :], shape), tf.reshape(samples[:, :, 1, :], shape)
+    return tf.reshape(samples[:, 0, :], shape), tf.reshape(samples[:, 1, :], shape)
 
 
 def _from_iq_signal(signals: tuple[ElectricalSignal, ElectricalSignal]) -> tf.Tensor:
-    i, q = signals  # shape=[batch_size, parameter_dims, symbols_per_batch * n]
+    i, q = signals  # shape=[batch_size, symbols_per_batch * n]
     shape = tf.shape(i.samples)
-    batch_size, parameter_dims, sample_count = shape[0], shape[1], shape[2]
+    batch_size, sample_count = shape[0], shape[1]
 
-    return tf.reshape(tf.stack([i.samples, q.samples], axis=2), [batch_size * parameter_dims, 2, sample_count])
-
-    return tf.concat([i.samples, q.samples], -1)
+    return tf.reshape(tf.stack([i.samples, q.samples], axis=1), [batch_size, 2, sample_count])
 
 
 # Slices the signal to select a single symbol (made up of `size` samples) at `index * size`
@@ -90,7 +87,7 @@ class _SelectSymbol(Component):
                 sample_count=size,
                 sampling_rate=signal.timing.sampling_rate
             ),
-            samples=signal.samples[:, :, index * size:(index + 1) * size]
+            samples=signal.samples[:, index * size:(index + 1) * size]
         )
 
 
@@ -150,8 +147,6 @@ class TransmissionLayer(keras.layers.Layer):
                 inputs,
                 adjacent_inputs[:, :, symbol_index * sample_count:]
             ], -1)
-
-        inputs = tf.reshape(inputs, [1, batch_size, 2, self._N * sample_count])
 
         return tf.reshape(
             self._system_with_randomization(
@@ -247,18 +242,18 @@ class IQAutoencoder(keras.models.Sequential):
         central_frequency = 193.414e12
 
         lpf = MapComponents(
-            BandPassFilter(min_frequency=0.0, max_frequency=bandwidth),
+            BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth]),
             name="lpf"
         )
 
-        awgn = OpticalAWGN(relative_db=-33.0)
+        awgn = OpticalAWGN(relative_db=[-33.0])
         self.channel = Composition([
             awgn,
             OpticalFiber(
-                length=40.0,
-                attenuation=0.22,
-                chromatic_dispersion=17.0,
-                eff_non_linear_coeff=0.0,
+                length=[40.0],
+                attenuation=[0.22],
+                chromatic_dispersion=[17.0],
+                eff_non_linear_coeff=[0.0],
                 step_count=1,
                 central_frequency=central_frequency
             ),
@@ -286,13 +281,13 @@ class IQAutoencoder(keras.models.Sequential):
         self.receiver = Composition([
             IQReceiver(
                 Photodiode(
-                    maximum_power=dbm_to_w(3.0),
-                    sensitivity=dbm_to_w(-20.0)
+                    maximum_power=dbm_to_w(tf.constant([3.0])),
+                    sensitivity=dbm_to_w(tf.constant([-20.0]))
                 ),
-                Laser(power=dbm_to_w(-6.0), name="local_oscillator")
+                Laser(power=dbm_to_w(tf.constant([-6.0])), name="local_oscillator")
             ),
             lpf,
-            MapComponents(ElectricalGain(gain=1e6))
+            MapComponents(ElectricalGain(gain=[1e6]))
         ], name="receiver")
 
         self.encoder_network = Lambda(
@@ -345,10 +340,10 @@ class IQAutoencoder(keras.models.Sequential):
         i_seq = x[:, 0, :]
         q_seq = x[:, 1, :]
 
-        i_seq = tf.reshape(i_seq, [batch_size, 1, self.n // 2 * symbols_per_batch])
-        q_seq = tf.reshape(q_seq, [batch_size, 1, self.n // 2 * symbols_per_batch])
+        i_seq = tf.reshape(i_seq, [batch_size, self.n // 2 * symbols_per_batch])
+        q_seq = tf.reshape(q_seq, [batch_size, self.n // 2 * symbols_per_batch])
 
-        return tf.stack([i_seq, q_seq], axis=2)  # shape=[batch_size, 1, 2, n * symbols_per_batch]
+        return tf.stack([i_seq, q_seq], axis=2)  # shape=[batch_size, 2, n * symbols_per_batch]
 
     def decode_signal(self, input_signal: tuple[ElectricalSignal, ElectricalSignal]) -> tf.Tensor:
         samples = _from_iq_signal(input_signal)
@@ -368,4 +363,4 @@ class IQAutoencoder(keras.models.Sequential):
         x = self.decoder_network(samples)  # shape=[batch_size, M]
         bitseq = indices_to_bits(tf.cast(tf.argmax(x, axis=1), tf.int32), self._bits_per_symbol)
 
-        return tf.reshape(bitseq, (batch_size, 1, tf.size(bitseq) // batch_size))
+        return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))

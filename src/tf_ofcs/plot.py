@@ -39,7 +39,7 @@ __all__ = [
 def plot_power(
     signal: OpticalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
     figure: Optional[go.Figure] = None,
-    index: int | tuple[int, ...] = (0, 0),
+    index: int | tuple[int, ...] = (0,),
     time_units: tuple[float, str] = (1e9, "ns"),
     power_units: tuple[float, str] = (1e3, "mW"),
     label: str = "Signal power",
@@ -86,7 +86,7 @@ def plot_power(
 def plot_envelope(
     signal: OpticalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
     figure: Optional[go.Figure] = None,
-    index: int | tuple[int, ...] = (0, 0),
+    index: int | tuple[int, ...] = (0,),
     time_units: tuple[float, str] = (1e9, "ns"),
     envelope_units: tuple[float, str] = (1.0, "AU"),
     label: str = "Signal envelope",
@@ -147,7 +147,7 @@ def plot_envelope(
 def plot_phase(
     signal: OpticalSignal | tuple[ElectricalSignal, ElectricalSignal],
     figure: Optional[go.Figure] = None,
-    index: int | tuple[int, ...] = (0, 0),
+    index: int | tuple[int, ...] = (0,),
     time_units: tuple[float, str] = (1e9, "ns"),
     label: str = "Signal phase",
     row: Optional[int] = None,
@@ -184,7 +184,7 @@ def plot_phase(
 def plot_bitseq(
     bitseq: tf.Tensor,
     figure: Optional[go.Figure] = None,
-    index: int | tuple[int, ...] = (0, 0),
+    index: int | tuple[int, ...] = (0,),
     label: str = "Bit sequence",
     row: Optional[int] = None,
     col: Optional[int] = None,
@@ -239,7 +239,7 @@ def _plot_spectrum(
 def plot_spectrum(
     signal: OpticalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
     figure: Optional[go.Figure] = None,
-    index: int | tuple[int, ...] = (0, 0),
+    index: int | tuple[int, ...] = (0,),
     frequency_units: tuple[float, str] = (1e-9, "GHz"),
     amplitude_units: tuple[float, str] = (1.0, "AU"),
     label: str = "Signal spectrum",
@@ -295,7 +295,7 @@ def plot_spectrum(
 def plot_iq_constellation(
     signal_or_constellation: tuple[ElectricalSignal, ElectricalSignal] | tf.Tensor,
     figure: Optional[go.Figure] = None,
-    index: int | tuple[int, ...] = (0, 0),
+    index: int | tuple[int, ...] = (0,),
     iq_units: tuple[float, str] = (1.0, "AU"),
     label: str = "IQ signal constellation",
     row: Optional[int] = None,
@@ -332,7 +332,7 @@ def plot_eye_diagram(
     signal: ElectricalSignal,
     symbol_rate: float | tf.Tensor,
     figure: Optional[go.Figure] = None,
-    index: int | tuple[int, ...] = (0, 0),
+    index: int | tuple[int, ...] = (0,),
     time_units: tuple[float, str] = (1e9, "ns"),
     row: Optional[int] = None,
     col: Optional[int] = None,

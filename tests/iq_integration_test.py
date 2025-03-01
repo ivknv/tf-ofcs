@@ -17,7 +17,7 @@ def test_qam4_system() -> None:
     input_power = dbm_to_w(2.0)
     batch_size = 3
 
-    lpf = BandPassFilter(min_frequency=0.0, max_frequency=0.5 * data_rate)
+    lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[0.5 * data_rate])
 
     rng = tf.random.Generator.from_seed(1234, alg="philox")
     snr = 30.0
@@ -28,7 +28,7 @@ def test_qam4_system() -> None:
 
     mapping = [[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0]]
 
-    laser = Laser(power=input_power, batch_size=batch_size)
+    laser = Laser(power=[input_power], batch_size=batch_size)
     local_oscillator = laser
 
     expected_symbol_scale = tf.sqrt(input_power * from_db(-attenuation * length))
@@ -53,12 +53,12 @@ def test_qam4_system() -> None:
             Identity()  # (ElectricalSignal, ElectricalSignal)
         ]),  # (OpticalSignal, (ElectricalSignal, ElectricalSignal))
         IQModulator(),  # OpticalSignal
-        OpticalAWGN(relative_db=-snr, rng=rng),  # OpticalSignal
+        OpticalAWGN(relative_db=[-snr], rng=rng),  # OpticalSignal
         OpticalFiber(
-             attenuation=attenuation,
-             chromatic_dispersion=4.0,
-             eff_non_linear_coeff=1.76,
-             length=length,
+             attenuation=[attenuation],
+             chromatic_dispersion=[4.0],
+             eff_non_linear_coeff=[1.76],
+             length=[length],
              central_frequency=wavelength_nm_to_frequency(1550.0),
              step_count=100
         ),  # OpticalSignal
@@ -66,8 +66,8 @@ def test_qam4_system() -> None:
             photodiode=Composition([Photodiode(), lpf]),
             local_oscillator=local_oscillator
         ),  # (ElectricalSignal, ElectricalSignal)
-        MapComponents(ElectricalGain(1.0 / expected_symbol_scale)),  # (ElectricalSignal, ElectricalSignal)
-        MapComponents(Quantizer(1e-6)),  # (ElectricalSignal, ElectricalSignal)
+        MapComponents(ElectricalGain([1.0 / expected_symbol_scale])),  # (ElectricalSignal, ElectricalSignal)
+        MapComponents(Quantizer([1e-6])),  # (ElectricalSignal, ElectricalSignal)
         IQDecoder(
             data_rate=data_rate,
             symbol_decoder=IQSymbolDecoder(
@@ -83,11 +83,11 @@ def test_qam4_system() -> None:
         [1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0]
     ])
 
-    output_sequence = system.trace(input_sequence, parameter_dims=2)
-    expected_output_sequence = tf.tile(tf.expand_dims(input_sequence, 1), [1, 2, 1])
+    output_sequence = system.trace(input_sequence)
+    expected_output_sequence = input_sequence
 
     assert isinstance(output_sequence, tf.Tensor)
     assert output_sequence.dtype is tf.int32
-    assert tf.math.reduce_all(tf.shape(output_sequence) == (3, 2, 16))  # type: ignore
+    assert tf.math.reduce_all(tf.shape(output_sequence) == (3, 16))  # type: ignore[operator]
 
-    assert tf.math.reduce_all(expected_output_sequence == output_sequence)  # type: ignore
+    assert tf.math.reduce_all(expected_output_sequence == output_sequence)  # type: ignore[operator]

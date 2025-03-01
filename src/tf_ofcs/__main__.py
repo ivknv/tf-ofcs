@@ -201,31 +201,6 @@ class BEROverParameterCommand(Command):
 
             bits_per_symbol = int(math.log2(M))
 
-            # Autoencoder's encoder only takes one symbol per batch
-            def reshape_for_encoder(x: tf.Tensor) -> tf.Tensor:
-                batch_size, symbol_count, one_hot_size = tf.shape(x)
-
-                return tf.reshape(x, [batch_size * symbol_count, one_hot_size])
-
-            def reshape_for_transmitter(x: tf.Tensor) -> tf.Tensor:
-                batch_size, sample_count = tf.shape(x)
-                symbol_count = ns.bitseq_length // bits_per_symbol
-
-                return tf.reshape(x, [batch_size // symbol_count, 1, sample_count * symbol_count])
-
-            def reshape_for_decoder(x: tf.Tensor) -> tf.Tensor:
-                batch_size, parameter_dims, sample_count = tf.shape(x)
-                symbol_count = ns.bitseq_length // bits_per_symbol
-
-                tf.debugging.assert_equal(parameter_dims, 1)
-
-                return tf.reshape(x, [batch_size * symbol_count, sample_count // symbol_count])
-
-            def decode_one_hot(x: tf.Tensor) -> tf.Tensor:
-                bitseq = indices_to_bits(tf.cast(tf.argmax(x, axis=1), tf.int32), bits_per_symbol)
-
-                return tf.reshape(bitseq, (ns.batch_size, 1, ns.bitseq_length))
-
             system = components.Composition([
                 model.encoder,
                 model.transmitter,
@@ -237,8 +212,7 @@ class BEROverParameterCommand(Command):
             ber_tester = components.BERTester(
                 system,
                 batch_size=ns.batch_size,
-                n_iterations=ns.n_iterations,
-                parameter_dims=1
+                n_iterations=ns.n_iterations
             )
 
             ber_values = []
@@ -254,7 +228,7 @@ class BEROverParameterCommand(Command):
             for parameter_value in parameter_values:
                 params[ns.parameter] = tf.constant(parameter_value)
 
-                ber = ber_tester(tf.constant(bitseq_length), **params)[0]
+                ber = ber_tester(tf.constant(bitseq_length), **params)
 
                 print(f"BER={ber}, {ns.parameter}={parameter_value}")
 

@@ -81,9 +81,9 @@ class PadSignal(Component):
 
         if unpad:  # type: ignore[operator]
             if right_sample_count == 0:
-                padded_samples = padded_samples[:, :, left_sample_count:]
+                padded_samples = padded_samples[:, left_sample_count:]
             else:
-                padded_samples = padded_samples[:, :, left_sample_count:-right_sample_count]
+                padded_samples = padded_samples[:, left_sample_count:-right_sample_count]
         else:
             left_samples = tf.zeros(
                 tf.concat([shape[:-1], [left_sample_count]], 0),

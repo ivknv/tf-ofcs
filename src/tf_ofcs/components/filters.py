@@ -14,15 +14,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from ..utils import fftfreq
+from ..utils import fftfreq, to_tensor
 from .component import Component
 
 from ..datatypes import (
-    Timing, timing_spec, ElectricalSignal, OpticalSignal, FrequencyResponseFunction
+    Timing, timing_spec, ElectricalSignal, OpticalSignal, FrequencyResponseFunction,
+    TensorCompatible
 )
 
 __all__ = [
@@ -59,17 +59,15 @@ class FFTFilter(Component):
         Signal = signal.__class__
 
         fft = tf.signal.fft(tf.cast(signal.samples, tf.complex64))
-        n = tf.shape(fft)[2]
+        n = tf.shape(fft)[1]
         freqs = tf.abs(fftfreq(n, 1.0 / signal.timing.sampling_rate))
 
         # We need override these parameters, so we drop them from kwargs
         kwargs.pop("batch_size", None)
-        kwargs.pop("parameter_dims", None)
 
         frequency_response = self.frequency_response_function(
             freqs,
-            batch_size=tf.constant(1),
-            parameter_dims=tf.shape(fft)[1],
+            batch_size=tf.constant(tf.shape(fft)[0]),
             **kwargs
         )
 
@@ -83,22 +81,22 @@ class FFTFilter(Component):
 
 class BandPassFilter(Component):
     #: Minimum frequency in Hz
-    min_frequency: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+    min_frequency: tf.Variable  # shape=[None]; dtype=tf.float32
 
     #: Maximum frequency in Hz
-    max_frequency: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+    max_frequency: tf.Variable  # shape=[None]; dtype=tf.float32
 
     def __init__(
         self,
-        min_frequency: float | Sequence[float] | tf.Tensor,
-        max_frequency: float | Sequence[float] | tf.Tensor,
+        min_frequency: TensorCompatible,
+        max_frequency: TensorCompatible,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.min_frequency = tf.Variable(tf.constant(min_frequency), name=f"{self.name}__min_frequency")
-        self.max_frequency = tf.Variable(tf.constant(max_frequency), name=f"{self.name}__max_frequency")
-        self.local_parameters = [("min_frequency", 0), ("max_frequency", 0)]
+        self.min_frequency = tf.Variable(to_tensor(min_frequency), name=f"{self.name}__min_frequency")
+        self.max_frequency = tf.Variable(to_tensor(max_frequency), name=f"{self.name}__max_frequency")
+        self.local_parameters = ["min_frequency", "max_frequency"]
 
     def implementation(
         self,
@@ -118,7 +116,7 @@ class BandPassFilter(Component):
 
     @tf.function(input_signature=(
         timing_spec,
-        tf.TensorSpec([None, None, None]),
+        tf.TensorSpec([None, None]),
         tf.TensorSpec([None], tf.float32),
         tf.TensorSpec([None], tf.float32)
     ))
@@ -150,44 +148,39 @@ class BrickwallFrequencyResponse(Component):
     """
 
     #: Minimum frequency in Hz
-    min_frequency: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+    min_frequency: tf.Variable  # shape=[None]; dtype=tf.float32
 
     #: Maximum frequency in Hz
-    max_frequency: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+    max_frequency: tf.Variable  # shape=[None]; dtype=tf.float32
 
     batch_size: tf.Variable  # shape=[]; dtype=tf.int32
-    parameter_dims: tf.Variable  # shape=[]; dtype=tf.int32
 
     def __init__(
         self,
-        min_frequency: float | Sequence[float] | tf.Tensor,
-        max_frequency: float | Sequence[float] | tf.Tensor,
-        batch_size: float | tf.Tensor = 1,
-        parameter_dims: float | tf.Tensor = 1,
+        min_frequency: TensorCompatible,
+        max_frequency: TensorCompatible,
+        batch_size: TensorCompatible = 1,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.min_frequency = tf.Variable(tf.constant(min_frequency), name=f"{self.name}__min_frequency")
-        self.max_frequency = tf.Variable(tf.constant(max_frequency), name=f"{self.name}__max_frequency")
-        self.batch_size = tf.Variable(tf.constant(batch_size), name=f"{self.name}__batch_size")
-        self.parameter_dims = tf.Variable(tf.constant(parameter_dims), name=f"{self.name}__parameter_dims")
+        self.min_frequency = tf.Variable(to_tensor(min_frequency), name=f"{self.name}__min_frequency")
+        self.max_frequency = tf.Variable(to_tensor(max_frequency), name=f"{self.name}__max_frequency")
+        self.batch_size = tf.Variable(to_tensor(batch_size), name=f"{self.name}__batch_size")
 
         self.local_parameters = [
-            ("min_frequency", 0),
-            ("max_frequency", 0),
-            "batch_size",
-            "parameter_dims"
+            "min_frequency",
+            "max_frequency",
+            "batch_size"
         ]
 
-        self.global_parameters = ["batch_size", "parameter_dims"]
+        self.global_parameters = ["batch_size"]
 
     def implementation(
         self,
         frequencies: tf.Tensor,
         /,
         batch_size: tf.Tensor,
-        parameter_dims: tf.Tensor,
         min_frequency: tf.Tensor,
         max_frequency: tf.Tensor
     ) -> tf.Tensor:
@@ -195,15 +188,9 @@ class BrickwallFrequencyResponse(Component):
         max_frequency = tf.expand_dims(max_frequency, -1)
 
         return tf.cast(
-            tf.tile(
-                tf.expand_dims(
-                    tf.math.logical_and(
-                        tf.math.greater_equal(frequencies, min_frequency),
-                        tf.math.less_equal(frequencies, max_frequency)
-                    ),
-                    0
-                ),
-                [batch_size, parameter_dims, 1]
+            tf.math.logical_and(
+                tf.math.greater_equal(frequencies, min_frequency),
+                tf.math.less_equal(frequencies, max_frequency)
             ),
             tf.complex64
         )
@@ -226,10 +213,9 @@ class WDMBrickwallFrequencyResponse(Component):
 
     def __init__(
         self,
-        channel_frequencies: Sequence[float] | tf.Tensor,
-        channel_width: float | tf.Tensor,
-        batch_size: float | tf.Tensor = 1,
-        parameter_dims: float | tf.Tensor = 1,
+        channel_frequencies: TensorCompatible,
+        channel_width: TensorCompatible,
+        batch_size: TensorCompatible = 1,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -244,16 +230,14 @@ class WDMBrickwallFrequencyResponse(Component):
             name=f"{self.name}__channel_width"
         )
 
-        self.batch_size = tf.Variable(tf.constant(batch_size), name=f"{self.name}__batch_size")
-        self.parameter_dims = tf.Variable(tf.constant(parameter_dims), name=f"{self.name}__parameter_dims")
+        self.batch_size = tf.Variable(to_tensor(batch_size), name=f"{self.name}__batch_size")
 
         self.local_parameters = [
             "channel_frequencies",
             "channel_width",
-            "batch_size",
-            "parameter_dims"
+            "batch_size"
         ]
-        self.global_parameters = ["batch_size", "parameter_dims"]
+        self.global_parameters = ["batch_size"]
 
     def implementation(
         self,
@@ -261,30 +245,24 @@ class WDMBrickwallFrequencyResponse(Component):
         /,
         channel_frequencies: tf.Tensor,
         channel_width: tf.Tensor,
-        batch_size: tf.Tensor,
-        parameter_dims: tf.Tensor
+        batch_size: tf.Tensor
     ) -> tf.Tensor:
         return tf.cast(
-            tf.tile(
-                tf.expand_dims(
-                    tf.math.logical_and(
-                        tf.math.greater_equal(
-                            frequencies,
-                            tf.expand_dims(channel_frequencies - channel_width * 0.5, -1)
-                        ),
-                        tf.math.less_equal(
-                            frequencies,
-                            tf.expand_dims(channel_frequencies + channel_width * 0.5, -1)
-                        )
-                    ),
-                    1
+            tf.math.logical_and(
+                tf.math.greater_equal(
+                    frequencies,
+                    tf.expand_dims(channel_frequencies - channel_width * 0.5, -1)
                 ),
-                [1, parameter_dims, 1]
+                tf.math.less_equal(
+                    frequencies,
+                    tf.expand_dims(channel_frequencies + channel_width * 0.5, -1)
+                )
             ),
             tf.complex64
         )
 
 
+# TODO: fix this later
 class GaussianFrequencyResponse(Component):
     """Frequency response function of a Gaussian filter."""
 
@@ -302,11 +280,10 @@ class GaussianFrequencyResponse(Component):
 
     def __init__(
         self,
-        central_frequency: float | Sequence[float] | tf.Tensor,
-        bandwidth: float | Sequence[float] | tf.Tensor,
-        order: float | Sequence[float] | tf.Tensor,
-        batch_size: float | tf.Tensor = 1,
-        parameter_dims: float | tf.Tensor = 1,
+        central_frequency: TensorCompatible,
+        bandwidth: TensorCompatible,
+        order: TensorCompatible,
+        batch_size: TensorCompatible = 1,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -315,20 +292,18 @@ class GaussianFrequencyResponse(Component):
             tf.constant(central_frequency),
             name=f"{self.name}__central_frequency"
         )
-        self.bandwidth = tf.Variable(tf.constant(bandwidth), name=f"{self.name}__bandwidth")
-        self.order = tf.Variable(tf.constant(order), name=f"{self.name}__order")
-        self.batch_size = tf.Variable(tf.constant(batch_size), name=f"{self.name}__batch_size")
-        self.parameter_dims = tf.Variable(tf.constant(parameter_dims), name=f"{self.name}__parameter_dims")
+        self.bandwidth = tf.Variable(to_tensor(bandwidth), name=f"{self.name}__bandwidth")
+        self.order = tf.Variable(to_tensor(order), name=f"{self.name}__order")
+        self.batch_size = tf.Variable(to_tensor(batch_size), name=f"{self.name}__batch_size")
 
         self.local_parameters = [
-            ("central_frequency", 0),
-            ("bandwidth", 0),
-            ("order", 0),
-            "batch_size",
-            "parameter_dims"
+            "central_frequency",
+            "bandwidth",
+            "order",
+            "batch_size"
         ]
 
-        self.global_parameters = ["batch_size", "parameter_dims"]
+        self.global_parameters = ["batch_size"]
 
     def implementation(
         self,
@@ -337,52 +312,44 @@ class GaussianFrequencyResponse(Component):
         central_frequency: tf.Tensor,
         bandwidth: tf.Tensor,
         order: tf.Tensor,
-        batch_size: tf.Tensor,
-        parameter_dims: tf.Tensor
+        batch_size: tf.Tensor
     ) -> tf.Tensor:
         central_frequency = tf.expand_dims(central_frequency, -1)
         bandwidth = tf.expand_dims(bandwidth, -1)
         order = tf.cast(tf.expand_dims(order, -1), tf.float32)
 
-        return tf.tile(
-            tf.expand_dims(
-                tf.cast(
-                    tf.math.exp(
-                        tf.math.divide(
-                            -0.5 * tf.math.log(2.0) * tf.constant(2.0) ** (2.0 * order),
-                            bandwidth ** (2.0 * order)
-                        ) * (frequencies - central_frequency) ** (2.0 * order)
-                    ),
-                    tf.complex64
-                ),
-                0
+        return tf.cast(
+            tf.math.exp(
+                tf.math.divide(
+                    -0.5 * tf.math.log(2.0) * tf.constant(2.0) ** (2.0 * order),
+                    bandwidth ** (2.0 * order)
+                ) * (frequencies - central_frequency) ** (2.0 * order)
             ),
-            [batch_size, 1, 1]
+            tf.complex64
         )
 
 
+# TODO: fix this later
 class BesselFrequencyResponse(Component):
     """Frequency response function of Bessel bandpass filter."""
 
     #: Filter's central frequency in Hz
-    central_frequency: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+    central_frequency: tf.Variable  # shape=[None]; dtype=tf.float32
 
     #: Bessel filter's bandwidth
-    bandwidth: tf.Variable  # shape=[] or [None]; dtype=tf.float32
+    bandwidth: tf.Variable  # shape=[None]; dtype=tf.float32
 
     #: Bessel filter's order
     order: tf.Variable  # shape=[]; dtype=tf.int32
 
     batch_size: tf.Variable  # shape=[]; dtype=tf.int32
-    parameter_dims: tf.Variable  # shape=[]; dtype=tf.int32
 
     def __init__(
         self,
-        central_frequency: float | Sequence[float] | tf.Tensor,
-        bandwidth: float | Sequence[float] | tf.Tensor,
-        order: float | Sequence[float] | tf.Tensor,
-        batch_size: float | tf.Tensor = 1,
-        parameter_dims: float | tf.Tensor = 1,
+        central_frequency: TensorCompatible,
+        bandwidth: TensorCompatible,
+        order: TensorCompatible,
+        batch_size: TensorCompatible = 1,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -391,20 +358,18 @@ class BesselFrequencyResponse(Component):
             tf.constant(central_frequency),
             name=f"{self.name}__central_frequency"
         )
-        self.bandwidth = tf.Variable(tf.constant(bandwidth), name=f"{self.name}__bandwidth")
-        self.order = tf.Variable(tf.constant(order), name=f"{self.name}__order")
-        self.batch_size = tf.Variable(tf.constant(batch_size), name=f"{self.name}__batch_size")
-        self.parameter_dims = tf.Variable(tf.constant(parameter_dims), name=f"{self.name}__parameter_dims")
+        self.bandwidth = tf.Variable(to_tensor(bandwidth), name=f"{self.name}__bandwidth")
+        self.order = tf.Variable(to_tensor(order), name=f"{self.name}__order")
+        self.batch_size = tf.Variable(to_tensor(batch_size), name=f"{self.name}__batch_size")
 
         self.local_parameters = [
-            ("central_frequency", 0),
-            ("bandwidth", 0),
+            "central_frequency",
+            "bandwidth",
             "order",
-            "batch_size",
-            "parameter_dims"
+            "batch_size"
         ]
 
-        self.global_parameters = ["batch_size", "parameter_dims"]
+        self.global_parameters = ["batch_size"]
 
     def _factorial(self, n: tf.Tensor) -> tf.Tensor:
         tf.debugging.assert_greater_equal(n, 0)
@@ -432,7 +397,7 @@ class BesselFrequencyResponse(Component):
     def _theta(self, s: tf.Tensor, n: tf.Tensor) -> tf.Tensor:
         k = tf.range(n)  # shape=[n]
 
-        # shape=[n, parameter_dims, f]
+        # shape=[n, f]
         s_k = s ** tf.expand_dims(tf.expand_dims(tf.cast(k, tf.complex64), -1), -1)
 
         # Avoid NaN due to 0.0 ** 0.0
@@ -446,7 +411,7 @@ class BesselFrequencyResponse(Component):
 
         return tf.reduce_sum(
             tf.multiply(
-                # shape=[n, 1, 1]
+                # shape=[n, 1]
                 tf.expand_dims(tf.expand_dims(tf.cast(self._a(k, n), tf.complex64), -1), -1),
                 s_k
             ),
@@ -466,19 +431,12 @@ class BesselFrequencyResponse(Component):
         central_frequency: tf.Tensor,
         bandwidth: tf.Tensor,
         order: tf.Tensor,
-        batch_size: tf.Tensor,
-        parameter_dims: tf.Tensor
+        batch_size: tf.Tensor
     ) -> tf.Tensor:
         central_frequency = tf.expand_dims(central_frequency, -1)
         bandwidth = tf.expand_dims(bandwidth, -1)
 
-        return tf.tile(
-            tf.expand_dims(
-                tf.divide(
-                    self._theta_0(order),
-                    self._theta(tf.complex(0.0, (frequencies - central_frequency) / bandwidth), order)
-                ),
-                0
-            ),
-            [batch_size, 1, 1]
+        return tf.divide(
+            self._theta_0(order),
+            self._theta(tf.complex(0.0, (frequencies - central_frequency) / bandwidth), order)
         )

@@ -24,8 +24,8 @@ __all__ = ["MergeSignals"]
 
 class MergeSignals(Component):
     """
-        Merges a tuple of `n` signals with shape (batch_size, parameter_dims, sample_count)
-        into a signal with shape (batch_size * n, parameter_dims, sample_count).
+        Merges a tuple of `n` signals with shape (batch_size, sample_count)
+        into a signal with shape (batch_size * n, sample_count).
 
         Of course, the signals don't have to have the same `batch_size`, but
         they must be of the same type (e.g all optical or all electrical) and

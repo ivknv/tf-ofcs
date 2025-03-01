@@ -14,15 +14,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Callable, Sequence
 from typing import Optional
 import tensorflow as tf
 
 from .. import constants
 from .component import Component
+from ..utils import to_tensor
 
 from ..datatypes import (
-    ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec
+    ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec,
+    TensorCompatible
 )
 
 __all__ = ["MachZehnderModulator"]
@@ -44,21 +45,21 @@ class MachZehnderModulator(Component):
                                 extinction ratio
     """
 
-    extinction_ratio: tf.Variable  # shape=[None] or []; dtype=float32
+    extinction_ratio: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(
         self,
         *,
-        extinction_ratio: float | Sequence[float] | tf.Tensor = float("inf"),
+        extinction_ratio: TensorCompatible = tf.constant([float("inf")]),
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.extinction_ratio = tf.Variable(
-            tf.constant(extinction_ratio),
+            to_tensor(extinction_ratio),
             name=f"{self.name}__extinction_ratio"
         )
-        self.local_parameters = [("extinction_ratio", 0)]
+        self.local_parameters = ["extinction_ratio"]
 
     @tf.function(input_signature=(
         (optical_signal_spec, electrical_signal_spec),

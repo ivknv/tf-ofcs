@@ -18,7 +18,7 @@ def test_pam2_system() -> None:
     input_power = dbm_to_w(2.0)
     batch_size = 3
 
-    lpf = BandPassFilter(min_frequency=0.0, max_frequency=1 * data_rate)
+    lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[1 * data_rate])
 
     rng = tf.random.Generator.from_seed(1234, alg="philox")
     snr = 30.0
@@ -42,26 +42,26 @@ def test_pam2_system() -> None:
         lpf,  # ElectricalSignal
         Fork(shape=[2]),  # (ElectricalSignal, ElectricalSignal)
         MapComponents([
-            Laser(power=input_power, batch_size=batch_size),
+            Laser(power=[input_power], batch_size=batch_size),
             Identity()
         ]),  # (OpticalSignal, ElectricalSignal)
         MachZehnderModulator(),  # OpticalSignal
-        OpticalAWGN(relative_db=-snr, rng=rng),  # OpticalSignal
+        OpticalAWGN(relative_db=[-snr], rng=rng),  # OpticalSignal
         OpticalFiber(
-             attenuation=attenuation,
-             chromatic_dispersion=4.0,
-             eff_non_linear_coeff=1.76,
-             length=length,
+             attenuation=[attenuation],
+             chromatic_dispersion=[4.0],
+             eff_non_linear_coeff=[1.76],
+             length=[length],
              central_frequency=wavelength_nm_to_frequency(1550.0),
              step_count=100
         ),  # OpticalSignal
         Photodiode(
-            sensitivity=dbm_to_w(-15.0),
-            maximum_power=dbm_to_w(-1.0)
+            sensitivity=dbm_to_w(tf.constant([-15.0])),
+            maximum_power=dbm_to_w(tf.constant([-1.0]))
         ),  # ElectricalSignal
         lpf,  # ElectricalSignal
-        Quantizer(step=1e-6),  # ElectricalSignal
-        ElectricalGain(1.0 / expected_symbol_scale),  # ElectricalSignal
+        Quantizer(step=[1e-6]),  # ElectricalSignal
+        ElectricalGain(tf.constant([1.0]) / expected_symbol_scale),  # ElectricalSignal
         PAMDecoder(
             data_rate=data_rate,
             symbol_decoder=PAMSymbolDecoder(
@@ -77,11 +77,11 @@ def test_pam2_system() -> None:
         [1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0]
     ])
 
-    output_sequence = system(input_sequence, parameter_dims=2)
-    expected_output_sequence = tf.tile(tf.expand_dims(input_sequence, 1), [1, 2, 1])
+    output_sequence = system(input_sequence)
+    expected_output_sequence = input_sequence
 
     assert isinstance(output_sequence, tf.Tensor)
     assert output_sequence.dtype is tf.int32
-    assert tf.math.reduce_all(tf.shape(output_sequence) == (3, 2, 16))  # type: ignore
+    assert tf.math.reduce_all(tf.shape(output_sequence) == (3, 16))  # type: ignore[operator]
 
-    assert tf.math.reduce_all(expected_output_sequence == output_sequence)  # type: ignore
+    assert tf.math.reduce_all(expected_output_sequence == output_sequence)  # type: ignore[operator]

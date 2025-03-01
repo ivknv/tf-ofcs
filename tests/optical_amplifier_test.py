@@ -12,21 +12,21 @@ def test_optical_amplifier() -> None:
 
     input_signal = OpticalSignal(
         timing=Timing(sampling_rate=1000.0, sample_count=1000),
-        samples=tf.cast(tf.fill([2, 2, 1000], 1.0), tf.complex64)
+        samples=tf.cast(tf.fill([2, 1000], 1.0), tf.complex64)
     )
 
     amplified_signal = amplifier(input_signal)
 
     assert isinstance(amplified_signal, OpticalSignal)
-    assert tf.math.reduce_all(tf.shape(amplified_signal.samples) == [2, 2, 1000])  # type: ignore[operator]
+    assert tf.math.reduce_all(tf.shape(amplified_signal.samples) == [2, 1000])  # type: ignore[operator]
 
     amplification = tf.abs(amplified_signal.samples / input_signal.samples)
     error = tf.abs(tf.concat(
         [
-            amplification[:, 0, :] - 10.0 ** 0.5,
-            amplification[:, 1, :] - 20.0 ** 0.5
+            amplification[0, :] - 10.0 ** 0.5,
+            amplification[1, :] - 20.0 ** 0.5
         ],
-        1
+        -1
     ))
 
     assert tf.math.reduce_all(tf.math.less(error, 0.0001))  # type: ignore[operator]

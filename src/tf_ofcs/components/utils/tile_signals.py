@@ -25,13 +25,13 @@ __all__ = ["TileSignals"]
 
 class TileSignals(Component):
     """
-        Applies `tf.tile()` operation to the input signal, but only the first
-        two dimensions (`batch_size` and `parameter_dims`).
+        Applies `tf.tile()` operation to the input signal, but only to the first
+        dimension (`batch_size`).
     """
 
-    multiples: tf.Variable  # shape=[2]; dtype=tf.int32
+    multiples: tf.Variable  # shape=[]; dtype=tf.int32
 
-    def __init__(self, multiples: tuple[int, int] | tf.Tensor, name: Optional[str] = None) -> None:
+    def __init__(self, multiples: int | tf.Tensor, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
         self.multiples = tf.Variable(tf.constant(multiples), name=f"{self.name}__multiples")
@@ -46,6 +46,6 @@ class TileSignals(Component):
         Signal = signal.__class__
 
         return Signal(
-            samples=tf.tile(signal.samples, tf.concat([multiples, [1]], 0)),
+            samples=tf.tile(signal.samples, [multiples, 1]),
             timing=signal.timing
         )

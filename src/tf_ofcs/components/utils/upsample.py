@@ -17,7 +17,8 @@
 from typing import Optional
 import tensorflow as tf
 from ..component import Component
-from ...datatypes import ElectricalSignal, OpticalSignal, Timing
+from ...datatypes import ElectricalSignal, OpticalSignal, TensorCompatible, Timing
+from ...utils import to_tensor
 
 __all__ = ["Upsample"]
 
@@ -28,12 +29,12 @@ class Upsample(Component):
 
     def __init__(
         self,
-        factor: int | tf.Tensor,
+        factor: TensorCompatible,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.factor = tf.Variable(tf.constant(factor), name=f"{self.name}__factor")
+        self.factor = tf.Variable(to_tensor(factor), name=f"{self.name}__factor")
         self.local_parameters = ["factor"]
 
     def implementation(

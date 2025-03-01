@@ -14,11 +14,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from ..datatypes import ElectricalSignal, electrical_signal_spec, Timing
+from ..datatypes import TensorCompatible, ElectricalSignal, electrical_signal_spec, Timing
+from ..utils import to_tensor
 from .component import Component
 
 __all__ = [
@@ -54,12 +54,12 @@ class ArbitraryWaveformGenerator(Component):
 
     def __init__(
         self,
-        sampling_rate: float | tf.Tensor,
+        sampling_rate: TensorCompatible,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.sampling_rate = tf.Variable(tf.constant(sampling_rate), name=f"{self.name}__sampling_rate")
+        self.sampling_rate = tf.Variable(to_tensor(sampling_rate), name=f"{self.name}__sampling_rate")
         self.local_parameters = ["sampling_rate"]
 
     def implementation(self, input_samples: tf.Tensor, /, sampling_rate: tf.Tensor) -> ElectricalSignal:
@@ -73,17 +73,17 @@ class ArbitraryWaveformGenerator(Component):
 
 
 class Quantizer(Component):
-    step: tf.Variable  # shape=[] or [None]; dtype=float32
+    step: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(
         self,
-        step: float | Sequence[float] | tf.Tensor,
+        step: TensorCompatible,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.step = tf.Variable(tf.constant(step), name=f"{self.name}__step")
-        self.local_parameters = [("step", 0)]
+        self.step = tf.Variable(to_tensor(step), name=f"{self.name}__step")
+        self.local_parameters = ["step"]
 
     @tf.function(input_signature=(
         electrical_signal_spec,
@@ -97,17 +97,17 @@ class Quantizer(Component):
 
 
 class ElectricalGain(Component):
-    gain: tf.Variable  # shape[] or [None]; dtype=float32
+    gain: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(
         self,
-        gain: float | Sequence[float] | tf.Tensor,
+        gain: TensorCompatible,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.gain = tf.Variable(tf.constant(gain), name=f"{self.name}__gain")
-        self.local_parameters = [("gain", 0)]
+        self.gain = tf.Variable(to_tensor(gain), name=f"{self.name}__gain")
+        self.local_parameters = ["gain"]
 
     @tf.function(input_signature=(
         electrical_signal_spec,

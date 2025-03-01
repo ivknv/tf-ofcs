@@ -14,11 +14,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from ..datatypes import ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec
+from ..utils import to_tensor
+from ..datatypes import (
+    ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec,
+    TensorCompatible
+)
 from .component import Component
 
 __all__ = ["ElectricalAWGN", "OpticalAWGN"]
@@ -26,10 +29,10 @@ __all__ = ["ElectricalAWGN", "OpticalAWGN"]
 
 class ElectricalAWGN(Component):
     #: Amount of absolute noise in dB that is independent of input signal
-    absolute_db: tf.Variable  # shape=[] or [None]; dtype=float32
+    absolute_db: tf.Variable  # shape=[None]; dtype=float32
 
     #: Relative amount of noise in dB
-    relative_db: tf.Variable  # shape=[] or [None]; dtype=float32
+    relative_db: tf.Variable  # shape=[None]; dtype=float32
 
     #: Random number generator
     rng: tf.random.Generator
@@ -37,16 +40,16 @@ class ElectricalAWGN(Component):
     def __init__(
         self,
         *,
-        absolute_db: float | Sequence[float] | tf.Tensor = -float("inf"),
-        relative_db: float | Sequence[float] | tf.Tensor = -float("inf"),
+        absolute_db: TensorCompatible = tf.constant([-float("inf")]),
+        relative_db: TensorCompatible = tf.constant([-float("inf")]),
         rng: Optional[tf.random.Generator] = None,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.absolute_db = tf.Variable(tf.constant(absolute_db), name=f"{self.name}__absolute_db")
-        self.relative_db = tf.Variable(tf.constant(relative_db), name=f"{self.name}__relative_db")
-        self.local_parameters = [("absolute_db", 0), ("relative_db", 0)]
+        self.absolute_db = tf.Variable(to_tensor(absolute_db), name=f"{self.name}__absolute_db")
+        self.relative_db = tf.Variable(to_tensor(relative_db), name=f"{self.name}__relative_db")
+        self.local_parameters = ["absolute_db", "relative_db"]
 
         if rng is None:
             self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
@@ -66,13 +69,11 @@ class ElectricalAWGN(Component):
     ) -> ElectricalSignal:
         absolute_noise_amplitude = tf.constant(10.0) ** (absolute_db * 0.1 * 0.5)
         relative_noise_amplitude = tf.constant(10.0) ** (relative_db * 0.1 * 0.5)
-        parameter_dims = tf.shape(input_signal.samples)[1]
 
         noise_shape = tf.shape(input_signal.samples)
-        amplitude_shape = [1, parameter_dims, 1]
 
-        absolute_noise_amplitude = tf.reshape(absolute_noise_amplitude, amplitude_shape)
-        relative_noise_amplitude = tf.reshape(relative_noise_amplitude, amplitude_shape)
+        absolute_noise_amplitude = tf.expand_dims(absolute_noise_amplitude, -1)
+        relative_noise_amplitude = tf.expand_dims(relative_noise_amplitude, -1)
 
         absolute_noise = self.rng.normal(
             shape=noise_shape,
@@ -96,10 +97,10 @@ class ElectricalAWGN(Component):
 
 class OpticalAWGN(Component):
     #: Amount of absolute noise in dBm that is independent of input signal
-    absolute_dbm: tf.Variable  # shape=[] or [None]; dtype=float32
+    absolute_dbm: tf.Variable  # shape=[None]; dtype=float32
 
     #: Relative amount of noise in dB
-    relative_db: tf.Variable  # shape=[] or [None]; dtype=float32
+    relative_db: tf.Variable  # shape=[None]; dtype=float32
 
     #: Random number generator
     rng: tf.random.Generator
@@ -107,16 +108,16 @@ class OpticalAWGN(Component):
     def __init__(
         self,
         *,
-        absolute_dbm: float | Sequence[float] | tf.Tensor = -float("inf"),
-        relative_db: float | Sequence[float] | tf.Tensor = -float("inf"),
+        absolute_dbm: TensorCompatible = tf.constant([-float("inf")]),
+        relative_db: TensorCompatible = tf.constant([-float("inf")]),
         rng: Optional[tf.random.Generator] = None,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.absolute_dbm = tf.Variable(tf.constant(absolute_dbm), name=f"{self.name}__absolute_dbm")
-        self.relative_db = tf.Variable(tf.constant(relative_db), name=f"{self.name}__relative_db")
-        self.local_parameters = [("absolute_dbm", 0), ("relative_db", 0)]
+        self.absolute_dbm = tf.Variable(to_tensor(absolute_dbm), name=f"{self.name}__absolute_dbm")
+        self.relative_db = tf.Variable(to_tensor(relative_db), name=f"{self.name}__relative_db")
+        self.local_parameters = ["absolute_dbm", "relative_db"]
 
         if rng is None:
             self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
@@ -137,14 +138,12 @@ class OpticalAWGN(Component):
         # * 0.5 to account for two noise components
         absolute_noise_amplitude = (0.5 * 1e-3) ** 0.5 * tf.constant(10.0) ** (absolute_dbm * 0.1 * 0.5)
         relative_noise_amplitude = 0.5 ** 0.5 * tf.constant(10.0) ** (relative_db * 0.1 * 0.5)
-        parameter_dims = tf.shape(input_signal.samples)[1]
 
         # We have to generate the double amount of noise samples since they must be complex
         noise_shape = tf.concat([[2], tf.shape(input_signal.samples)], 0)
-        amplitude_shape = [1, 1, parameter_dims, 1]
 
-        absolute_noise_amplitude = tf.reshape(absolute_noise_amplitude, amplitude_shape)
-        relative_noise_amplitude = tf.reshape(relative_noise_amplitude, amplitude_shape)
+        absolute_noise_amplitude = tf.expand_dims(tf.expand_dims(absolute_noise_amplitude, 0), -1)
+        relative_noise_amplitude = tf.expand_dims(tf.expand_dims(relative_noise_amplitude, 0), -1)
 
         absolute_noise_components = self.rng.normal(
             shape=noise_shape,

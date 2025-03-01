@@ -14,13 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
-from ...datatypes import OpticalSignal, optical_signal_spec
+from ...datatypes import OpticalSignal, optical_signal_spec, TensorCompatible
 from ... import constants
-from ...utils import fftfreq
+from ...utils import fftfreq, to_tensor
 from ..component import Component
 
 __all__ = [
@@ -32,17 +31,17 @@ __all__ = [
 
 
 class OpticalPhaseShifter(Component):
-    phase_shift: tf.Variable  # shape=[] or [None]; dtype=float32
+    phase_shift: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(
         self,
-        phase_shift: float | Sequence[float] | tf.Tensor,
+        phase_shift: TensorCompatible,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.phase_shift = tf.Variable(tf.constant(phase_shift), name=f"{self.name}__phase_shift")
-        self.local_parameters = [("phase_shift", 0)]
+        self.phase_shift = tf.Variable(to_tensor(phase_shift), name=f"{self.name}__phase_shift")
+        self.local_parameters = ["phase_shift"]
 
     @tf.function(input_signature=(
         optical_signal_spec,
@@ -64,16 +63,16 @@ class OpticalPhaseShifter(Component):
 
 class OpticalFiber(Component):
     #: Optical signal power loss in dB/km
-    attenuation: tf.Variable  # shape=[] or [None]; dtype=float32
+    attenuation: tf.Variable  # shape=[None]; dtype=float32
 
     #: Chromatic dispersion coefficient (ps / (nm * km))
-    chromatic_dispersion: tf.Variable  # shape=[] or [None]; dtype=float32
+    chromatic_dispersion: tf.Variable  # shape=[None]; dtype=float32
 
     #: Effective non-linear coefficient of the fiber (rad / (W * m))
-    eff_non_linear_coeff: tf.Variable  # shape=[] or [None]; dtype=float32
+    eff_non_linear_coeff: tf.Variable  # shape=[None]; dtype=float32
 
     #: Fiber length in kilometers
-    length: tf.Variable  # shape=[] or [None]; dtype=float32
+    length: tf.Variable  # shape=[None]; dtype=float32
 
     #: Central frequency at which light travels at normal speed (without delay)
     central_frequency: tf.Variable  # shape=[]; dtype=float32
@@ -83,37 +82,37 @@ class OpticalFiber(Component):
 
     def __init__(
         self,
-        attenuation: float | Sequence[float] | tf.Tensor,
-        chromatic_dispersion: float | Sequence[float] | tf.Tensor,
-        eff_non_linear_coeff: float | Sequence[float] | tf.Tensor,
-        length: float | Sequence[float] | tf.Tensor,
-        central_frequency: float | tf.Tensor,
+        attenuation: TensorCompatible,
+        chromatic_dispersion: TensorCompatible,
+        eff_non_linear_coeff: TensorCompatible,
+        length: TensorCompatible,
+        central_frequency: TensorCompatible,
         step_count: int | tf.Tensor = 50,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.attenuation = tf.Variable(tf.constant(attenuation), name=f"{self.name}__attenuation")
+        self.attenuation = tf.Variable(to_tensor(attenuation), name=f"{self.name}__attenuation")
         self.chromatic_dispersion = tf.Variable(
             tf.constant(chromatic_dispersion),
             name=f"{self.name}__chromatic_dispersion"
         )
         self.eff_non_linear_coeff = tf.Variable(
-            tf.constant(eff_non_linear_coeff),
+            to_tensor(eff_non_linear_coeff),
             name=f"{self.name}__eff_non_linear_coeff"
         )
-        self.length = tf.Variable(tf.constant(length), name=f"{self.name}__length")
+        self.length = tf.Variable(to_tensor(length), name=f"{self.name}__length")
         self.central_frequency = tf.Variable(
-            tf.constant(central_frequency),
+            to_tensor(central_frequency),
             name=f"{self.name}__central_frequency"
         )
-        self.step_count = tf.Variable(tf.constant(step_count), name=f"{self.name}__step_count")
+        self.step_count = tf.Variable(to_tensor(step_count), name=f"{self.name}__step_count")
 
         self.local_parameters = [
-            ("attenuation", 0),
-            ("chromatic_dispersion", 0),
-            ("eff_non_linear_coeff", 0),
-            ("length", 0),
+            "attenuation",
+            "chromatic_dispersion",
+            "eff_non_linear_coeff",
+            "length",
             "central_frequency",
             "step_count"
         ]
@@ -221,10 +220,10 @@ class OpticalCoupler2x2(Component):
     #: If true, the second output will contain the difference of the two input signals
     flip: tf.Variable  # shape=[]; dtype=bool
 
-    def __init__(self, flip: bool | tf.Tensor = False, name: Optional[str] = None) -> None:
+    def __init__(self, flip: TensorCompatible = False, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
-        self.flip = tf.Variable(tf.constant(flip), name=f"{self.name}__flip")
+        self.flip = tf.Variable(to_tensor(flip), name=f"{self.name}__flip")
         self.local_parameters = ["flip"]
 
     @tf.function(input_signature=(

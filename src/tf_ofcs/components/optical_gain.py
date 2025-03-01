@@ -14,24 +14,24 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
 from .component import Component
-from ..datatypes import OpticalSignal, optical_signal_spec
+from ..datatypes import OpticalSignal, optical_signal_spec, TensorCompatible
+from ..utils import to_tensor
 
 __all__ = ["OpticalGain"]
 
 class OpticalGain(Component):
     #: Gain coefficient (unitless)
-    gain: tf.Variable  # shape=[] or [None]; dtype=float32
+    gain: tf.Variable  # shape=[None]; dtype=float32
 
-    def __init__(self, gain: float | Sequence[float] | tf.Tensor, name: Optional[str] = None) -> None:
+    def __init__(self, gain: TensorCompatible, name: Optional[str] = None) -> None:
         super().__init__(name=name)
 
-        self.gain = tf.Variable(tf.constant(gain), name=f"{self.name}__gain")
-        self.local_parameters = [("gain", 0)]
+        self.gain = tf.Variable(to_tensor(gain), name=f"{self.name}__gain")
+        self.local_parameters = ["gain"]
 
     @tf.function(input_signature=(
         optical_signal_spec,

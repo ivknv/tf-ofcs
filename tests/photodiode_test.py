@@ -24,27 +24,27 @@ def test_photodiode() -> None:
         timing=timing,
         samples=tf.cast(
             tf.tile(
-                [[tf.sqrt(power) * tf.math.cos(2 * constants.pi * timing_to_samples(timing))]],
-                [1, 3, 1]
+                [tf.sqrt(power) * tf.math.cos(2 * constants.pi * timing_to_samples(timing))],
+                [3, 1]
             ),
             tf.complex64
         )
     )
 
     received_signal = photodiode(input_signal)
-    expected_signal_samples = tf.stack([[
-        tf.abs(input_signal.samples[0, 0, :]) ** 2,
+    expected_signal_samples = tf.stack([
+        tf.abs(input_signal.samples[0]) ** 2,
         tf.clip_by_value(
-            tf.abs(input_signal.samples[0, 1, :]) ** 2,
+            tf.abs(input_signal.samples[1]) ** 2,
             photodiode.sensitivity[1],
             photodiode.maximum_power[1]
         ),
         tf.clip_by_value(
-            tf.abs(input_signal.samples[0, 2, :]) ** 2,
+            tf.abs(input_signal.samples[2]) ** 2,
             photodiode.sensitivity[2],
             photodiode.maximum_power[2]
         )
-    ]])
+    ])
 
     assert isinstance(received_signal, ElectricalSignal)
     assert tf.math.reduce_all(

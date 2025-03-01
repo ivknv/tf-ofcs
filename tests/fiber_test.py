@@ -16,8 +16,7 @@ def test_optical_fiber_attenuation() -> None:
         step_count=100
     )
 
-    parameter_dims = tf.size(fiber.attenuation)
-    batch_size = tf.constant(2)
+    batch_size = tf.size(fiber.attenuation)
 
     input_signal = OpticalSignal(
         timing=Timing(
@@ -25,7 +24,7 @@ def test_optical_fiber_attenuation() -> None:
             sampling_rate=tf.constant(1.0)
         ),
         samples=tf.cast(
-            tf.tile([[[0.1, 1.0]]], [batch_size, parameter_dims, 5]),
+            tf.tile([[0.1, 1.0]], [batch_size, 5]),
             tf.complex64
         )
     )
@@ -43,18 +42,18 @@ def test_optical_fiber_attenuation() -> None:
         20.0 / tf.math.log(10.0) * tf.math.log(
             (tf.abs(input_signal.samples) / tf.abs(output_signal.samples))
         ),
-        axis=[0, 2]
+        axis=-1
     )
 
-    assert tf.math.reduce_all(tf.abs(actual_loss - expected_loss) < 1e-3)  # type: ignore
+    assert tf.math.reduce_all(tf.abs(actual_loss - expected_loss) < 1e-3)  # type: ignore[operator]
 
 
 def test_optical_fiber_chromatic_dispersion() -> None:
     fiber = OpticalFiber(
-        attenuation=0.0,
-        chromatic_dispersion=17.0,
-        eff_non_linear_coeff=0.0,
-        length=100.0,
+        attenuation=[0.0],
+        chromatic_dispersion=[17.0],
+        eff_non_linear_coeff=[0.0],
+        length=[100.0],
         central_frequency=193.414e12,
         step_count=1
     )
@@ -73,8 +72,8 @@ def test_optical_fiber_chromatic_dispersion() -> None:
         return tf.math.reduce_max(tf.abs(signal.samples) ** 2, axis=-1)
 
     def estimate_pulse_duration(signal: OpticalSignal) -> tf.Tensor:
-        max_power = estimate_max_power(signal)[0, 0]
-        indices = tf.where(tf.abs(signal.samples[0, 0]) ** 2 >= 0.5 * max_power)
+        max_power = estimate_max_power(signal)[0]
+        indices = tf.where(tf.abs(signal.samples[0]) ** 2 >= 0.5 * max_power)
 
         return tf.cast(indices[-1] - indices[0], tf.float32) / tf.cast(timing.sampling_rate, tf.float32)
 
