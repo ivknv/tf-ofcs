@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
+from collections.abc import Callable
 import math
 import json
 import os
@@ -24,6 +25,8 @@ import datetime
 import h5py  # type: ignore[import-untyped]
 import keras  # type: ignore[import-untyped]
 import tensorflow as tf
+
+from .datatypes import Timing
 
 from .models import AutoencoderModel, IMDDAutoencoder, IQAutoencoder
 from . import components
@@ -118,6 +121,9 @@ class TrainCommand(Command):
         with tf.device(ns.device):
             model = _create_model(profile)
             M = profile["model_parameters"]["M"]
+
+            if hasattr(model, "substitute_laser"):
+                model.substitute_laser(ns.batch_size)
 
             optimizer = keras.optimizers.Adam(**profile["optimizer_parameters"])
             model.compile(optimizer=optimizer, loss="binary_crossentropy")

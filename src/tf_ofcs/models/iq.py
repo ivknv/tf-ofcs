@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import math
 from typing import Any, Optional
 import tensorflow as tf
@@ -27,7 +27,8 @@ from ..utils import dbm_to_w
 from ..components import (
     Component, Composition, OpticalFiber, OpticalAWGN, IQModulator, Laser,
     IQReceiver, Photodiode, BandPassFilter, ArbitraryWaveformGenerator, Lambda,
-    RandomizeParameters, MapComponents, ElectricalGain, Fork, Identity, Reindex
+    RandomizeParameters, MapComponents, ElectricalGain, Fork, Identity, Reindex,
+    Substitute
 )
 
 __all__ = ["IQAutoencoder"]
@@ -260,6 +261,9 @@ class IQAutoencoder(keras.models.Sequential):
             awgn
         ])
 
+        self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
+        self._local_oscillator = Substitute(Laser(power=dbm_to_w([-6.0]), name="local_oscillator"))
+
         self.transmitter = Composition([
             Lambda(_to_iq, name="to_iq"),
             MapComponents(
@@ -271,7 +275,7 @@ class IQAutoencoder(keras.models.Sequential):
             MapComponents([
                 Composition([
                     Reindex(indices=(0,)),
-                    Laser(power=dbm_to_w([2.0]))
+                    self._laser
                 ]),
                 Identity()
             ]),
@@ -284,7 +288,7 @@ class IQAutoencoder(keras.models.Sequential):
                     maximum_power=dbm_to_w(tf.constant([3.0])),
                     sensitivity=dbm_to_w(tf.constant([-20.0]))
                 ),
-                Laser(power=dbm_to_w(tf.constant([-6.0])), name="local_oscillator")
+                self._local_oscillator
             ),
             lpf,
             MapComponents(ElectricalGain(gain=[1e5]))
@@ -302,14 +306,14 @@ class IQAutoencoder(keras.models.Sequential):
         self.encoder = Lambda(self.encode_input)
         self.decoder = Lambda(self.decode_signal)
 
-        self.add(
-            TransmissionLayer(
-                autoencoder=self,
-                parameters=transmission_layer_parameters,
-                parameter_distributions=parameter_distributions,
-                name="transmission"
-            )
+        self._transmission_layer = TransmissionLayer(
+            autoencoder=self,
+            parameters=transmission_layer_parameters,
+            parameter_distributions=parameter_distributions,
+            name="transmission"
         )
+
+        self.add(self._transmission_layer)
 
         self._rx_reshape_layer = keras.layers.Reshape((n,), name="rx_reshape_layer")
         self._rx1_layer = keras.layers.Dense(2 * M, activation="relu", name="rx1")
@@ -364,3 +368,26 @@ class IQAutoencoder(keras.models.Sequential):
         bitseq = indices_to_bits(tf.cast(tf.argmax(x, axis=1), tf.int32), self._bits_per_symbol)
 
         return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
+
+    def substitute_laser(self, batch_size: int) -> None:
+        """
+            Replace laser by a function that returns a constant precomputed signal.
+            This can speed up training a bit, but requires the assumption that
+            laser signal doesn't change inbetween steps.
+        """
+
+        def laser_substitute(laser: Substitute, **parameters) -> Callable:
+            parameters["batch_size"] = tf.constant(batch_size)
+            timing = Timing(sampling_rate=self.sampling_rate, sample_count=self.n // 2 * self.N)
+            signal = laser.component(timing, **parameters)
+
+            return lambda *args, **kwargs: signal
+
+        self._laser.substitute = laser_substitute(
+            self._laser,
+            **self._transmission_layer.parameters
+        )
+        self._local_oscillator.substitute = laser_substitute(
+            self._local_oscillator,
+            **self._transmission_layer.parameters
+        )

@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import math
 from typing import Any, Optional
 import tensorflow as tf
@@ -28,7 +28,7 @@ from ..components import (
     Component, Composition, OpticalFiber, OpticalAWGN, MachZehnderModulator,
     Laser, Photodiode, BandPassFilter, ArbitraryWaveformGenerator, Lambda,
     RandomizeParameters, ElectricalGain, ExtractSamples, Fork, Identity,
-    MapComponents
+    MapComponents, Substitute
 )
 
 __all__ = ["IMDDAutoencoder"]
@@ -200,14 +200,13 @@ class IMDDAutoencoder(keras.Sequential):
         lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth])
         awgn = OpticalAWGN(relative_db=[-33.0])
 
+        self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
+
         self.transmitter = Composition([
             ArbitraryWaveformGenerator(sampling_rate=self.sampling_rate),
             lpf,
             Fork(shape=[2]),
-            MapComponents([
-                Laser(power=dbm_to_w(tf.constant([2.0]))),
-                Identity()
-            ]),
+            MapComponents([self._laser, Identity()]),
             MachZehnderModulator()
         ], name="transmitter")
 
@@ -245,14 +244,14 @@ class IMDDAutoencoder(keras.Sequential):
         self.encoder = Lambda(self.encode_input)
         self.decoder = Lambda(self.decode_signal)
 
-        self.add(
-            TransmissionLayer(
+        self._transmission_layer = TransmissionLayer(
                 autoencoder=self,
                 parameters=transmission_layer_parameters,
                 parameter_distributions=parameter_distributions,
                 name="transmission"
             )
-        )
+
+        self.add(self._transmission_layer)
 
         self._rx1_layer = keras.layers.Dense(2 * M, activation="relu", name="rx1")
         self._rx2_layer = keras.layers.Dense(2 * M, activation="relu", name="rx2")
@@ -291,3 +290,19 @@ class IMDDAutoencoder(keras.Sequential):
         bitseq = indices_to_bits(tf.cast(tf.argmax(x, axis=1), tf.int32), self._bits_per_symbol)
 
         return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
+
+    def substitute_laser(self, batch_size: int) -> None:
+        """
+            Replace laser by a function that returns a constant precomputed signal.
+            This can speed up training a bit, but requires the assumption that
+            laser signal doesn't change inbetween steps.
+        """
+
+        def laser_substitute(**parameters) -> Callable:
+            parameters["batch_size"] = tf.constant(batch_size)
+            timing = Timing(sampling_rate=self.sampling_rate, sample_count=self.n * self.N)
+            signal = self._laser.component(timing, **parameters)
+
+            return lambda *args, **kwargs: signal
+
+        self._laser.substitute = laser_substitute(**self._transmission_layer.parameters)

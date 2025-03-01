@@ -29,6 +29,7 @@ from .tile_signals import TileSignals
 from .randomize_parameters import RandomizeParameters
 from .pad_signal import PadSignal
 from .loop import Loop
+from .substitute import Substitute
 
 __all__ = [
     "MapComponents",
@@ -44,5 +45,6 @@ __all__ = [
     "TileSignals",
     "RandomizeParameters",
     "PadSignal",
-    "Loop"
+    "Loop",
+    "Substitute"
 ]
