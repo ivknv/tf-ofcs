@@ -4,7 +4,7 @@ import tensorflow as tf
 
 import math
 
-from tf_ofcs.components import FFTFilter
+from tf_ofcs.components import FFTFilter, Lambda
 from tf_ofcs.datatypes import ElectricalSignal, Timing
 from tf_ofcs.utils import timing_to_samples
 
@@ -21,7 +21,7 @@ def test_fftfilter() -> None:
             tf.cast(0.5, tf.complex64)
         )
 
-    fft_filter = FFTFilter(frequency_response_function=frequency_response)
+    fft_filter = FFTFilter(frequency_response_function=Lambda(frequency_response, allow_kwargs=True))
 
     timing = Timing(sampling_rate=2.0, sample_count=400)
     time = timing_to_samples(timing)
