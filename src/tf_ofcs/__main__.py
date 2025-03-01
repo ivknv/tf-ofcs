@@ -27,7 +27,6 @@ import tensorflow as tf
 
 from .models import AutoencoderModel, IMDDAutoencoder, IQAutoencoder
 from . import components
-from .utils import indices_to_bits
 
 
 class Command:
