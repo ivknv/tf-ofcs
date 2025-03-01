@@ -230,7 +230,7 @@ class IMDDAutoencoder(keras.Sequential):
                 sensitivity=dbm_to_w(tf.constant([-20.0]))
             ),
             lpf,
-            ElectricalGain(gain=[1e6])
+            ElectricalGain(gain=[1e5])
         ], name="receiver")
 
         self.encoder_network = Lambda(

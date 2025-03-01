@@ -271,7 +271,7 @@ class IQAutoencoder(keras.models.Sequential):
             MapComponents([
                 Composition([
                     Reindex(indices=(0,)),
-                    Laser(power=dbm_to_w(2.0))
+                    Laser(power=dbm_to_w([2.0]))
                 ]),
                 Identity()
             ]),
@@ -287,7 +287,7 @@ class IQAutoencoder(keras.models.Sequential):
                 Laser(power=dbm_to_w(tf.constant([-6.0])), name="local_oscillator")
             ),
             lpf,
-            MapComponents(ElectricalGain(gain=[1e6]))
+            MapComponents(ElectricalGain(gain=[1e5]))
         ], name="receiver")
 
         self.encoder_network = Lambda(
