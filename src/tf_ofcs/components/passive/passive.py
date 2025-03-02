@@ -196,18 +196,12 @@ class OpticalFiber(Component):
             phase_shifts = phase_shifts_per_km * half_step_length
 
             # Loss of signal power per step
-            loss = tf.cast(
-                tf.math.pow(10.0, attenuation * half_step_length * 0.1 * 0.5),
-                tf.complex64
-            )  # shape=[None, 1]
+            loss = tf.math.pow(10.0, attenuation * half_step_length * 0.1 * 0.5)  # shape=[None, 1]
 
-            gamma_per_step = tf.cast(
-                eff_non_linear_coeff * step_length * 1e-3,
-                tf.complex64
-            )  # shape=[None, 1]
+            gamma_per_step = eff_non_linear_coeff * step_length * 1e-3  # shape=[None, 1]
 
             frequency_domain_step = tf.multiply(
-                1.0 / loss,
+                tf.complex(1.0 / loss, 0.0),
                 tf.math.exp(tf.complex(0.0, phase_shifts))
             )  # shape=[None, sample_count]
 
@@ -217,20 +211,19 @@ class OpticalFiber(Component):
 
                 time_signal = tf.signal.ifft(fft)
                 time_signal *= tf.math.exp(
-                    1j * gamma_per_step * tf.cast(tf.abs(time_signal) ** 2, tf.complex64)  # type: ignore[operator]
+                    tf.complex(0.0, gamma_per_step * tf.abs(time_signal) ** 2)  # type: ignore[operator]
                 )
 
                 fft = tf.signal.fft(time_signal)
                 fft *= frequency_domain_step
         else:
             # Apply only attenuation and chromatic dispersion
-            loss = tf.cast(
-                tf.math.pow(10.0, attenuation * length * 0.1 * 0.5),
-                tf.complex64
-            )  # shape=[None, 1]
+            loss = tf.math.pow(10.0, attenuation * length * 0.1 * 0.5)  # shape=[None, 1]
 
-            dispersion_step = tf.math.exp(tf.complex(0.0, phase_shifts_per_km * length))  # shape=[None, sample_count]
-            fft *= dispersion_step * (1.0 / loss)
+            fft *= tf.multiply(
+                tf.complex(1.0 / loss, 0.0),
+                tf.math.exp(tf.complex(0.0, phase_shifts_per_km * length))
+            )
 
         return OpticalSignal(timing=signal.timing, samples=tf.signal.ifft(fft))
 

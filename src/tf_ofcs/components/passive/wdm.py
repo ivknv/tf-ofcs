@@ -51,7 +51,7 @@ class OpticalMultiplexer(Component):
                 tf.concat([[batch_size // n, n], shape[1:]], 0)
             ),
             axis=1
-        ) / tf.math.sqrt(tf.cast(n, tf.complex64))
+        ) / tf.math.sqrt(tf.complex(n, 0.0))
 
         return OpticalSignal(timing=input_signal.timing, samples=output_samples)
 
@@ -106,7 +106,7 @@ class OpticalDemultiplexer(Component):
                 **kwargs
             ),
             [batch_size, 1]
-        ) * tf.math.sqrt(tf.cast(n_outputs, tf.complex64))
+        ) * tf.math.sqrt(tf.complex(n_outputs, 0.0))
 
         fft = tf.tile(fft, [n_outputs, 1])
         samples = tf.signal.ifft(frequency_response * fft)

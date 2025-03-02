@@ -57,8 +57,12 @@ class FFTFilter(Component):
     def call(self, signal: ElectricalSignal | OpticalSignal, /, **kwargs) -> ElectricalSignal | OpticalSignal:
         Signal = signal.__class__
 
-        fft = tf.signal.fft(tf.cast(signal.samples, tf.complex64))
-        n = tf.shape(fft)[1]
+        if isinstance(signal, ElectricalSignal):
+            fft = tf.signal.fft(tf.complex(signal.samples, 0.0))
+        else:
+            fft = tf.signal.fft(signal.samples)
+
+        n = tf.shape(fft)[-1]
         freqs = tf.abs(fftfreq(n, 1.0 / signal.timing.sampling_rate))
 
         # We need override these parameters, so we drop them from kwargs
@@ -114,7 +118,10 @@ class BandPassFilter(Component):
     ) -> ElectricalSignal | OpticalSignal:
         SignalClass = signal.__class__
 
-        fft = tf.signal.fft(tf.cast(signal.samples, tf.complex64))
+        if isinstance(signal, ElectricalSignal):
+            fft = tf.signal.fft(tf.complex(signal.samples, 0.0))
+        else:
+            fft = tf.signal.fft(signal.samples)
 
         min_frequency = tf.expand_dims(min_frequency, -1)
         max_frequency = tf.expand_dims(max_frequency, -1)
@@ -126,7 +133,7 @@ class BandPassFilter(Component):
         filtered_samples = tf.signal.ifft(filtered_fft)
 
         if isinstance(signal, ElectricalSignal):
-            filtered_samples = tf.cast(tf.math.real(filtered_samples), tf.float32)
+            filtered_samples = tf.math.real(filtered_samples)
 
         return SignalClass(timing=signal.timing, samples=filtered_samples)
 

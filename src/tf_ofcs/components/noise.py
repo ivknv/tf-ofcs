@@ -164,14 +164,14 @@ class OpticalAWGN(Component):
             dtype=tf.float32
         )
 
-        absolute_noise = tf.dtypes.complex(absolute_noise_components[0], absolute_noise_components[1])
-        relative_noise = tf.dtypes.complex(relative_noise_components[0], relative_noise_components[1])
+        absolute_noise = tf.complex(absolute_noise_components[0], absolute_noise_components[1])
+        relative_noise = tf.complex(relative_noise_components[0], relative_noise_components[1])
 
         return OpticalSignal(
             timing=input_signal.timing,
             samples=(
                 absolute_noise +
                 input_signal.samples +
-                tf.cast(tf.abs(input_signal.samples), tf.complex64) * relative_noise
+                tf.complex(tf.abs(input_signal.samples), 0.0) * relative_noise
             )
         )

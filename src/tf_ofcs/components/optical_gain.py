@@ -42,5 +42,5 @@ class OpticalGain(Component):
 
         return OpticalSignal(
             timing=input_signal.timing,
-            samples=input_signal.samples * tf.cast(gain ** 0.5, tf.complex64)
+            samples=input_signal.samples * tf.complex(gain ** 0.5, 0.0)
         )
