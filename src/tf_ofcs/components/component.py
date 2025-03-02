@@ -113,13 +113,6 @@ class Component(tf.Module):
     ) -> Any:
         return kwargs.get(f"{self.name}__{kwarg_name}", default)
 
-    @tf.function
-    def _broadcast(self, value, rank, parameter_dims):
-        if tf.rank(value) < tf.constant(rank + 1):
-            return tf.broadcast_to(value, tf.concat([[parameter_dims], tf.shape(value)], 0))
-
-        return value
-
     def get_component_parameter(
         self,
         kwargs: dict[str, Any],

@@ -18,16 +18,21 @@ from typing import Optional
 import tensorflow as tf
 
 from ..utils import to_tensor
-from ..datatypes import (
-    ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec,
-    TensorCompatible
-)
+from ..datatypes import ElectricalSignal, OpticalSignal, TensorCompatible
 from .component import Component
 
 __all__ = ["ElectricalAWGN", "OpticalAWGN"]
 
 
 class ElectricalAWGN(Component):
+    """
+        Adds additive white gaussian noise to an electrical signal.
+
+        :ivar absolute_db: `shape=[None], dtype=tf.float32`, amount of absolute noise in dB
+        :ivar relative_db: `shape=[None], dtype=tf.float32`, relative amount of noise in dB
+        :ivar rng: `tf.random.Generator`, random number generator
+    """
+
     #: Amount of absolute noise in dB that is independent of input signal
     absolute_db: tf.Variable  # shape=[None]; dtype=float32
 
@@ -56,14 +61,10 @@ class ElectricalAWGN(Component):
         else:
             self.rng = rng
 
-    @tf.function(input_signature=(
-        electrical_signal_spec,
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="absolute_db"),
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="relative_db")
-    ))
     def implementation(
         self,
         input_signal: ElectricalSignal,
+        /,
         absolute_db: tf.Tensor,
         relative_db: tf.Tensor
     ) -> ElectricalSignal:
@@ -96,6 +97,14 @@ class ElectricalAWGN(Component):
 
 
 class OpticalAWGN(Component):
+    """
+        Adds additive white gaussian noise to an optical signal.
+
+        :ivar absolute_dbm: `shape=[None], dtype=tf.float32`, amount of absolute noise in dBm
+        :ivar relative_db: `shape=[None], dtype=tf.float32`, relative amount of noise in dB
+        :ivar rng: `tf.random.Generator`, random number generator
+    """
+
     #: Amount of absolute noise in dBm that is independent of input signal
     absolute_dbm: tf.Variable  # shape=[None]; dtype=float32
 
@@ -124,14 +133,10 @@ class OpticalAWGN(Component):
         else:
             self.rng = rng
 
-    @tf.function(input_signature=(
-        optical_signal_spec,
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="absolute_dbm"),
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="relative_db")
-    ))
     def implementation(
         self,
         input_signal: OpticalSignal,
+        /,
         absolute_dbm: tf.Tensor,
         relative_db: tf.Tensor
     ) -> OpticalSignal:

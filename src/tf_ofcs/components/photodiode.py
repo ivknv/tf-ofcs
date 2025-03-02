@@ -16,9 +16,7 @@
 
 from typing import Optional
 import tensorflow as tf
-from ..datatypes import (
-    ElectricalSignal, OpticalSignal, optical_signal_spec, TensorCompatible
-)
+from ..datatypes import ElectricalSignal, OpticalSignal, TensorCompatible
 from ..utils import to_tensor
 from .component import Component
 
@@ -26,6 +24,18 @@ __all__ = ["Photodiode"]
 
 
 class Photodiode(Component):
+    """
+        A component that converts an optical signal into an electrical signal.
+
+        The conversion is done by squaring the absolute value of the optical signal
+        and then clipping it between a minimum and maximum power.
+
+        :ivar sensitivity: `shape=[None]; dtype=float32`, minimum power that
+                           the photodiode can detect in W.
+        :ivar maximum_power: `shape=[None]; dtype=float32`, maximum optical power
+                            that the photodiode can handle in W.
+    """
+
     #: Minimum power (in watts) that can be converted into a current
     sensitivity: tf.Variable  # shape=[None]; dtype=float32
 
@@ -45,14 +55,10 @@ class Photodiode(Component):
 
         self.local_parameters = ["sensitivity", "maximum_power"]
 
-    @tf.function(input_signature=(
-        optical_signal_spec,
-        tf.TensorSpec(shape=[None], dtype=tf.float32),
-        tf.TensorSpec(shape=[None], dtype=tf.float32)
-    ))
     def implementation(
         self,
         signal: OpticalSignal,
+        /,
         sensitivity: tf.Tensor,
         maximum_power: tf.Tensor
     ) -> ElectricalSignal:

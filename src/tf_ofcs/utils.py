@@ -19,7 +19,7 @@ import math
 import typing
 import tensorflow as tf
 
-from .datatypes import TensorCompatible, Timing, timing_spec, bit_sequence_spec, bit_dtype
+from .datatypes import TensorCompatible, Timing, bit_dtype
 from . import constants
 
 __all__ = [
@@ -124,12 +124,18 @@ def linewidth_nm_to_frequency(
     )
 
 
-@tf.function(input_signature=(
-    tf.TensorSpec(shape=[], dtype=tf.int32),
-    tf.TensorSpec(shape=[], dtype=tf.float32)
-))
 def fftfreq(n: tf.Tensor, d: tf.Tensor) -> tf.Tensor:
-    if tf.math.floormod(n, 2) == 0:  # type: ignore
+    """
+        Return the Discrete Fourier Transform sample frequencies.
+
+        :param n: `shape=[], dtype=tf.int32`, sample window length (number of points).
+        :param d: `shape=[], dtype=tf.float32`, sample spacing (inverse of the sampling rate).
+
+        :return: `shape=[n], dtype=tf.float32`, the values of the frequency
+                 bins in cycles/unit of the sample spacing.
+    """
+
+    if tf.math.floormod(n, 2) == 0:  # type: ignore[operator]
         return tf.cast(
             tf.concat([
                 tf.range(tf.cast(tf.math.floordiv(n, 2), tf.int32)),
@@ -147,27 +153,32 @@ def fftfreq(n: tf.Tensor, d: tf.Tensor) -> tf.Tensor:
         ) / (d * tf.cast(n, tf.float32))
 
 
-@tf.function
 def gaussian_distribution(x: tf.Tensor, mean: tf.Tensor, variance: tf.Tensor) -> tf.Tensor:
     return 1 / (
         variance * tf.sqrt(tf.multiply(2.0, constants.pi))
     ) * tf.math.exp(-0.5 * tf.subtract(x, mean) ** 2 / variance ** 2)
 
 
-@tf.function
 def normalize_signal(samples: tf.Tensor) -> tf.Tensor:
     max_amplitude = tf.reduce_max(tf.abs(samples))
 
     return samples / max_amplitude
 
 
-@tf.function
 def adjust_symbol_for_mzm(symbol: tf.Tensor) -> tf.Tensor:
     return tf.math.acos(symbol) / constants.pi
 
 
-@tf.function(input_signature=(bit_sequence_spec, tf.TensorSpec(shape=[], dtype=tf.int32)))
 def bits_to_indices(bits: tf.Tensor, n: tf.Tensor) -> tf.Tensor:
+    """
+        Converts a tensor of bits into a tensor of indices.
+
+        :param bits: `shape=[None, bit_count], dtype=tf.int32`, tensor of bits.
+        :param n: `shape=[], dtype=tf.int32`, number of bits per symbol.
+
+        :return: `shape=[None, bit_count // n], dtype=tf.int32`, tensor of indices.
+    """
+
     shape = tf.shape(bits)
     bits = tf.reshape(bits, (tf.size(bits) // n, n))
 
@@ -177,11 +188,16 @@ def bits_to_indices(bits: tf.Tensor, n: tf.Tensor) -> tf.Tensor:
     )
 
 
-@tf.function(input_signature=(
-    tf.TensorSpec(shape=typing.cast(tf.TensorShape, None), dtype=tf.int32),
-    tf.TensorSpec(shape=[], dtype=tf.int32))
-)
 def indices_to_bits(indices: tf.Tensor, bit_count: tf.Tensor) -> tf.Tensor:
+    """
+        Converts a tensor of indices into a tensor of bits.
+
+        :param indices: any shape, `dtype=tf.int32`, tensor of `n` indices.
+        :param bit_count: `shape=[], dtype=tf.int32`, number of bits per symbol.
+
+        :return: same shape but with `n * bit_count` bits
+    """
+
     denominators = 2 ** (bit_count - tf.range(bit_count) - 1)
 
     return tf.cast(
@@ -190,12 +206,27 @@ def indices_to_bits(indices: tf.Tensor, bit_count: tf.Tensor) -> tf.Tensor:
     )
 
 
-@tf.function
 def index_to_gray(index: tf.Tensor) -> tf.Tensor:
+    """
+        Converts an index to its Gray code representation.
+
+        :param index: any shape, `dtype=tf.int32`, tensor of indices.
+
+        :return: same shape but with Gray code representation
+    """
+
     return index ^ tf.bitwise.right_shift(index, 1)
 
 
 def symbol_mapping_to_gray(mapping: list) -> list:
+    """
+        Applies Gray code to a symbol mapping.
+
+        :param mapping: `list`, list of symbols.
+
+        :return: `list`, list of symbols with Gray code applied.
+    """
+
     gray_mapping = list(mapping)
 
     for i, symbol in enumerate(mapping):
@@ -220,7 +251,6 @@ def psk_constellation(
     return iq_mapping
 
 
-@tf.function
 def pam_constellation(bits_per_symbol: tf.Tensor, size: typing.Optional[tf.Tensor] = None) -> tf.Tensor:
     symbol_count = tf.math.pow(2, bits_per_symbol)
 
@@ -233,16 +263,21 @@ def pam_constellation(bits_per_symbol: tf.Tensor, size: typing.Optional[tf.Tenso
     ], 0)
 
 
-@tf.function(input_signature=(
-    tf.TensorSpec(shape=[], dtype=tf.float32),
-    tf.TensorSpec(shape=[], dtype=tf.float32),
-    tf.TensorSpec(shape=[], dtype=tf.int32)
-))
 def generate_timing(
     sampling_rate: tf.Tensor,
     symbol_rate: tf.Tensor,
     symbol_count: tf.Tensor
 ) -> Timing:
+    """
+        Produces a `Timing` object.
+
+        :param sampling_rate: `shape=[], dtype=tf.float32`, sampling rate in Hz.
+        :param symbol_rate: `shape=[], dtype=tf.float32`, symbol rate in symbols/second.
+        :param symbol_count: `shape=[], dtype=tf.int32`, number of symbols.
+
+        :return: `Timing` object.
+    """
+
     sample_count = symbol_count * tf.cast(
         tf.round(sampling_rate / symbol_rate),
         tf.int32
@@ -251,18 +286,23 @@ def generate_timing(
     return Timing(sample_count=sample_count, sampling_rate=sampling_rate)
 
 
-@tf.function(input_signature=(timing_spec,))
 def timing_to_samples(timing: Timing) -> tf.Tensor:
+    """
+        Converts a `Timing` object into a tensor of sample times.
+
+        :param timing: `Timing` object.
+
+        :return: `shape=[timing.sample_count], dtype=tf.float32`, tensor of sample times.
+    """
+
     return tf.cast(tf.range(timing.sample_count), tf.float32) / timing.sampling_rate
 
 
-@tf.function
 def combine_shape(shapes: tf.Tensor) -> tf.Tensor:
     combined = tf.concat(shapes, 0)
     return tf.boolean_mask(combined, combined > 0)
 
 
-@tf.function
 def lorentz_distribution(x: tf.Tensor, x_0: tf.Tensor, gamma: tf.Tensor) -> tf.Tensor:
     return gamma / (math.pi * ((x - x_0) ** 2 + gamma ** 2))
 
@@ -290,4 +330,11 @@ def brickwall_frequency_response(
 
 
 def to_tensor(x: typing.Any) -> tf.Tensor:
+    """
+        Converts a value to a tensor.
+
+        :param x: `typing.Any`, value to convert.
+        :return: `tf.Tensor`, tensor representation of the value.
+    """
+
     return tf.stack(x)

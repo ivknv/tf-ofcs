@@ -15,7 +15,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
-from collections.abc import Callable
 import math
 import json
 import os
@@ -26,7 +25,6 @@ import h5py  # type: ignore[import-untyped]
 import keras  # type: ignore[import-untyped]
 import tensorflow as tf
 
-from .datatypes import Timing
 
 from .models import AutoencoderModel, IMDDAutoencoder, IQAutoencoder
 from . import components

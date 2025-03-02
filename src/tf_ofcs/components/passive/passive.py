@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 
-from ...datatypes import OpticalSignal, optical_signal_spec, TensorCompatible
+from ...datatypes import OpticalSignal, TensorCompatible
 from ... import constants
 from ...utils import fftfreq, to_tensor
 from ..component import Component
@@ -31,6 +31,12 @@ __all__ = [
 
 
 class OpticalPhaseShifter(Component):
+    """
+        Phase-shifts an optical signal.
+
+        :ivar phase_shift: `shape=[None], dtype=tf.float32`, phase shift in radians
+    """
+
     phase_shift: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(
@@ -43,13 +49,10 @@ class OpticalPhaseShifter(Component):
         self.phase_shift = tf.Variable(to_tensor(phase_shift), name=f"{self.name}__phase_shift")
         self.local_parameters = ["phase_shift"]
 
-    @tf.function(input_signature=(
-        optical_signal_spec,
-        tf.TensorSpec(shape=[None], dtype=tf.float32)
-    ))
     def implementation(
         self,
         input_signal: OpticalSignal,
+        /,
         phase_shift: tf.Tensor
     ) -> OpticalSignal:
         phase_shift = tf.expand_dims(phase_shift, -1)
@@ -62,6 +65,29 @@ class OpticalPhaseShifter(Component):
 
 
 class OpticalFiber(Component):
+    """
+        Simulates signal propagation through an optical fiber.
+        Models effects of attenuation, chromatic dispersion and the Kerr effect.
+
+        :ivar attenuation: `shape=[None], dtype=tf.float32`, optical signal power loss in dB/km
+
+        :ivar chromatic_dispersion: `shape[None], dtype=tf.float32`, chromatic
+                                    dispersion coefficient (ps / (nm * km))
+
+        :ivar eff_non_linear_coeff: `shape[None], dtype=tf.float32`, effective
+                                    non-linear coefficient of the fiber (rad / (W * m))
+
+        :ivar length: `shape[None], dtype=tf.float32`, fiber length in kilometers
+
+        :ivar central_frequency: `shape=[], dtype=tf.float32`, central
+                                 frequency at which light travels at normal speed (without delay)
+
+        :ivar step_count: `shape=[], dtype=tf.int32`, step count used for the split-step method
+
+        :ivar enable_nonlinear_effects: `bool`, if true, enables symmetrized
+                                        split-step method and nonlinear effects
+    """
+
     #: Optical signal power loss in dB/km
     attenuation: tf.Variable  # shape=[None]; dtype=float32
 
@@ -77,7 +103,7 @@ class OpticalFiber(Component):
     #: Central frequency at which light travels at normal speed (without delay)
     central_frequency: tf.Variable  # shape=[]; dtype=float32
 
-    #: Step count used for the split-step method (in meters)
+    #: Step count used for the split-step method
     step_count: tf.Variable  # shape=[]; dtype=int32
 
     #: If true, enables symmetrized split-step method and nonlinear effects
@@ -122,18 +148,10 @@ class OpticalFiber(Component):
             "step_count"
         ]
 
-    @tf.function(input_signature=(
-        optical_signal_spec,
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="attenuation"),
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="chromatic_dispersion"),
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="eff_non_linear_coeff"),
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="length"),
-        tf.TensorSpec([], tf.float32),
-        tf.TensorSpec([], tf.int32)
-    ))
     def implementation(
         self,
         signal: OpticalSignal,
+        /,
         attenuation: tf.Tensor,
         chromatic_dispersion: tf.Tensor,
         eff_non_linear_coeff: tf.Tensor,
@@ -175,7 +193,7 @@ class OpticalFiber(Component):
             half_step_length = step_length * 0.5  # shape=[None, 1]
 
             # Phase shifts per step due to chromatic dispersion
-            phase_shifts = tf.cast(phase_shifts_per_km * half_step_length, tf.complex64)
+            phase_shifts = phase_shifts_per_km * half_step_length
 
             # Loss of signal power per step
             loss = tf.cast(
@@ -188,7 +206,10 @@ class OpticalFiber(Component):
                 tf.complex64
             )  # shape=[None, 1]
 
-            frequency_domain_step = (1.0 / loss) * tf.math.exp(1j * phase_shifts)  # shape=[None, sample_count]
+            frequency_domain_step = tf.multiply(
+                1.0 / loss,
+                tf.math.exp(tf.complex(0.0, phase_shifts))
+            )  # shape=[None, sample_count]
 
             # Apply the symmetrized split-step Fourier method for solving the nonlinear Schrödinger equation
             for _ in tf.range(step_count):
@@ -215,8 +236,12 @@ class OpticalFiber(Component):
 
 
 class OpticalCoupler1x2(Component):
-    @tf.function(input_signature=(optical_signal_spec,))
-    def implementation(self, input_signal: OpticalSignal) -> tuple[OpticalSignal, OpticalSignal]:
+    """
+        Splits an optical signal into two equal parts.
+        Returns a tuple containing the two `OpticalSignal` instances.
+    """
+
+    def implementation(self, input_signal: OpticalSignal, /) -> tuple[OpticalSignal, OpticalSignal]:
         split_samples = input_signal.samples * 0.5 ** 0.5
 
         return (
@@ -232,6 +257,14 @@ class OpticalCoupler1x2(Component):
 
 
 class OpticalCoupler2x2(Component):
+    """
+        Mixes two optical signals.
+        Takes and returns `tuple[OpticalSignal, OpticalSignal]`.
+
+        :ivar flip: `shape=[], dtype=tf.bool`, if true, the second output will
+                    contain the difference of the two input signals
+    """
+
     #: If true, the second output will contain the difference of the two input signals
     flip: tf.Variable  # shape=[]; dtype=bool
 
@@ -241,13 +274,10 @@ class OpticalCoupler2x2(Component):
         self.flip = tf.Variable(to_tensor(flip), name=f"{self.name}__flip")
         self.local_parameters = ["flip"]
 
-    @tf.function(input_signature=(
-        (optical_signal_spec, optical_signal_spec),
-        tf.TensorSpec([], tf.bool)
-    ))
     def implementation(
         self,
         input_signals: tuple[OpticalSignal, OpticalSignal],
+        /,
         flip: tf.Tensor
     ) -> tuple[OpticalSignal, OpticalSignal]:
         mixed_samples1 = (input_signals[0].samples + input_signals[1].samples) * 0.5 ** 0.5
@@ -272,8 +302,13 @@ class OpticalCoupler2x2(Component):
 
 
 class OpticalCoupler2x1(Component):
-    @tf.function(input_signature=((optical_signal_spec, optical_signal_spec),))
-    def implementation(self, input_signals: tuple[OpticalSignal, OpticalSignal]) -> OpticalSignal:
+    """
+        Combines two optical signals into one.
+        Takes `tuple[OpticalSignal, OpticalSignal]` as input and returns a single
+        `OpticalSignal`.
+    """
+
+    def implementation(self, input_signals: tuple[OpticalSignal, OpticalSignal], /) -> OpticalSignal:
         mixed_samples = (input_signals[0].samples + input_signals[1].samples) * 0.5 ** 0.5
 
         timing = input_signals[0].timing

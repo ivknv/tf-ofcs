@@ -21,8 +21,7 @@ from ..utils import fftfreq, to_tensor
 from .component import Component
 
 from ..datatypes import (
-    Timing, timing_spec, ElectricalSignal, OpticalSignal, FrequencyResponseFunction,
-    TensorCompatible
+    ElectricalSignal, OpticalSignal, FrequencyResponseFunction, TensorCompatible
 )
 
 __all__ = [
@@ -80,6 +79,14 @@ class FFTFilter(Component):
 
 
 class BandPassFilter(Component):
+    """
+        Applies band-pass filter to the input signal.
+        Accepts both `ElectricalSignal` and `OpticalSignal` as input.
+
+        :ivar min_frequency: `shape=[None], dtype=tf.float32`, minimum frequency to pass in Hz.
+        :ivar max_frequency: `shape=[None], dtype=tf.float32`, maximum frequency to pass in Hz.
+    """
+
     #: Minimum frequency in Hz
     min_frequency: tf.Variable  # shape=[None]; dtype=tf.float32
 
@@ -107,44 +114,30 @@ class BandPassFilter(Component):
     ) -> ElectricalSignal | OpticalSignal:
         SignalClass = signal.__class__
 
-        filtered_samples = self._implementation(signal.timing, signal.samples, min_frequency, max_frequency)
+        fft = tf.signal.fft(tf.cast(signal.samples, tf.complex64))
+
+        min_frequency = tf.expand_dims(min_frequency, -1)
+        max_frequency = tf.expand_dims(max_frequency, -1)
+
+        freqs = tf.abs(fftfreq(tf.shape(fft)[-1], 1.0 / signal.timing.sampling_rate))
+        pass_mask = tf.logical_and(tf.math.greater_equal(freqs, min_frequency), tf.less_equal(freqs, max_frequency))
+        filtered_fft = tf.where(pass_mask, fft, tf.complex(0.0, 0.0))
+
+        filtered_samples = tf.signal.ifft(filtered_fft)
 
         if isinstance(signal, ElectricalSignal):
             filtered_samples = tf.cast(tf.math.real(filtered_samples), tf.float32)
 
         return SignalClass(timing=signal.timing, samples=filtered_samples)
 
-    @tf.function(input_signature=(
-        timing_spec,
-        tf.TensorSpec([None, None]),
-        tf.TensorSpec([None], tf.float32),
-        tf.TensorSpec([None], tf.float32)
-    ))
-    def _implementation(
-        self,
-        timing: Timing,
-        samples: tf.Tensor,
-        min_frequency: tf.Tensor,
-        max_frequency: tf.Tensor
-    ) -> tf.Tensor:
-        fft = tf.signal.fft(tf.cast(samples, tf.complex64))
-
-        min_frequency = tf.expand_dims(min_frequency, -1)
-        max_frequency = tf.expand_dims(max_frequency, -1)
-
-        freqs = tf.abs(fftfreq(tf.shape(fft)[-1], 1.0 / timing.sampling_rate))
-        pass_mask = tf.logical_and(tf.math.greater_equal(freqs, min_frequency), tf.less_equal(freqs, max_frequency))
-        filtered_fft = tf.where(pass_mask, fft, tf.complex(0.0, 0.0))
-
-        filtered_samples = tf.signal.ifft(filtered_fft)
-
-        return filtered_samples
-
 
 class BrickwallFrequencyResponse(Component):
     """
         Implements brickwall bandpass filter's frequency response function.
         Passes only the frequencies between `min_frequency` and `max_frequency`.
+
+        :ivar min_frequency: ``shape=[None], dtype=tf.float32`, minimum frequency to pass in Hz.
+        :ivar max_frequency: `shape=[None], dtype=tf.float32`, maximum frequency to pass in Hz.
     """
 
     #: Minimum frequency in Hz
@@ -200,6 +193,10 @@ class WDMBrickwallFrequencyResponse(Component):
     """
         Similar to :any:`BrickwallFrequencyResponse`, but one passband per WDM
         channel. This can be used for an optical demultiplexer.
+
+        :ivar channel_frequencies: `shape=[None], dtype=tf.float32`, WDM channel frequencies in Hz
+        :ivar channel_width: `shape=[], dtype=tf.float32`, WDM channel width in Hz
+        :ivar batch_size: `shape=[], dtype=tf.int32`, batch size of the output
     """
 
     #: WDM channel frequencies in Hz
@@ -209,7 +206,6 @@ class WDMBrickwallFrequencyResponse(Component):
     channel_width: tf.Variable  # shape=[]; dtype=tf.float32
 
     batch_size: tf.Variable  # shape=[]; dtype=tf.int32
-    parameter_dims: tf.Variable  # shape=[]; dtype=tf.int32
 
     def __init__(
         self,

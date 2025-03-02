@@ -21,10 +21,7 @@ from .. import constants
 from .component import Component
 from ..utils import to_tensor
 
-from ..datatypes import (
-    ElectricalSignal, electrical_signal_spec, OpticalSignal, optical_signal_spec,
-    TensorCompatible
-)
+from ..datatypes import ElectricalSignal, OpticalSignal, TensorCompatible
 
 __all__ = ["MachZehnderModulator"]
 
@@ -61,10 +58,6 @@ class MachZehnderModulator(Component):
         )
         self.local_parameters = ["extinction_ratio"]
 
-    @tf.function(input_signature=(
-        (optical_signal_spec, electrical_signal_spec),
-        tf.TensorSpec([None], tf.float32)
-    ))
     def implementation(
         self,
         inputs: tuple[OpticalSignal, ElectricalSignal],

@@ -34,7 +34,6 @@ from ..components import (
 __all__ = ["IQAutoencoder"]
 
 
-@tf.function
 def _clip(x: tf.Tensor) -> tf.Tensor:
     return tf.clip_by_value(x, 0.0, 1.0)
 
@@ -329,7 +328,7 @@ class IQAutoencoder(keras.models.Sequential):
 
         inputs = tf.one_hot(
             tf.reshape(
-                bits_to_indices(bitseq, self._bits_per_symbol),
+                bits_to_indices(bitseq, tf.constant(self._bits_per_symbol)),
                 [bitseq_size // self._bits_per_symbol, 1]
             ),
             self.M
@@ -364,7 +363,10 @@ class IQAutoencoder(keras.models.Sequential):
         samples = tf.stack([i_seq, q_seq], axis=1)
 
         x = self.decoder_network(samples)  # shape=[batch_size, M]
-        bitseq = indices_to_bits(tf.cast(tf.argmax(x, axis=1), tf.int32), self._bits_per_symbol)
+        bitseq = indices_to_bits(
+            tf.cast(tf.argmax(x, axis=1), tf.int32),
+            tf.constant(self._bits_per_symbol)
+        )
 
         return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
 

@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 
-from ..datatypes import TensorCompatible, ElectricalSignal, electrical_signal_spec, Timing
+from ..datatypes import TensorCompatible, ElectricalSignal, Timing
 from ..utils import to_tensor
 from .component import Component
 
@@ -31,8 +31,13 @@ __all__ = [
 
 
 class ElectricalAdder(Component):
-    @tf.function(input_signature=((electrical_signal_spec, electrical_signal_spec),))
-    def implementation(self, input_signals: tuple[ElectricalSignal, ElectricalSignal]) -> ElectricalSignal:
+    """
+        Adds two electrical signals together.
+        Takes a tuple of two electrical signals as input and returns a single
+        `ElectricalSignal` with the sum of the two signals.
+    """
+
+    def implementation(self, input_signals: tuple[ElectricalSignal, ElectricalSignal], /) -> ElectricalSignal:
         return ElectricalSignal(
             timing=input_signals[0].timing,
             samples=input_signals[0].samples + input_signals[1].samples
@@ -40,8 +45,13 @@ class ElectricalAdder(Component):
 
 
 class ElectricalSubtractor(Component):
-    @tf.function(input_signature=((electrical_signal_spec, electrical_signal_spec),))
-    def implementation(self, input_signals: tuple[ElectricalSignal, ElectricalSignal]) -> ElectricalSignal:
+    """
+        Subtracts two electrical signals.
+        Takes a tuple of two electrical signals as input and returns a single
+        `ElectricalSignal` with the difference of the two signals.
+    """
+
+    def implementation(self, input_signals: tuple[ElectricalSignal, ElectricalSignal], /) -> ElectricalSignal:
         return ElectricalSignal(
             timing=input_signals[0].timing,
             samples=input_signals[0].samples - input_signals[1].samples
@@ -49,6 +59,14 @@ class ElectricalSubtractor(Component):
 
 
 class ArbitraryWaveformGenerator(Component):
+    """
+        Generates an arbitrary waveform.
+        Takes a tensor of samples as input and returns a `ElectricalSignal`
+        with the given samples and sampling rate.
+
+        :ivar sampling_rate: `shape=[], dtype=tf.float32`, sampling rate of the generated waveform in Hz
+    """
+
     #: Sampling rate in Hz
     sampling_rate: tf.Variable  # shape=[]; dtype=float32
 
@@ -73,6 +91,14 @@ class ArbitraryWaveformGenerator(Component):
 
 
 class Quantizer(Component):
+    """
+        Quantizes the input electrical signal.
+        Takes an `ElectricalSignal` as input and returns a `ElectricalSignal`
+        with the samples quantized to the given step size.
+
+        :ivar step: `shape=[None], dtype=tf.float32`, quantization step size
+    """
+
     step: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(
@@ -85,11 +111,7 @@ class Quantizer(Component):
         self.step = tf.Variable(to_tensor(step), name=f"{self.name}__step")
         self.local_parameters = ["step"]
 
-    @tf.function(input_signature=(
-        electrical_signal_spec,
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="step")
-    ))
-    def implementation(self, signal: ElectricalSignal, step: tf.Tensor) -> ElectricalSignal:
+    def implementation(self, signal: ElectricalSignal, /, step: tf.Tensor) -> ElectricalSignal:
         step = tf.expand_dims(step, -1)
         quantized_samples = tf.round(signal.samples / step) * step
 
@@ -97,6 +119,12 @@ class Quantizer(Component):
 
 
 class ElectricalGain(Component):
+    """
+        Applies a gain to the input electrical signal.
+
+        :ivar gain: `shape=[None], dtype=tf.float32`, gain to apply to the signal
+    """
+
     gain: tf.Variable  # shape=[None]; dtype=float32
 
     def __init__(
@@ -109,11 +137,7 @@ class ElectricalGain(Component):
         self.gain = tf.Variable(to_tensor(gain), name=f"{self.name}__gain")
         self.local_parameters = ["gain"]
 
-    @tf.function(input_signature=(
-        electrical_signal_spec,
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="gain")
-    ))
-    def implementation(self, signal: ElectricalSignal, gain: tf.Tensor) -> ElectricalSignal:
+    def implementation(self, signal: ElectricalSignal, /, gain: tf.Tensor) -> ElectricalSignal:
         gain = tf.expand_dims(gain, -1)
 
         return ElectricalSignal(
