@@ -59,15 +59,17 @@ class GaussianPulseGenerator(Component):
         power: tf.Tensor,
         batch_size: tf.Tensor
     ) -> OpticalSignal:
-        fwhm_duration = tf.expand_dims(tf.expand_dims(fwhm_duration, -1), -1)
-        power = tf.expand_dims(tf.expand_dims(power, -1), -1)
+        fwhm_duration = tf.expand_dims(fwhm_duration, -1)
+        power = tf.expand_dims(power, -1)
 
         time = timing_to_samples(timing)
 
-        return OpticalSignal(
-            timing=timing,
-            samples=tf.cast(
-                tf.math.sqrt(power) * tf.exp(-0.5 * ((time - time[-1] * 0.5) / fwhm_duration) ** 2),
-                tf.complex64
-            )
+        samples = tf.cast(
+            tf.math.sqrt(power) * tf.exp(-0.5 * ((time - time[-1] * 0.5) / fwhm_duration) ** 2),
+            tf.complex64
         )
+
+        if tf.shape(samples)[0] == 1:
+            samples = tf.tile(samples, [batch_size, 1])
+
+        return OpticalSignal(timing=timing, samples=samples)
