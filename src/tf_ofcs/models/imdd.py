@@ -218,7 +218,8 @@ class IMDDAutoencoder(keras.Sequential):
                 chromatic_dispersion=[17.0],
                 eff_non_linear_coeff=[0.0],
                 step_count=1,
-                central_frequency=central_frequency
+                central_frequency=central_frequency,
+                enable_nonlinear_effects=False
             ),
             awgn
         ], name="channel")

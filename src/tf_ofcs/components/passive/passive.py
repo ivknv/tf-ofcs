@@ -80,6 +80,9 @@ class OpticalFiber(Component):
     #: Step count used for the split-step method (in meters)
     step_count: tf.Variable  # shape=[]; dtype=int32
 
+    #: If true, enables symmetrized split-step method and nonlinear effects
+    enable_nonlinear_effects: bool
+
     def __init__(
         self,
         attenuation: TensorCompatible,
@@ -88,6 +91,7 @@ class OpticalFiber(Component):
         length: TensorCompatible,
         central_frequency: TensorCompatible,
         step_count: int | tf.Tensor = 50,
+        enable_nonlinear_effects: bool = True,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -107,6 +111,7 @@ class OpticalFiber(Component):
             name=f"{self.name}__central_frequency"
         )
         self.step_count = tf.Variable(to_tensor(step_count), name=f"{self.name}__step_count")
+        self.enable_nonlinear_effects = enable_nonlinear_effects
 
         self.local_parameters = [
             "attenuation",
@@ -136,65 +141,75 @@ class OpticalFiber(Component):
         central_frequency: tf.Tensor,
         step_count: tf.Tensor
     ) -> OpticalSignal:
-        # shape=[parameter_dims, 1]
+        # shape=[None, 1]
         attenuation = tf.expand_dims(attenuation, -1)
 
-        # shape=[parameter_dims, 1]
+        # shape=[None, 1]
         chromatic_dispersion = tf.expand_dims(chromatic_dispersion, -1)
 
-        # shape=[parameter_dims, 1]
+        # shape=[None, 1]
         eff_non_linear_coeff = tf.expand_dims(eff_non_linear_coeff, -1)
 
-        # shape=[parameter_dims, 1]
+        # shape=[None, 1]
         length = tf.expand_dims(length, -1)
 
         # Convert the dispersion coefficient from ps / (nm * km) to s / (m * m)
-        D = chromatic_dispersion * 1e-6  # s / m**2; shape=[parameter_dims, 1]
+        D = chromatic_dispersion * 1e-6  # s / m**2; shape=[None, 1]
 
         wavelength = constants.c / central_frequency
-        beta_2 = wavelength ** 2 / (-2.0 * constants.pi * constants.c) * D  # shape=[parameter_dims, 1]
+        beta_2 = wavelength ** 2 / (-2.0 * constants.pi * constants.c) * D  # shape=[None, 1]
 
         fs = signal.timing.sampling_rate
 
         samples = signal.samples
 
-        fft = tf.signal.fft(samples)  # shape=[batch_size, parameter_dims, sample_count]
-        freqs = 2 * constants.pi * tf.abs(fftfreq(tf.shape(fft)[-1], 1.0 / fs))  # shape=[sample_count]
+        freqs = 2 * constants.pi * tf.abs(fftfreq(tf.shape(samples)[-1], 1.0 / fs))  # shape=[sample_count]
 
-        # Step length in kilometers
-        step_length = length / tf.cast(step_count, tf.float32)  # shape=[parameter_dims, 1]
-        half_step_length = step_length * 0.5  # shape=[parameter_dims, 1]
+        phase_shifts_per_km = beta_2 * 0.5 * 1e3 * freqs ** 2  # shape=[None, sample_count]
 
-        # Phase shifts per step due to chromatic dispersion
-        phase_shifts = tf.cast(
-            beta_2 * 0.5 * half_step_length * 1e3 * freqs ** 2,
-            tf.complex64
-        )  # shape=[parameter_dims, sample_count]
+        fft = tf.signal.fft(samples)  # shape=[batch_size, sample_count]
 
-        # Loss of signal power per step
-        loss = tf.cast(
-            tf.math.pow(10.0, attenuation * half_step_length * 0.1 * 0.5),
-            tf.complex64
-        )  # shape=[parameter_dims, 1]
+        if self.enable_nonlinear_effects:
+            # Step length in kilometers
+            step_length = length / tf.cast(step_count, tf.float32)  # shape=[None, 1]
+            half_step_length = step_length * 0.5  # shape=[None, 1]
 
-        gamma_per_step = tf.cast(
-            eff_non_linear_coeff * step_length * 1e-3,
-            tf.complex64
-        )  # shape=[parameter_dims, 1]
+            # Phase shifts per step due to chromatic dispersion
+            phase_shifts = tf.cast(phase_shifts_per_km * half_step_length, tf.complex64)
 
-        frequency_domain_step = (1.0 / loss) * tf.math.exp(1j * phase_shifts)  # shape=[parameter_dims, sample_count]
+            # Loss of signal power per step
+            loss = tf.cast(
+                tf.math.pow(10.0, attenuation * half_step_length * 0.1 * 0.5),
+                tf.complex64
+            )  # shape=[None, 1]
 
-        # Apply the symmetrized split-step Fourier method for solving the nonlinear Schrödinger equation
-        for _ in tf.range(step_count):
-            fft *= frequency_domain_step
+            gamma_per_step = tf.cast(
+                eff_non_linear_coeff * step_length * 1e-3,
+                tf.complex64
+            )  # shape=[None, 1]
 
-            time_signal = tf.signal.ifft(fft)
-            time_signal *= tf.math.exp(
-                1j * gamma_per_step * tf.cast(tf.abs(time_signal) ** 2, tf.complex64)  # type: ignore[operator]
-            )
+            frequency_domain_step = (1.0 / loss) * tf.math.exp(1j * phase_shifts)  # shape=[None, sample_count]
 
-            fft = tf.signal.fft(time_signal)
-            fft *= frequency_domain_step
+            # Apply the symmetrized split-step Fourier method for solving the nonlinear Schrödinger equation
+            for _ in tf.range(step_count):
+                fft *= frequency_domain_step
+
+                time_signal = tf.signal.ifft(fft)
+                time_signal *= tf.math.exp(
+                    1j * gamma_per_step * tf.cast(tf.abs(time_signal) ** 2, tf.complex64)  # type: ignore[operator]
+                )
+
+                fft = tf.signal.fft(time_signal)
+                fft *= frequency_domain_step
+        else:
+            # Apply only attenuation and chromatic dispersion
+            loss = tf.cast(
+                tf.math.pow(10.0, attenuation * length * 0.1 * 0.5),
+                tf.complex64
+            )  # shape=[None, 1]
+
+            dispersion_step = tf.math.exp(tf.complex(0.0, phase_shifts_per_km * length))  # shape=[None, sample_count]
+            fft *= dispersion_step * (1.0 / loss)
 
         return OpticalSignal(timing=signal.timing, samples=tf.signal.ifft(fft))
 

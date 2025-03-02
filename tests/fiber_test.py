@@ -5,15 +5,19 @@ from tf_ofcs.components import OpticalFiber, GaussianPulseGenerator
 from tf_ofcs.datatypes import OpticalSignal, Timing
 from tf_ofcs import constants
 
+import pytest
 
-def test_optical_fiber_attenuation() -> None:
+
+@pytest.mark.parametrize("enable_nonlinear_effects", [False, True])
+def test_optical_fiber_attenuation(enable_nonlinear_effects: bool) -> None:
     fiber = OpticalFiber(
         attenuation=[0.0, 0.22, 0.1, 0.5],
         chromatic_dispersion=[0.0, 0.0, 0.0, 0.0],
         eff_non_linear_coeff=[0.0, 0.0, 0.0, 0.0],
         length=[20.0, 40.0, 10.0, 5.0],
         central_frequency=193.414e12,
-        step_count=100
+        step_count=100,
+        enable_nonlinear_effects=enable_nonlinear_effects
     )
 
     batch_size = tf.size(fiber.attenuation)
@@ -48,20 +52,22 @@ def test_optical_fiber_attenuation() -> None:
     assert tf.math.reduce_all(tf.abs(actual_loss - expected_loss) < 1e-3)  # type: ignore[operator]
 
 
-def test_optical_fiber_chromatic_dispersion() -> None:
+@pytest.mark.parametrize("enable_nonlinear_effects", [False, True])
+def test_optical_fiber_chromatic_dispersion(enable_nonlinear_effects: bool) -> None:
     fiber = OpticalFiber(
         attenuation=[0.0],
         chromatic_dispersion=[17.0],
         eff_non_linear_coeff=[0.0],
         length=[100.0],
         central_frequency=193.414e12,
-        step_count=1
+        step_count=10,
+        enable_nonlinear_effects=enable_nonlinear_effects
     )
 
     timing = Timing(sampling_rate=1e12, sample_count=1000)
     pulse_generator = GaussianPulseGenerator(
-        fwhm_duration=1 / 50e9,
-        power=1e-3,
+        fwhm_duration=[1 / 50e9],
+        power=[1e-3],
         batch_size=1
     )
 
