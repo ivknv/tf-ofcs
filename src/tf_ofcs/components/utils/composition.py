@@ -29,8 +29,11 @@ class Composition(Component):
 
         self.components = components
 
-    def call(self, inp: Any, /, tracing_level: int = 0, **kwargs) -> Any:
-        result: Any = inp
+    def call(self, *args, tracing_level: int = 0, **kwargs) -> Any:
+        if not self.components:
+            return
+
+        result: Any = args[0] if args else None
 
         for component in self.components:
             result = component(result, tracing_level=tracing_level + 1, **kwargs)

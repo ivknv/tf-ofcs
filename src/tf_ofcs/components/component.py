@@ -38,13 +38,9 @@ class Component(tf.Module):
     trace_debug_enabled: bool
 
     #: Parameters that can be passed as {component name}__{parameter name}.
-    #: Each parameter in the list specifies the parameter name and optionally
-    #: the minimum tensor rank (when specified as tuple).
-    #: If the minimum rank is specified, the parameter may be automatically
-    #: broadcasted to the desired shape based on the `parameter_dims` value.
     local_parameters: list[str]
 
-    #: Parameters that can be passed normally as ({parameter name})
+    #: Parameters that can be passed normally as {parameter name}
     global_parameters: list[str]
 
     trace_debug_enabled_by_default: bool = False
@@ -57,43 +53,43 @@ class Component(tf.Module):
         self.local_parameters = []
         self.global_parameters = []
 
-    def __call__(self, inp: Any, /, **kwargs) -> Any:
+    def __call__(self, *args, **kwargs) -> Any:
         if kwargs.get("tracing", False):
             tracing_level = kwargs.get("tracing_level", 0)
 
-            self.trace_call(inp, tracing_level)
-            self.output = self.call(inp, **kwargs)
-            self.trace_return_value(self.output, tracing_level + 1)
+            self.trace_call(*args, level=tracing_level)
+            self.output = self.call(*args, **kwargs)
+            self.trace_return_value(self.output, level=tracing_level + 1)
 
             return self.output
         else:
-            return self.call(inp, **kwargs)
+            return self.call(*args, **kwargs)
 
-    def call(self, inp: Any, /, **kwargs):
+    def call(self, *args, **kwargs) -> Any:
         component_kwargs = self.extract_component_parameters(kwargs)
-        return self.implementation(inp, **component_kwargs)
+        return self.implementation(*args, **component_kwargs)
 
-    def implementation(self, inp: Any, /, *args, **kwargs) -> Any:
+    def implementation(self, *args, **kwargs) -> Any:
         raise NotImplementedError
 
     def _padding(self, level: int) -> str:
         return "|---" * level
 
-    def trace_call(self, inp: Any, level: int = 0) -> None:
+    def trace_call(self, *args, level: int = 0) -> None:
         if self.trace_debug_enabled:
             component = f"{self.__class__.__name__}(name={repr(self.name)})"
             padding = self._padding(level)
 
-            print(f"{padding}Calling {component} with args {_type_as_str(inp)}")
+            print(f"{padding}Calling {component} with args {_type_as_str(args)}")
 
-    def trace_return_value(self, output: Any, level: int = 0) -> None:
+    def trace_return_value(self, output: Any, /, level: int = 0) -> None:
         if self.trace_debug_enabled:
             padding = self._padding(level)
 
             print(f"{padding}Return {_type_as_str(output)}")
 
-    def trace(self, inp: Any, /, **kwargs) -> Any:
-        return self.__call__(inp, tracing=True, **kwargs)
+    def trace(self, *args, **kwargs) -> Any:
+        return self.__call__(*args, tracing=True, **kwargs)
 
     def find_child(self, name: str) -> "Component":
         for module in self.submodules:

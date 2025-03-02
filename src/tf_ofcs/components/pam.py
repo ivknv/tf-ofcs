@@ -252,7 +252,7 @@ class PAMDecoder(Component):
 
         return symbols
 
-    def __call__(self, signal: ElectricalSignal, /, tracing_level: int = 0, **kwargs) -> tf.Tensor:
+    def call(self, signal: ElectricalSignal, /, tracing_level: int = 0, **kwargs) -> tf.Tensor:
         data_rate = self.get_component_parameter(kwargs, "data_rate")
         bits_per_symbol = self.symbol_decoder.get_component_parameter(kwargs, "bits_per_symbol")
 
