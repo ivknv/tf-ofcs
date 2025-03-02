@@ -198,7 +198,7 @@ class IMDDAutoencoder(keras.Sequential):
         central_frequency = 193.414e12
 
         lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth])
-        awgn = OpticalAWGN(relative_db=[-33.0])
+        awgn = OpticalAWGN(relative_db=[-30.0])
 
         self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
 
@@ -211,7 +211,6 @@ class IMDDAutoencoder(keras.Sequential):
         ], name="transmitter")
 
         self.channel = Composition([
-            awgn,
             OpticalFiber(
                 length=[40.0],
                 attenuation=[0.22],

@@ -247,9 +247,8 @@ class IQAutoencoder(keras.models.Sequential):
             name="lpf"
         )
 
-        awgn = OpticalAWGN(relative_db=[-33.0])
+        awgn = OpticalAWGN(relative_db=[-30.0])
         self.channel = Composition([
-            awgn,
             OpticalFiber(
                 length=[40.0],
                 attenuation=[0.22],
