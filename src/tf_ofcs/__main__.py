@@ -25,7 +25,6 @@ import h5py  # type: ignore[import-untyped]
 import keras  # type: ignore[import-untyped]
 import tensorflow as tf
 
-
 from .models import AutoencoderModel, IMDDAutoencoder, IQAutoencoder
 from . import components
 
@@ -104,10 +103,32 @@ class TrainCommand(Command):
     description = "Train an autoencoder model"
 
     def setup(self, parser: argparse.ArgumentParser) -> None:
-        parser.add_argument("--epochs", type=int, default=50, help="number of epochs to train for")
-        parser.add_argument("--batch-size", type=int, default=256, help="batch size for training")
-        parser.add_argument("--store", help="store trained model in a .keras file")
-        parser.add_argument("--load", help="load trained model from a .keras file")
+        parser.add_argument(
+            "--epochs",
+            type=int,
+            default=None,
+            help="number of epochs to train for (loaded from profile by default)"
+        )
+
+        parser.add_argument(
+            "--batch-size",
+            type=int,
+            default=None,
+            help="batch size for training (loaded from profile by default)"
+        )
+
+        parser.add_argument(
+            "--store",
+            action="store_true",
+            help="store trained model in a .keras file specified in the profile"
+        )
+
+        parser.add_argument(
+            "--load",
+            action="store_true",
+            help="load trained model from a .keras file specified in the profile"
+        )
+
         parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
         parser.add_argument("--profile", help="simulation profile (JSON file)")
         parser.add_argument("--tensorboard", action="store_true", help="enable TensorBoard")
@@ -120,8 +141,18 @@ class TrainCommand(Command):
             model = _create_model(profile)
             M = profile["model_parameters"]["M"]
 
+            if ns.batch_size is None:
+                batch_size: int = profile["batch_size"]
+            else:
+                batch_size = ns.batch_size
+
+            if ns.epochs is None:
+                epochs: int = profile["epochs"]
+            else:
+                epochs = ns.epochs
+
             if hasattr(model, "substitute_laser"):
-                model.substitute_laser(ns.batch_size)
+                model.substitute_laser(batch_size)
 
             optimizer = keras.optimizers.Adam(**profile["optimizer_parameters"])
             model.compile(optimizer=optimizer, loss="binary_crossentropy")
@@ -129,11 +160,13 @@ class TrainCommand(Command):
 
             model.summary()
 
+            model_path = os.path.join(os.path.dirname(ns.profile), profile["model_path"])
+
             callbacks: list[keras.callbacks.Callback] = []
 
             if ns.store:
                 callbacks.append(keras.callbacks.ModelCheckpoint(
-                    ns.store,
+                    model_path,
                     monitor="loss",
                     save_best_only=True,
                     save_weights_only=True,
@@ -157,13 +190,13 @@ class TrainCommand(Command):
             )
 
             if ns.load:
-                model.load_weights(ns.load)
+                model.load_weights(model_path)
 
             model.fit(
                 dataset,
                 dataset,
-                epochs=ns.epochs,
-                batch_size=ns.batch_size,
+                epochs=epochs,
+                batch_size=batch_size,
                 shuffle=True,
                 callbacks=callbacks
             )
@@ -182,7 +215,6 @@ class BEROverParameterCommand(Command):
     description = "Evaluate autoencoder's BER as a function of chosen parameter."
 
     def setup(self, parser: argparse.ArgumentParser) -> None:
-        parser.add_argument("model", help="path to trained model's .keras file")
         parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
         parser.add_argument("--batch-size", type=int, default=1000, help="batch size for BERTester")
         parser.add_argument("--bitseq-length", default=None, type=int, help="test bit sequence length")
@@ -199,7 +231,10 @@ class BEROverParameterCommand(Command):
 
         with tf.device(ns.device):
             model: AutoencoderModel = _create_model(profile)
-            model.load_weights(ns.model)
+
+            model_path = os.path.join(os.path.dirname(ns.profile), profile["model_path"])
+            model.load_weights(model_path)
+
             M = profile["model_parameters"]["M"]
 
             bits_per_symbol = int(math.log2(M))
