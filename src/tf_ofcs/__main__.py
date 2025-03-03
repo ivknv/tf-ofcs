@@ -21,12 +21,15 @@ import os
 from typing import Any, Optional
 import datetime
 
-import h5py  # type: ignore[import-untyped]
-import keras  # type: ignore[import-untyped]
-import tensorflow as tf
+import silence_tensorflow
+silence_tensorflow.silence_tensorflow("WARNING")
 
-from .models import AutoencoderModel, IMDDAutoencoder, IQAutoencoder
-from . import components
+import h5py  # type: ignore[import-untyped] # noqa: E402
+import keras  # type: ignore[import-untyped] # noqa: E402
+import tensorflow as tf # noqa: E402
+
+from .models import AutoencoderModel, IMDDAutoencoder, IQAutoencoder  # noqa: E402
+from . import components  # noqa: E402
 
 
 class Command:

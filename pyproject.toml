@@ -19,6 +19,7 @@ dependencies = [
     "numpy<2",
     "plotly",
     "tensorflow==2.15.0",
+    "silence-tensorflow",
     "h5py"
 ]
 
