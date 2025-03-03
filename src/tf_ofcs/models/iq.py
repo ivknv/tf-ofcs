@@ -345,7 +345,7 @@ class IQAutoencoder(keras.models.Sequential):
         i_seq = tf.reshape(i_seq, [batch_size, self.n // 2 * symbols_per_batch])
         q_seq = tf.reshape(q_seq, [batch_size, self.n // 2 * symbols_per_batch])
 
-        return tf.stack([i_seq, q_seq], axis=2)  # shape=[batch_size, 2, n * symbols_per_batch]
+        return tf.stack([i_seq, q_seq], axis=1)  # shape=[batch_size, 2, n * symbols_per_batch]
 
     def decode_signal(self, input_signal: tuple[ElectricalSignal, ElectricalSignal]) -> tf.Tensor:
         samples = _from_iq_signal(input_signal)
