@@ -80,6 +80,19 @@ def _create_model(profile: dict[str, Any]) -> keras.Model:
     return mapping[profile["model_type"]](**profile["model_parameters"])
 
 
+def _load_weights(model: keras.models.Model, path: str) -> None:
+    if not path.endswith(".keras"):
+        raise ValueError(f"Invalid file extension: expected a '.keras' file, got {repr(path)} instead")
+
+    # Load only trainable weights, we don't care about the non-trainable ones
+    with h5py.File(path, "r") as file:
+        trainable_layers = [layer for layer in model.layers if layer.trainable]
+
+        for layer in trainable_layers:
+            for variable in layer.weights:
+                variable.assign(file[f"{layer.name}/{variable.name}"])
+
+
 class RevertToBest(keras.callbacks.Callback):
     def __init__(self, model: keras.models.Model, treshold=1.3) -> None:
         self._model = model
@@ -193,7 +206,7 @@ class TrainCommand(Command):
             )
 
             if ns.load:
-                model.load_weights(model_path)
+                _load_weights(model, model_path)
 
             model.fit(
                 dataset,
@@ -236,7 +249,7 @@ class BEROverParameterCommand(Command):
             model: AutoencoderModel = _create_model(profile)
 
             model_path = os.path.join(os.path.dirname(ns.profile), profile["model_path"])
-            model.load_weights(model_path)
+            _load_weights(model, model_path)
 
             M = profile["model_parameters"]["M"]
 
