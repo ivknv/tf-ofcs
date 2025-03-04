@@ -46,6 +46,7 @@ from .optical_gain import OpticalGain
 from .channel_loss_estimator import ChannelLossEstimator
 from .gaussian_pulse_generator import GaussianPulseGenerator
 from .optical_amplifier import OpticalAmplifier
+from .bit_sequence_generator import BitSequenceGenerator
 
 __all__ = [
     "Laser",
@@ -104,5 +105,6 @@ __all__ = [
     "GaussianPulseGenerator",
     "OpticalMultiplexer",
     "OpticalDemultiplexer",
-    "OpticalAmplifier"
+    "OpticalAmplifier",
+    "BitSequenceGenerator"
 ]
