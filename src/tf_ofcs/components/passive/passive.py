@@ -181,7 +181,7 @@ class OpticalFiber(Component):
 
         samples = signal.samples
 
-        freqs = 2 * constants.pi * tf.abs(fftfreq(tf.shape(samples)[-1], 1.0 / fs))  # shape=[sample_count]
+        freqs = 2 * constants.pi * fftfreq(tf.shape(samples)[-1], 1.0 / fs)  # shape=[sample_count]
 
         phase_shifts_per_km = beta_2 * 0.5 * 1e3 * freqs ** 2  # shape=[None, sample_count]
 
