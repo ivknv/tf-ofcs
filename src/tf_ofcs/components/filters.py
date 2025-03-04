@@ -85,7 +85,7 @@ class FFTFilter(Component):
 
 class FIRFilter(Component):
     """
-        Applies FIR filter to the input signal. Accepts both `ElectricalSignal` as input.
+        Applies FIR filter to the input signal. Accepts `ElectricalSignal` as input.
         Returns a slightly longer (delayed) signal with
         `{sample count} + {number of taps} - 1` samples.
 
