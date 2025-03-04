@@ -27,7 +27,7 @@ from .passive import (
     OpticalCoupler2x2, OpticalCoupler2x1, OpticalMultiplexer, OpticalDemultiplexer
 )
 from .filters import (
-    BandPassFilter, FFTFilter, BrickwallFrequencyResponse,
+    BandPassFilter, FFTFilter, FIRFilter, BrickwallFrequencyResponse,
     WDMBrickwallFrequencyResponse, GaussianFrequencyResponse,
     BesselFrequencyResponse
 )
@@ -70,6 +70,7 @@ __all__ = [
     "OpticalCoupler2x1",
     "BandPassFilter",
     "FFTFilter",
+    "FIRFilter",
     "BERTester",
     "BrickwallFrequencyResponse",
     "WDMBrickwallFrequencyResponse",

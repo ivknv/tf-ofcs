@@ -21,12 +21,13 @@ from ..utils import fftfreq, to_tensor
 from .component import Component
 
 from ..datatypes import (
-    ElectricalSignal, OpticalSignal, FrequencyResponseFunction, TensorCompatible
+    ElectricalSignal, OpticalSignal, FrequencyResponseFunction, TensorCompatible, Timing
 )
 
 __all__ = [
     "BandPassFilter",
     "FFTFilter",
+    "FIRFilter",
     "BrickwallFrequencyResponse",
     "WDMBrickwallFrequencyResponse",
     "GaussianFrequencyResponse",
@@ -80,6 +81,68 @@ class FFTFilter(Component):
             filtered_samples = tf.cast(tf.math.real(filtered_samples), tf.float32)
 
         return Signal(timing=signal.timing, samples=filtered_samples)
+
+
+class FIRFilter(Component):
+    """
+        Applies FIR filter to the input signal. Accepts both `ElectricalSignal` as input.
+        Returns a slightly longer (delayed) signal with
+        `{sample count} + {number of taps} - 1` samples.
+
+        .. note::
+
+           `tf.nn.conv1d()` actually performs cross-correlation, not
+           convolution, so the kernel taps should be in reverse order.
+
+        :ivar taps: `shape=[None], dtype=tf.float32`, filter coefficients.
+    """
+
+    #: Filter coefficients
+    taps: tf.Variable  # shape=[batch_size, None]; dtype=tf.float32 or tf.complex64
+
+    def __init__(
+        self,
+        taps: TensorCompatible,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.taps = tf.Variable(to_tensor(taps), name=f"{self.name}__taps")
+        self.local_parameters = ["taps"]
+
+    def implementation(
+        self,
+        signal: ElectricalSignal,
+        /,
+        taps: tf.Tensor
+    ) -> ElectricalSignal:
+        n_taps = tf.shape(taps)[-1]
+
+        # Pad and transpose samples for tf.nn.conv1d()
+        samples = tf.expand_dims(
+            tf.pad(tf.transpose(signal.samples), [[n_taps - 1, n_taps - 1], [0, 0]]),
+            0
+        )  # shape=[1, sample_count + 2 * (n_taps - 1), batch_size]
+
+        # Transpose and reshape filter taps
+        taps = tf.expand_dims(tf.transpose(taps), 1) # shape=[n_taps, 1, batch_size]
+
+        filtered_samples = tf.transpose(
+            tf.nn.conv1d(
+                samples,
+                filters=taps,
+                stride=1,
+                padding="VALID"
+            )  # shape=[1, sample_count + n_taps, batch_size]
+        )[:, :, 0]  # shape=[batch_size, sample_count + n_taps - 1]
+
+        return ElectricalSignal(
+            samples=filtered_samples,
+            timing=Timing(
+                sample_count=tf.shape(filtered_samples)[-1],
+                sampling_rate=signal.timing.sampling_rate
+            )
+        )
 
 
 class BandPassFilter(Component):
