@@ -30,6 +30,7 @@ from .randomize_parameters import RandomizeParameters
 from .pad_signal import PadSignal
 from .loop import Loop
 from .substitute import Substitute
+from .slice_signal import SliceSignal
 
 __all__ = [
     "MapComponents",
@@ -46,5 +47,6 @@ __all__ = [
     "RandomizeParameters",
     "PadSignal",
     "Loop",
-    "Substitute"
+    "Substitute",
+    "SliceSignal"
 ]
