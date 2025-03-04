@@ -121,7 +121,7 @@ class Component(tf.Module):
         else:
             value = self.get_local_kwarg(kwargs, parameter, default)
 
-        if value is None:
+        if value is None and hasattr(self, parameter):
             value = getattr(self, parameter)
 
         return value

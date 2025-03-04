@@ -36,6 +36,9 @@ class Composition(Component):
         result: Any = args[0] if args else None
 
         for component in self.components:
-            result = component(result, tracing_level=tracing_level + 1, **kwargs)
+            if result is None:
+                result = component(tracing_level=tracing_level + 1, **kwargs)
+            else:
+                result = component(result, tracing_level=tracing_level + 1, **kwargs)
 
         return result
