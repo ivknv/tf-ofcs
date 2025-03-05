@@ -37,6 +37,14 @@ __all__ = ["IQSymbolEncoder", "IQSymbolDecoder", "IQEncoder", "IQModulator", "IQ
 
 
 class IQSymbolEncoder(Component):
+    """
+        Encodes a sequence of bits to a sequence of IQ symbols.
+
+        :ivar bits_per_symbol: `shape=[]; dtype=tf.int32`, number of bits per symbol
+        :ivar mapping: `shape=[2 ** bits_per_symbol, 2]; dtype=float32`, mapping of symbol indices to IQ symbols.
+        :ivar adjust_for_mzm: `shape=[]; dtype=bool`, if true, the constellation will be adjusted for MZM
+    """
+
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=[]; dtype=int32
     mapping: tf.Variable  # shape=(2 ** bits_per_symbol, 2); dtype=float32
@@ -63,12 +71,6 @@ class IQSymbolEncoder(Component):
             "mapping", "bits_per_symbol", "adjust_for_mzm"
         ]
 
-    @tf.function(input_signature=(
-        bit_sequence_spec,
-        tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
-        tf.TensorSpec(shape=[None, 2], dtype=tf.float32, name="mapping"),
-        tf.TensorSpec(shape=[], dtype=tf.bool, name="adjust_for_mzm")
-    ))
     def implementation(
         self,
         bitseq: tf.Tensor,
@@ -86,13 +88,23 @@ class IQSymbolEncoder(Component):
             (batch_size, bit_count // bits_per_symbol, 2)
         )
 
-        if adjust_for_mzm:  # type: ignore
-            return adjust_symbol_for_mzm(symbols)
-        else:
-            return symbols
+        return tf.cond(
+            adjust_for_mzm,
+            lambda: adjust_symbol_for_mzm(symbols),
+            lambda: symbols
+        )
 
 
 class IQSymbolDecoder(Component):
+    """
+        Decodes a sequence of IQ symbols to a sequence of bits.
+
+        :ivar bits_per_symbol: `shape=[]; dtype=tf.int32`, number of bits per symbol
+        :ivar mapping: `shape=[2 ** bits_per_symbol, 2]; dtype=float32`, mapping of symbol indices to IQ symbols.
+
+        Input symbols should have `shape=[batch_size, symbol_count, 2]; dtype=float32`.
+    """
+
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=[]; dtype=int32
     mapping: tf.Variable  # shape=(2 ** bits_per_symbol, 2); dtype=float32
@@ -111,11 +123,6 @@ class IQSymbolDecoder(Component):
 
         self.local_parameters = ["bits_per_symbol", "mapping"]
 
-    @tf.function(input_signature=(
-        tf.TensorSpec(shape=[None, None, 2], dtype=tf.float32, name="symbols"),
-        tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
-        tf.TensorSpec(shape=[None, 2], dtype=tf.float32, name="mapping")
-    ))
     def implementation(
         self,
         symbols: tf.Tensor,
@@ -143,6 +150,15 @@ class IQSymbolDecoder(Component):
 
 
 class IQEncoder(Component):
+    """
+        Encodes a sequence of bits to a sequence of IQ symbols and then converts
+        it to a tuple of 2 electrical signals.
+
+        :ivar sampling_rate: `shape=[]; dtype=float32`, sampling rate in Hz
+        :ivar data_rate: `shape=[]; dtype=float32`, data rate in bits/second
+        :ivar symbol_encoder: :class:`IQSymbolEncoder`, symbol encoder
+    """
+
     #: Sampling rate in Hz
     sampling_rate: tf.Variable  # shape=[]; dtype=float32
 
@@ -242,6 +258,14 @@ class IQModulator(Composition):
 
 
 class IQReceiver(Composition):
+    """
+        Coherent IQ receiver. Expects an optical signal as input and outputs
+        a tuple of 2 electrical signals.
+
+        :ivar photodiode: :class:`Component`, photodiode for the coherent receiver
+        :ivar local_oscillator: :class:`Component`, local oscillator (laser) for the coherent receiver
+    """
+
     #: Photodiode for the coherent receiver
     photodiode: Component
 
@@ -315,6 +339,14 @@ class IQReceiver(Composition):
 
 
 class IQDecoder(Component):
+    """
+        Decodes an IQ signal in the form of a tuple of 2 electrical signals to
+        a sequence of bits.
+
+        :ivar data_rate: `shape=[]; dtype=float32`, data rate in bits/second
+        :ivar symbol_decoder: :class:`IQSymbolDecoder`, symbol decoder
+    """
+
     #: Data rate in bits/second
     data_rate: tf.Variable  # shape=[]; dtype=float32
 
@@ -334,11 +366,6 @@ class IQDecoder(Component):
 
         self.local_parameters = ["data_rate"]
 
-    @tf.function(input_signature=(
-        iq_signal_spec,
-        tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
-        tf.TensorSpec(shape=[], dtype=tf.float32, name="data_rate")
-    ))
     def _extract_iq_symbols(
         self,
         iq_signal: IQSignal,

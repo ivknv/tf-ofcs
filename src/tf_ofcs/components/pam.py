@@ -40,12 +40,17 @@ __all__ = [
 
 
 class PAMSymbolEncoder(Component):
+    """
+        This component encodes a bit sequence into a sequence of PAM symbols.
+
+        :ivar bits_per_symbol: `shape=[], dtype=tf.int32`, number of bits per symbol
+        :ivar mapping: `shape=[2 ** bits_per_symbol], dtype=float32`, mapping of symbol indices to PAM symbols
+        :ivar adjust_for_mzm: `shape=[], dtype=tf.bool`, if true, the constellation will be adjusted for MZM
+    """
+
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=[]; dtype=int32
     mapping: tf.Variable  # shape=[2 ** bits_per_symbol]; dtype=float32
-
-    #: Sample count at the output
-    sample_count: tf.Variable  # shape=[]; dtype=int32
 
     #: If true, the constellation will be adjusted for MZM
     adjust_for_mzm: tf.Variable  # shape=[]; dtype=bool
@@ -94,13 +99,21 @@ class PAMSymbolEncoder(Component):
             (batch_size, bit_count // bits_per_symbol)
         )
 
-        if adjust_for_mzm:  # type: ignore[operator]
-            return adjust_symbol_for_mzm(symbols)
-        else:
-            return symbols
+        return tf.cond(
+            adjust_for_mzm,
+            lambda: adjust_symbol_for_mzm(symbols),
+            lambda: symbols
+        )
 
 
 class PAMSymbolDecoder(Component):
+    """
+        This component decodes a sequence of PAM symbols into a bit sequence.
+
+        :ivar bits_per_symbol: `shape=[], dtype=tf.int32`, number of bits per symbol
+        :ivar mapping: `shape=[2 ** bits_per_symbol], dtype=float32`, mapping symbol indices to PAM symbols
+    """
+
     #: Number of bits per symbol
     bits_per_symbol: tf.Variable  # shape=[]; dtype=int32
     mapping: tf.Variable  # shape=(2 ** bits_per_symbol,); dtype=float32
@@ -123,11 +136,6 @@ class PAMSymbolDecoder(Component):
 
         self.local_parameters = ["bits_per_symbol", "mapping"]
 
-    @tf.function(input_signature=(
-        tf.TensorSpec(shape=[None, None], dtype=tf.float32, name="symbols"),
-        tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="mapping"),
-    ))
     def implementation(
         self,
         symbols: tf.Tensor,
@@ -155,6 +163,14 @@ class PAMSymbolDecoder(Component):
 
 
 class PAMEncoder(Component):
+    """
+        Encodes a bit sequence into an electrical signal using Pulse Amplitude Modulation (PAM).
+
+        :ivar sampling_rate: `shape=[], dtype=tf.float32`, sampling rate in Hz
+        :ivar data_rate: `shape=[], dtype=tf.float32`, data rate in bits/second
+        :ivar symbol_encoder: `PAMSymbolEncoder`, constellation used for encoding
+    """
+
     #: Sampling rate in Hz
     sampling_rate: tf.Variable  # shape=[]; dtype=float32
 
@@ -212,6 +228,13 @@ class PAMEncoder(Component):
 
 
 class PAMDecoder(Component):
+    """
+        Decodes an electrical signal into a bit sequence using Pulse Amplitude Modulation (PAM).
+
+        :ivar data_rate: `shape=[], dtype=tf.float32`, data rate in bits/second
+        :ivar symbol_decoder: `PAMSymbolDecoder`, constellation used for decoding
+    """
+
     #: Data rate in bits/second
     data_rate: tf.Variable  # shape=[]; dtype=float32
 

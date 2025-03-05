@@ -135,7 +135,7 @@ def fftfreq(n: tf.Tensor, d: tf.Tensor) -> tf.Tensor:
                  bins in cycles/unit of the sample spacing.
     """
 
-    if tf.math.floormod(n, 2) == 0:  # type: ignore[operator]
+    def even_case() -> tf.Tensor:
         return tf.cast(
             tf.concat([
                 tf.range(tf.cast(tf.math.floordiv(n, 2), tf.int32)),
@@ -143,7 +143,8 @@ def fftfreq(n: tf.Tensor, d: tf.Tensor) -> tf.Tensor:
             ], 0),
             tf.float32
         ) / (d * tf.cast(n, tf.float32))
-    else:
+
+    def odd_case() -> tf.Tensor:
         return tf.cast(
             tf.concat([
                 tf.range(tf.cast(tf.math.floordiv(n + 1, 2), tf.int32)),
@@ -152,6 +153,7 @@ def fftfreq(n: tf.Tensor, d: tf.Tensor) -> tf.Tensor:
             tf.float32
         ) / (d * tf.cast(n, tf.float32))
 
+    return tf.cond(tf.math.floormod(n, 2) == 0, even_case, odd_case)
 
 def gaussian_distribution(x: tf.Tensor, mean: tf.Tensor, variance: tf.Tensor) -> tf.Tensor:
     return 1 / (

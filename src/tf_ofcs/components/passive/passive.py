@@ -275,10 +275,11 @@ class OpticalCoupler2x2(Component):
     ) -> tuple[OpticalSignal, OpticalSignal]:
         mixed_samples1 = (input_signals[0].samples + input_signals[1].samples) * 0.5 ** 0.5
 
-        if flip:  # type: ignore
-            mixed_samples2 = (input_signals[0].samples - input_signals[1].samples) * 0.5 ** 0.5
-        else:
-            mixed_samples2 = mixed_samples1
+        mixed_samples2 = tf.cond(
+            flip,
+            lambda: (input_signals[0].samples - input_signals[1].samples) * 0.5 ** 0.5,
+            lambda: mixed_samples1
+        )
 
         timing = input_signals[0].timing
 

@@ -70,21 +70,25 @@ class PadSignal(Component):
         dtype = left_padding.dtype
         sample_count = tf.cast(shape[-1], dtype)
 
-        if unpad:  # type: ignore[operator]
+        sample_count = tf.cond(unpad,
             # Figure out sample count of the signal before it was padded
-            sample_count //= tf.cast(1, dtype) + left_padding + right_padding
+            lambda: sample_count // (tf.cast(1, dtype) + left_padding + right_padding),
+            lambda: sample_count
+        )
 
         left_sample_count = tf.cast(sample_count * left_padding, tf.int32)
         right_sample_count = tf.cast(sample_count * right_padding, tf.int32)
 
         padded_samples = signal.samples
 
-        if unpad:  # type: ignore[operator]
-            if right_sample_count == 0:
-                padded_samples = padded_samples[:, left_sample_count:]
-            else:
-                padded_samples = padded_samples[:, left_sample_count:-right_sample_count]
-        else:
+        def unpad_case() -> tf.Tensor:
+            return tf.cond(
+                right_sample_count == 0,
+                lambda: padded_samples[:, left_sample_count:],
+                lambda: padded_samples[:, left_sample_count:-right_sample_count]
+            )
+
+        def pad_case() -> tf.Tensor:
             left_samples = tf.zeros(
                 tf.concat([shape[:-1], [left_sample_count]], 0),
                 dtype=signal.samples.dtype
@@ -95,8 +99,9 @@ class PadSignal(Component):
                 dtype=signal.samples.dtype
             )
 
-            padded_samples = tf.concat([left_samples, padded_samples, right_samples], -1)
+            return tf.concat([left_samples, padded_samples, right_samples], -1)
 
+        padded_samples = tf.cond(unpad, unpad_case, pad_case)
         padded_timing = Timing(
             sample_count=tf.shape(padded_samples)[-1],
             sampling_rate=signal.timing.sampling_rate

@@ -79,7 +79,10 @@ class Laser(Component):
             )
         )
 
-        if tf.shape(samples)[0] == 1:
-            samples = tf.tile(samples, [batch_size, 1])
+        samples = tf.cond(
+            tf.shape(samples)[0] == 1,
+            lambda: tf.tile(samples, [batch_size, 1]),
+            lambda: samples
+        )
 
         return OpticalSignal(timing=timing, samples=samples)

@@ -117,6 +117,7 @@ class FIRFilter(Component):
         taps: tf.Tensor
     ) -> ElectricalSignal:
         n_taps = tf.shape(taps)[-1]
+        batch_size = tf.shape(signal.samples)[0]
 
         # Pad and transpose samples for tf.nn.conv1d()
         samples = tf.expand_dims(
@@ -126,6 +127,7 @@ class FIRFilter(Component):
 
         # Transpose and reshape filter taps
         taps = tf.expand_dims(tf.transpose(taps), 1) # shape=[n_taps, 1, batch_size]
+        taps = tf.cond(tf.shape(taps)[-1] == 1, lambda: tf.tile(taps, [1, 1, batch_size]), lambda: taps)
 
         filtered_samples = tf.transpose(
             tf.nn.conv1d(
