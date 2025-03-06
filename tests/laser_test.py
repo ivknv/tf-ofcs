@@ -12,7 +12,11 @@ import pytest
 @pytest.mark.parametrize("enable_phase_noise", [True, False])
 def test_laser(enable_phase_noise: bool) -> None:
     batch_size = tf.constant(2)
-    laser = Laser(power=tf.constant([2e-3, 1e-3]), enable_phase_noise=True, name="test_laser")
+    laser = Laser(
+        power=tf.constant([2e-3, 1e-3]),
+        enable_phase_noise=enable_phase_noise,
+        name="test_laser"
+    )
 
     timing = Timing(sampling_rate=tf.constant(1.0), sample_count=tf.constant(16))
 
