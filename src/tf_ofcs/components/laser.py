@@ -27,7 +27,20 @@ __all__ = ["Laser"]
 
 
 class Laser(Component):
-    """Outputs a monochromatic optical signal."""
+    """
+        Models a laser. Takes a `Timing` or `ElectricalSignal` or `OpticalSignal`
+        as input. If the input is a signal rather than timing, then the timing
+        will be extracted from the signal. Outputs an `OpticalSignal` instance.
+
+        :ivar power: `shape=[None], dtype=tf.float32`, output power of the laser.
+        :ivar frequency: `shape=[None], dtype=tf.float32`, laser frequency offset
+                         (relative to the central frequency) in Hz
+        :ivar linewidth: `shape=[None], dtype=tf.float32`, laser linewidth in Hz
+        :ivar batch_size: `shape=[], dtype=tf.int32`, determines the output
+                          signal's shape is `(batch_size, tf.size(time))`
+        :ivar enable_phase_noise: `bool`, enables/disables phase noise
+        :ivar rng: `tf.random.Generator`, random number generator for phase noise.
+    """
 
     #: Output power in watts
     power: tf.Variable  # shape=[None]; dtype=float32
@@ -35,24 +48,42 @@ class Laser(Component):
     #: Laser frequency offset (relative to the central frequency) in Hz
     frequency: tf.Variable  # shape=[None]; dtype=tf.float32
 
+    #: Linewidth in Hz
+    linewidth: tf.Variable  # shape=[None]; dtype=float32
+
     #: The output signal's shape is `(batch_size, tf.size(time))`
     batch_size: tf.Variable  # shape=[]; dtype=int32
+
+    #: Enables/disables phase noise
+    enable_phase_noise: bool
+
+    rng: tf.random.Generator
 
     def __init__(
         self,
         power: TensorCompatible,
         frequency: TensorCompatible = tf.constant([0.0]),
+        linewidth: TensorCompatible = tf.constant([0.0]),
         batch_size: TensorCompatible = 1,
+        enable_phase_noise: bool = False,
+        rng: Optional[tf.random.Generator] = None,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.power = tf.Variable(to_tensor(power), name=f"{self.name}__power")
         self.frequency = tf.Variable(to_tensor(frequency), name=f"{self.name}__frequency")
+        self.linewidth = tf.Variable(to_tensor(linewidth), name=f"{self.name}__linewidth")
         self.batch_size = tf.Variable(to_tensor(batch_size), name=f"{self.name}__batch_size")
+        self.enable_phase_noise = enable_phase_noise
+
+        if rng is None:
+            rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
+
+        self.rng = rng
 
         self.global_parameters = ["batch_size"]
-        self.local_parameters = ["power", "frequency", "batch_size"]
+        self.local_parameters = ["power", "frequency", "linewidth", "batch_size"]
 
     def implementation(
         self,
@@ -60,6 +91,7 @@ class Laser(Component):
         /,
         power: tf.Tensor,
         frequency: tf.Tensor,
+        linewidth: tf.Tensor,
         batch_size: tf.Tensor
     ) -> OpticalSignal:
         if isinstance(timing_or_signal, (ElectricalSignal, OpticalSignal)):
@@ -72,13 +104,23 @@ class Laser(Component):
         power = tf.expand_dims(power, -1)  # shape=[None, 1]
         frequency = tf.expand_dims(frequency, -1)  # shape=[None, 1]
 
-        samples = tf.math.exp(
-            tf.complex(
-                tf.math.log(tf.math.sqrt(power)),
-                2.0 * constants.pi * frequency * time
-            )
-        )
+        phase = 2.0 * constants.pi * frequency * time
 
+        if self.enable_phase_noise:
+            phase_noise_stddev = tf.sqrt(2.0 * constants.pi / timing.sampling_rate * linewidth)
+            phase_noise = tf.math.cumsum(
+                self.rng.normal(
+                    shape=[tf.shape(linewidth)[0], tf.size(time)],
+                    mean=0.0,
+                    stddev=phase_noise_stddev,
+                    dtype=tf.float32
+                ),
+                axis=-1
+            )
+
+            phase += phase_noise
+
+        samples = tf.complex(tf.sqrt(power), 0.0) * tf.math.exp(tf.complex(0.0, phase))
         samples = tf.cond(
             tf.shape(samples)[0] == 1,
             lambda: tf.tile(samples, [batch_size, 1]),
