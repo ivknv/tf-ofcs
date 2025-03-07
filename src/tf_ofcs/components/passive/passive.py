@@ -111,12 +111,12 @@ class OpticalFiber(Component):
 
     def __init__(
         self,
-        attenuation: TensorCompatible,
-        chromatic_dispersion: TensorCompatible,
-        eff_non_linear_coeff: TensorCompatible,
-        length: TensorCompatible,
-        central_frequency: TensorCompatible,
-        step_count: int | tf.Tensor = 50,
+        attenuation: TensorCompatible = tf.constant([0.2]),
+        chromatic_dispersion: TensorCompatible = tf.constant([0.0]),
+        eff_non_linear_coeff: TensorCompatible = tf.constant([1.76]),
+        length: TensorCompatible = tf.constant([10.0]),
+        central_frequency: TensorCompatible = 193.414e12,
+        step_count: int | tf.Tensor = 3,
         enable_nonlinear_effects: bool = True,
         name: Optional[str] = None
     ) -> None:

@@ -15,9 +15,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
-import math
 import json
 import os
+import typing
 from typing import Any, Optional
 import datetime
 
@@ -28,9 +28,11 @@ import h5py  # type: ignore[import-untyped] # noqa: E402
 import keras  # type: ignore[import-untyped] # noqa: E402
 import tensorflow as tf # noqa: E402
 
-from .models import AutoencoderModel, IMDDAutoencoder, IQAutoencoder  # noqa: E402
+from .models import IMDDAutoencoder, IQAutoencoder  # noqa: E402
 from . import components  # noqa: E402
-
+from .profile import Profile  # noqa: E402
+from .communication_system import CommunicationSystem  # noqa: E402
+from .datatypes import TensorCompatible  # noqa: E402
 
 class Command:
     description: str = ""
@@ -42,42 +44,72 @@ class Command:
         raise NotImplementedError
 
 
-def _load_profile(path: str) -> Any:
+def _load_profile(path: str) -> Profile:
+    # Load profile from a JSON file.
+    # The profile specifies the class that is used as implementation for the
+    # communication system, as well as its parameters.
+    # It also specifies channel implementation and parameters, training
+    # parameters, and default BER test parameters.
+
     with open(path, "rb") as profile_file:
-        profile = json.load(profile_file)
+        js = json.load(profile_file)
 
-    profile.setdefault("optimizer_parameters", {})
-    model_parameters = profile.setdefault("model_parameters", {})
-    transmission_layer_parameters = model_parameters.setdefault("transmission_layer_parameters", {})
-
-    for key, value in transmission_layer_parameters.items():
-        transmission_layer_parameters[key] = tf.constant(value)
-
-    parameter_distributions = model_parameters.setdefault("parameter_distributions", {})
-
-    dtype_map = {
-        "int8": tf.int8,
-        "int16": tf.int16,
-        "int32": tf.int32,
-        "int64": tf.int64,
-        "float16": tf.float16,
-        "float32": tf.float32,
-        "float64": tf.float64
-    }
-
-    for value in parameter_distributions.values():
-        value["dtype"] = dtype_map[value["dtype"]]
-
-    return profile
+    return Profile.from_json(js)
 
 
-def _create_model(profile: dict[str, Any]) -> keras.Model:
+def _create_system(system_profile: Profile.System) -> CommunicationSystem:
     mapping = {
         "IMDDAutoencoder": IMDDAutoencoder,
         "IQAutoencoder": IQAutoencoder
     }
 
-    return mapping[profile["model_type"]](**profile["model_parameters"])
+    system = typing.cast(
+        CommunicationSystem,
+        mapping[system_profile.name](**system_profile.init_args)
+    )
+
+    return system
+
+
+class OpticalFiberAWGN(components.Composition):
+    def __init__(
+        self,
+        attenuation: TensorCompatible = tf.constant([0.2]),
+        chromatic_dispersion: TensorCompatible = tf.constant([0.0]),
+        eff_non_linear_coeff: TensorCompatible = tf.constant([1.76]),
+        length: TensorCompatible = tf.constant([10.0]),
+        central_frequency: TensorCompatible = 193.414e12,
+        step_count: int | tf.Tensor = 3,
+        enable_nonlinear_effects: bool = True,
+        osnr: TensorCompatible = tf.constant([30.0]),
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__([], name=name)
+        self.components = [
+            components.OpticalFiber(
+                attenuation=attenuation,
+                chromatic_dispersion=chromatic_dispersion,
+                eff_non_linear_coeff=eff_non_linear_coeff,
+                length=length,
+                central_frequency=central_frequency,
+                step_count=step_count,
+                enable_nonlinear_effects=enable_nonlinear_effects,
+                name=f"{self.name}__optical_fiber"
+            ),
+            components.OpticalAWGN(
+                relative_db=-tf.convert_to_tensor(osnr),
+                name=f"{self.name}__optical_awgn"
+            )
+        ]
+
+
+def _create_channel(channel_profile: Profile.Channel) -> components.Component:
+    mapping = {
+        "OpticalFiber": components.OpticalFiber,
+        "OpticalFiberAWGN": OpticalFiberAWGN
+    }
+
+    return mapping[channel_profile.name](**channel_profile.init_args)
 
 
 def _load_weights(model: keras.models.Model, path: str) -> None:
@@ -120,20 +152,6 @@ class TrainCommand(Command):
 
     def setup(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
-            "--epochs",
-            type=int,
-            default=None,
-            help="number of epochs to train for (loaded from profile by default)"
-        )
-
-        parser.add_argument(
-            "--batch-size",
-            type=int,
-            default=None,
-            help="batch size for training (loaded from profile by default)"
-        )
-
-        parser.add_argument(
             "--store",
             action="store_true",
             help="store trained model in a .keras file specified in the profile"
@@ -147,56 +165,86 @@ class TrainCommand(Command):
 
         parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
         parser.add_argument("--profile", help="simulation profile (JSON file)")
-        parser.add_argument("--tensorboard", action="store_true", help="enable TensorBoard")
-        parser.add_argument("--tensorboard-log-dir", default=".logs", help="TensorBoard log directory")
+
+    def _setup_tensorboard(self, tensorboard_args: dict) -> keras.callbacks.TensorBoard:
+        now = datetime.datetime.now()
+
+        tensorboard_args = dict(tensorboard_args)
+        tensorboard_args["logdir"] = os.path.join(
+            tensorboard_args.get("logdir", ".logs"),
+            now.strftime("%Y-%m-%d-%H-%M-%S")
+        )
+        tensorboard_args.setdefault("histogram_freq", 1)
+
+        return keras.callbacks.TensorBoard(**tensorboard_args)
+
+    def _setup_checkpoint_callback(self, model_path: Optional[str]) -> keras.callbacks.ModelCheckpoint:
+        if model_path is None:
+            raise ValueError("Model path was not specified in the profile")
+
+        return keras.callbacks.ModelCheckpoint(
+            model_path,
+            monitor="loss",
+            save_best_only=True,
+            save_weights_only=True,
+            save_freq="epoch"
+        )
+
+    def _setup_model(
+        self,
+        system: CommunicationSystem,
+        profile: Profile
+    ) -> None:
+        assert profile.training is not None
+
+        channel_profile = profile.training.channel or profile.default_channel
+        channel = _create_channel(channel_profile)
+
+        setup_parameters = dict(profile.system.parameters)
+        setup_parameters.update(profile.training.parameters)
+        setup_parameters["batch_size"] = tf.constant(profile.training.batch_size)
+
+        system.model_setup(
+            channel,
+            setup_parameters,
+            profile.training.parameter_distributions
+        )
 
     def __call__(self, ns: argparse.Namespace) -> int:
         profile = _load_profile(ns.profile)
 
         with tf.device(ns.device):
-            model = _create_model(profile)
-            M = profile["model_parameters"]["M"]
+            model = _create_system(profile.system)
 
-            if ns.batch_size is None:
-                batch_size: int = profile["batch_size"]
-            else:
-                batch_size = ns.batch_size
+            if not isinstance(model, keras.models.Model):
+                raise ValueError("Specified model is not trainable")
 
-            if ns.epochs is None:
-                epochs: int = profile["epochs"]
-            else:
-                epochs = ns.epochs
+            if profile.training is None:
+                raise ValueError("Training config is not provided in the profile")
 
-            if hasattr(model, "substitute_laser"):
-                model.substitute_laser(batch_size)
+            self._setup_model(model, profile)
 
-            optimizer = keras.optimizers.Adam(**profile["optimizer_parameters"])
+            optimizer = keras.optimizers.Adam(**profile.training.optimizer_parameters)
             model.compile(optimizer=optimizer, loss="binary_crossentropy")
-            model.build((1, M))
 
             model.summary()
 
-            model_path = os.path.join(os.path.dirname(ns.profile), profile["model_path"])
+            if profile.system.model_path is not None:
+                model_path = os.path.join(os.path.dirname(ns.profile), profile.system.model_path)
+            else:
+                model_path = None
 
             callbacks: list[keras.callbacks.Callback] = []
 
             if ns.store:
-                callbacks.append(keras.callbacks.ModelCheckpoint(
-                    model_path,
-                    monitor="loss",
-                    save_best_only=True,
-                    save_weights_only=True,
-                    save_freq="epoch"
-                ))
+                callbacks.append(self._setup_checkpoint_callback(model_path))
 
-            if ns.tensorboard:
-                now = datetime.datetime.now()
-                callbacks.append(keras.callbacks.TensorBoard(
-                    log_dir=os.path.join(ns.tensorboard_log_dir, now.strftime("%Y-%m-%d-%H-%M-%S")),
-                    histogram_freq=1
-                ))
+            if profile.training.tensorboard is not None:
+                callbacks.append(self._setup_tensorboard(profile.training.tensorboard))
 
             callbacks.append(RevertToBest(model, treshold=1.3))
+
+            M = 2 ** model.bits_per_symbol
 
             # Create a training dataset of ~512000 input messages
             tile_factor = 512000 // M
@@ -206,13 +254,16 @@ class TrainCommand(Command):
             )
 
             if ns.load:
+                if model_path is None:
+                    raise ValueError("Model path was not specified in the profile")
+
                 _load_weights(model, model_path)
 
             model.fit(
                 dataset,
                 dataset,
-                epochs=epochs,
-                batch_size=batch_size,
+                epochs=profile.training.epochs,
+                batch_size=profile.training.batch_size,
                 shuffle=True,
                 callbacks=callbacks
             )
@@ -232,66 +283,72 @@ class BEROverParameterCommand(Command):
 
     def setup(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
-        parser.add_argument("--batch-size", type=int, default=1000, help="batch size for BERTester")
-        parser.add_argument("--bitseq-length", default=None, type=int, help="test bit sequence length")
-        parser.add_argument("--n-iterations", default=1, type=int, help="number of iterations for BERTester")
-        parser.add_argument("--parameter", help="parameter name")
-        parser.add_argument("--start", type=_number, help="minimum parameter value")
-        parser.add_argument("--end", type=_number, help="maximum parameter value")
-        parser.add_argument("--step", type=_number, help="parameter value step")
         parser.add_argument("--output", help="HDF5 output filename")
         parser.add_argument("--profile", help="simulation profile (JSON file)")
+
+    def _load_model_weights(self, model: Any, profile_path: str, profile: Profile) -> None:
+        if profile.system.model_path is not None and isinstance(model, keras.models.Model):
+            model_path = os.path.join(os.path.dirname(profile_path), profile.system.model_path)
+            _load_weights(model, model_path)
 
     def __call__(self, ns: argparse.Namespace) -> int:
         profile = _load_profile(ns.profile)
 
         with tf.device(ns.device):
-            model: AutoencoderModel = _create_model(profile)
+            system: CommunicationSystem = _create_system(profile.system)
 
-            model_path = os.path.join(os.path.dirname(ns.profile), profile["model_path"])
-            _load_weights(model, model_path)
+            if profile.ber_estimation is None:
+                raise ValueError("BER estimation config is not provided in the profile")
 
-            M = profile["model_parameters"]["M"]
+            self._load_model_weights(system, ns.profile, profile)
 
-            bits_per_symbol = int(math.log2(M))
+            channel = _create_channel(profile.ber_estimation.channel or profile.default_channel)
 
-            system = components.Composition([
-                model.encoder,
-                model.transmitter,
-                model.channel,
-                model.receiver,
-                model.decoder
+            test_system = components.Composition([
+                system.encoder,
+                system.transmitter,
+                channel,
+                system.receiver,
+                system.decoder
             ])
 
             ber_tester = components.BERTester(
-                system,
-                batch_size=ns.batch_size,
-                n_iterations=ns.n_iterations
+                test_system,
+                batch_size=profile.ber_estimation.batch_size,
+                n_iterations=profile.ber_estimation.n_iterations
             )
 
+            parameter_name = profile.ber_estimation.parameter_name
+            parameter_values = tf.range(
+                profile.ber_estimation.start,
+                profile.ber_estimation.end,
+                profile.ber_estimation.step
+            )
+
+            bitseq_length = tf.constant(profile.ber_estimation.symbol_count * system.bits_per_symbol)
+
+            system_parameters = dict(profile.system.parameters)
+            system_parameters.update(profile.ber_estimation.parameters)
+            system_parameters["batch_size"] = tf.constant(profile.ber_estimation.batch_size)
+
             ber_values = []
-            parameter_values = tf.range(ns.start, ns.end, ns.step)
-
-            if ns.bitseq_length is None:
-                bitseq_length = tf.constant(bits_per_symbol * 100)
-            else:
-                bitseq_length = tf.constant(ns.bitseq_length)
-
-            params = dict(profile["model_parameters"]["transmission_layer_parameters"])
 
             for parameter_value in parameter_values:
-                params[ns.parameter] = tf.constant(parameter_value)
+                system_parameters[parameter_name] = tf.expand_dims(parameter_value, 0)
+                system.setup(channel, system_parameters)
+                ber = ber_tester(bitseq_length, **system_parameters)
 
-                ber = ber_tester(tf.constant(bitseq_length), **params)
-
-                print(f"BER={ber}, {ns.parameter}={parameter_value}")
-
+                print(f"BER={ber}, {parameter_name}={parameter_value}")
                 ber_values.append(ber)
 
             if ns.output is not None:
+                with open(ns.profile, "rb") as profile_file:
+                    profile_json = profile_file.read()
+
                 with h5py.File(ns.output, "w") as hdf5:
                     hdf5.create_dataset("ber", data=ber_values)
-                    hdf5.create_dataset(ns.parameter, data=parameter_values)
+                    hdf5.create_dataset(parameter_name, data=parameter_values)
+                    hdf5.create_dataset("profile", data=profile_json)
 
         return 0
 

@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 import math
 from typing import Any, Optional
 import tensorflow as tf
@@ -25,11 +25,11 @@ from ..utils import bits_to_indices, indices_to_bits
 from ..utils import dbm_to_w
 
 from ..components import (
-    Component, Composition, OpticalFiber, OpticalAWGN, IQModulator, Laser,
-    IQReceiver, Photodiode, BandPassFilter, ArbitraryWaveformGenerator, Lambda,
-    RandomizeParameters, MapComponents, ElectricalGain, Fork, Identity, Reindex,
-    Substitute
+    Component, Composition, IQModulator, Laser, IQReceiver, Photodiode,
+    BandPassFilter, ArbitraryWaveformGenerator, Lambda, RandomizeParameters,
+    MapComponents, ElectricalGain, Fork, Identity, Reindex, Substitute
 )
+from ..communication_system import CommunicationSystem
 
 __all__ = ["IQAutoencoder"]
 
@@ -92,14 +92,9 @@ class _SelectSymbol(Component):
 
 
 class TransmissionLayer(keras.layers.Layer):
-    #: Arbitrary additional parameters for the system
-    parameters: dict[str, Any]
-
     def __init__(
         self,
         autoencoder: "IQAutoencoder",
-        parameters: dict[str, Any],
-        parameter_distributions: Mapping[str, Mapping[str, Any]],
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name, trainable=False)
@@ -107,7 +102,13 @@ class TransmissionLayer(keras.layers.Layer):
         M = autoencoder.M
         N = autoencoder.N
 
-        self.parameters = parameters
+        self._channel = Substitute(autoencoder.channel)
+        self._component_parameters = autoencoder.component_parameters
+        self._parameter_distributions = autoencoder.parameter_distributions
+        self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
+
+        self._N = N
+        self._M = M
 
         self._communication_system = Composition([
             autoencoder.transmitter,
@@ -120,13 +121,12 @@ class TransmissionLayer(keras.layers.Layer):
         self._system_with_randomization = RandomizeParameters(
             self._communication_system,
             shape=[1],
-            distributions=parameter_distributions
+            distributions=self._parameter_distributions,
+            rng=self.rng
         )
 
-        self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
-
-        self._N = N
-        self._M = M
+    def _set_channel(self, channel: Component) -> None:
+        self._channel.substitute = channel
 
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
         batch_size = tf.shape(inputs)[0]
@@ -152,11 +152,9 @@ class TransmissionLayer(keras.layers.Layer):
             self._system_with_randomization(
                 inputs,
                 randomize_parameters__shape=tf.expand_dims(batch_size, 0),
-                batch_size=1,
-                parameter_dims=batch_size,
                 select_symbol__index=symbol_index,
                 select_symbol__size=sample_count,
-                **self.parameters
+                **self._component_parameters
             ),
             [batch_size, 2, sample_count]
         )
@@ -165,7 +163,7 @@ class TransmissionLayer(keras.layers.Layer):
         return {}
 
 
-class IQAutoencoder(keras.models.Sequential):
+class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
     """
         An autoencoder model with an IQ modulator.
 
@@ -173,6 +171,7 @@ class IQAutoencoder(keras.models.Sequential):
         :ivar n: `int`, number of samples per symbol produced by the transmitter
         :ivar N: `int`, number of adjacent symbols transmitted during training (must be odd)
         :ivar sampling_rate: `float`, sampling rate of the system in samples/second
+        :ivar bits_per_symbol: `int`, number of bits a single message (symbol) carries
 
         :ivar encoder: `Component`, component that encodes a bit sequence into a tensor
         :ivar encoder_network: `Component`, transmitter layers of the neural network
@@ -187,27 +186,19 @@ class IQAutoencoder(keras.models.Sequential):
     n: int
     N: int
 
-    sampling_rate: float
-
     encoder_network: Component
     decoder_network: Component
-
-    encoder: Component
-    decoder: Component
-    transmitter: Component
-    channel: Component
-    receiver: Component
 
     def __init__(
         self,
         M: int,
         n: int,
         N: int,
-        transmission_layer_parameters: dict[str, Any],
-        parameter_distributions: Mapping[str, Mapping[str, Any]],
         name: Optional[str] = None
     ) -> None:
-        self._bits_per_symbol = int(math.log2(M))
+        keras.Sequential.__init__(self, name=name)
+
+        self.bits_per_symbol = int(math.log2(M))
         self.sampling_rate = 336e9
 
         #: Size of the input one-hot vector
@@ -225,7 +216,8 @@ class IQAutoencoder(keras.models.Sequential):
         if n % 2 != 0:
             raise ValueError("n must be even")
 
-        super().__init__(name=name)
+        self.component_parameters = {}
+        self.parameter_distributions = {}
 
         self._tx1_layer = keras.layers.Dense(2 * M, activation="relu", name="tx1")
         self._tx2_layer = keras.layers.Dense(2 * M, activation="relu", name="tx2")
@@ -239,26 +231,13 @@ class IQAutoencoder(keras.models.Sequential):
         self.add(self._tx_reshape_layer)
 
         bandwidth = 32e9 # Hz
-        central_frequency = 193.414e12
 
         lpf = MapComponents(
             BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth]),
             name="lpf"
         )
 
-        awgn = OpticalAWGN(relative_db=[-30.0])
-        self.channel = Composition([
-            OpticalFiber(
-                length=[40.0],
-                attenuation=[0.22],
-                chromatic_dispersion=[17.0],
-                eff_non_linear_coeff=[0.0],
-                step_count=1,
-                central_frequency=central_frequency
-            ),
-            awgn
-        ])
-
+        self.channel = Identity()
         self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
         self._local_oscillator = Substitute(Laser(power=dbm_to_w([-6.0]), name="local_oscillator"))
 
@@ -304,12 +283,7 @@ class IQAutoencoder(keras.models.Sequential):
         self.encoder = Lambda(self.encode_input)
         self.decoder = Lambda(self.decode_signal)
 
-        self._transmission_layer = TransmissionLayer(
-            autoencoder=self,
-            parameters=transmission_layer_parameters,
-            parameter_distributions=parameter_distributions,
-            name="transmission"
-        )
+        self._transmission_layer = TransmissionLayer(autoencoder=self, name="transmission")
 
         self.add(self._transmission_layer)
 
@@ -328,8 +302,8 @@ class IQAutoencoder(keras.models.Sequential):
 
         inputs = tf.one_hot(
             tf.reshape(
-                bits_to_indices(bitseq, tf.constant(self._bits_per_symbol)),
-                [bitseq_size // self._bits_per_symbol, 1]
+                bits_to_indices(bitseq, tf.constant(self.bits_per_symbol)),
+                [bitseq_size // self.bits_per_symbol, 1]
             ),
             self.M
         )
@@ -337,7 +311,7 @@ class IQAutoencoder(keras.models.Sequential):
 
         bits_per_batch = tf.shape(bitseq)[1]
         batch_size = tf.shape(bitseq)[0]
-        symbols_per_batch = bits_per_batch // self._bits_per_symbol
+        symbols_per_batch = bits_per_batch // self.bits_per_symbol
 
         i_seq = x[:, 0, :]
         q_seq = x[:, 1, :]
@@ -365,30 +339,42 @@ class IQAutoencoder(keras.models.Sequential):
         x = self.decoder_network(samples)  # shape=[batch_size, M]
         bitseq = indices_to_bits(
             tf.cast(tf.argmax(x, axis=1), tf.int32),
-            tf.constant(self._bits_per_symbol)
+            tf.constant(self.bits_per_symbol)
         )
 
         return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
 
-    def substitute_laser(self, batch_size: int) -> None:
+    def _precompute_lasers(self) -> None:
         """
             Replace laser by a function that returns a constant precomputed signal.
             This can speed up training a bit, but requires the assumption that
             laser signal doesn't change inbetween steps.
         """
 
-        def laser_substitute(laser: Substitute, **parameters) -> Callable:
-            parameters["batch_size"] = tf.constant(batch_size)
+        def laser_substitute(laser: Substitute) -> Callable:
             timing = Timing(sampling_rate=self.sampling_rate, sample_count=self.n // 2 * self.N)
-            signal = laser.component(timing, **parameters)
+            signal = laser.component(timing, **self.component_parameters)
 
             return lambda *args, **kwargs: signal
 
-        self._laser.substitute = laser_substitute(
-            self._laser,
-            **self._transmission_layer.parameters
-        )
-        self._local_oscillator.substitute = laser_substitute(
-            self._local_oscillator,
-            **self._transmission_layer.parameters
-        )
+        self._laser.substitute = laser_substitute(self._laser)
+        self._local_oscillator.substitute = laser_substitute(self._local_oscillator)
+
+    def setup(
+        self,
+        channel: Component,
+        component_parameters: dict[str, Any]
+    ) -> None:
+        super().setup(channel, component_parameters)
+        self._precompute_lasers()
+        self._transmission_layer._set_channel(self.channel)
+
+    def model_setup(
+        self,
+        channel: Component,
+        component_parameters: dict[str, Any],
+        parameter_distributions: dict[str, Any]
+    ) -> None:
+        super().model_setup(channel, component_parameters, parameter_distributions)
+        self._precompute_lasers()
+        self._transmission_layer._set_channel(self.channel)
