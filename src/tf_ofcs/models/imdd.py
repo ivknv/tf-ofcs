@@ -47,9 +47,6 @@ def _slice_signal(signal: ElectricalSignal, start: int, end: int) -> ElectricalS
 
 
 class TransmissionLayer(keras.layers.Layer):
-    #: Arbitrary additional parameters for the system
-    parameters: dict[str, Any]
-
     def __init__(
         self,
         autoencoder: "IMDDAutoencoder",
@@ -109,11 +106,14 @@ class TransmissionLayer(keras.layers.Layer):
                 adjacent_inputs[:, central_index:]
             ], -1)
 
+        parameters = dict(self._component_parameters)
+        parameters["batch_size"] = batch_size
+
         return tf.reshape(
             self._system_with_randomization(
                 inputs,
                 randomize_parameters__shape=tf.expand_dims(batch_size, 0),
-                **self._component_parameters
+                **parameters
             ),
             (batch_size, sample_count)
         )
@@ -292,7 +292,6 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
         component_parameters: dict[str, Any]
     ) -> None:
         super().setup(channel, component_parameters)
-        self._precompute_laser()
         self._transmission_layer._set_channel(self.channel)
 
     def model_setup(

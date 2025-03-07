@@ -112,7 +112,7 @@ class TransmissionLayer(keras.layers.Layer):
 
         self._communication_system = Composition([
             autoencoder.transmitter,
-            autoencoder.channel,
+            self._channel,
             autoencoder.receiver,
             MapComponents(_SelectSymbol(name="select_symbol")),
             Lambda(_from_iq_signal)
@@ -148,13 +148,16 @@ class TransmissionLayer(keras.layers.Layer):
                 adjacent_inputs[:, :, symbol_index * sample_count:]
             ], -1)
 
+        parameters = dict(self._component_parameters)
+        parameters["batch_size"] = batch_size
+
         return tf.reshape(
             self._system_with_randomization(
                 inputs,
                 randomize_parameters__shape=tf.expand_dims(batch_size, 0),
                 select_symbol__index=symbol_index,
                 select_symbol__size=sample_count,
-                **self._component_parameters
+                **parameters
             ),
             [batch_size, 2, sample_count]
         )
@@ -366,7 +369,6 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
         component_parameters: dict[str, Any]
     ) -> None:
         super().setup(channel, component_parameters)
-        self._precompute_lasers()
         self._transmission_layer._set_channel(self.channel)
 
     def model_setup(
