@@ -64,8 +64,18 @@ class BERTester(Component):
 
         kwargs["batch_size"] = batch_size
 
-        correct_count = tf.constant(0.0)
-        total_bits = tf.constant(0.0, dtype=tf.float32)
+        return self._loop(sequence_length, n_iterations=n_iterations, **kwargs)
+
+    @tf.function
+    def _loop(
+        self,
+        sequence_length: tf.Tensor,
+        /,
+        n_iterations: tf.Tensor,
+        batch_size: tf.Tensor,
+        **kwargs
+    ) -> tf.Tensor:
+        correct_count = tf.constant(0.0, dtype=tf.float32)
 
         for _ in tf.range(n_iterations):
             inputs = self.rng.uniform(
@@ -75,15 +85,17 @@ class BERTester(Component):
                 dtype=tf.int32
             )
 
-            expected_output = inputs
-
-            output = self.system(inputs, tracing_level=tracing_level + 1, **kwargs)
+            output = self.system(inputs, **kwargs)
 
             correct_count += tf.cast(
-                tf.math.count_nonzero(tf.math.equal(expected_output, output)),
+                tf.math.count_nonzero(tf.math.equal(inputs, output)),
                 tf.float32
             )
 
-            total_bits += tf.cast(tf.size(output), tf.float32)
+        total_bits = (
+            tf.cast(n_iterations, tf.float32) *
+            tf.cast(batch_size, tf.float32) *
+            tf.cast(sequence_length, tf.float32)
+        )
 
-        return (total_bits - correct_count) / total_bits
+        return 1.0 - correct_count / total_bits

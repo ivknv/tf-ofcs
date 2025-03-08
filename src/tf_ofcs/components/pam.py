@@ -23,13 +23,7 @@ from ..utils import (
 )
 from .component import Component
 
-from ..datatypes import (
-    bit_sequence_spec,
-    Timing,
-    ElectricalSignal,
-    electrical_signal_spec,
-    TensorCompatible
-)
+from ..datatypes import Timing, ElectricalSignal, TensorCompatible
 
 __all__ = [
     "PAMSymbolEncoder",
@@ -76,12 +70,6 @@ class PAMSymbolEncoder(Component):
 
         self.local_parameters = ["mapping", "bits_per_symbol", "adjust_for_mzm"]
 
-    @tf.function(input_signature=(
-        bit_sequence_spec,
-        tf.TensorSpec(shape=[None], dtype=tf.float32, name="mapping"),
-        tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
-        tf.TensorSpec(shape=[], dtype=tf.bool, name="adjust_for_mzm")
-    ))
     def implementation(
         self,
         bitseq: tf.Tensor,
@@ -254,11 +242,6 @@ class PAMDecoder(Component):
 
         self.local_parameters = ["data_rate"]
 
-    @tf.function(input_signature=(
-        electrical_signal_spec,
-        tf.TensorSpec(shape=[], dtype=tf.float32, name="data_rate"),
-        tf.TensorSpec(shape=[], dtype=tf.int32, name="bits_per_symbol"),
-    ))
     def _extract_pam_symbols(
         self,
         signal: ElectricalSignal,
