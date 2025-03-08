@@ -17,6 +17,7 @@
 import argparse
 import json
 import os
+import time
 import typing
 from typing import Any, Optional
 import datetime
@@ -335,13 +336,19 @@ class BEROverParameterCommand(Command):
 
             ber_values = []
 
+            last_timestamp = time.time()
+
             for parameter_value in parameter_values:
                 system_parameters[parameter_name] = tf.expand_dims(parameter_value, 0)
 
                 system.setup(channel, system_parameters)
                 ber = ber_tester(bitseq_length, **system_parameters)
 
-                print(f"BER={ber}, {parameter_name}={parameter_value}")
+                current_timestamp = time.time()
+                step_duration = current_timestamp - last_timestamp
+                last_timestamp = current_timestamp
+
+                print(f"BER={ber}, {parameter_name}={parameter_value}, took {step_duration:.3} s")
                 ber_values.append(ber)
 
             if ns.output is not None:
