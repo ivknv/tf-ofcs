@@ -45,7 +45,7 @@ class Upsample(Component):
     ) -> ElectricalSignal | OpticalSignal:
         Signal = signal.__class__
 
-        signal_samples = tf.repeat(signal.samples, factor, axis=-1)
+        signal_samples = tf.repeat(signal.samples, factor, axis=1)
 
         return Signal(
             timing=Timing(
