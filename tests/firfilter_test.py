@@ -10,12 +10,9 @@ def test_firfilter() -> None:
     timing = Timing(sample_count=1000, sampling_rate=1e9)
 
     # The order is reversed because the implementation actually uses cross-correlation
-    delay_kernels = [
-        [1.0, 0.0, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0, 0.0]
-    ]
+    delay_kernel = [1.0, 0.0, 0.0, 0.0, 0.0]
 
-    fir_filter = FIRFilter(delay_kernels)
+    fir_filter = FIRFilter(delay_kernel)
 
     input_signal = ElectricalSignal(
         samples=tf.reshape(
@@ -30,16 +27,8 @@ def test_firfilter() -> None:
     assert tf.math.reduce_all(tf.shape(output_signal.samples) == [2, 1004])  # type: ignore[operator]
 
     assert tf.math.reduce_all(
-        output_signal.samples[0][:4] == [0.0, 0.0, 0.0, 0.0]
+        output_signal.samples[:, :4] == [0.0, 0.0, 0.0, 0.0]
     )  # type: ignore[operator]
     assert tf.math.reduce_all(
-        output_signal.samples[0][4:] == input_signal.samples[0]
-    )  # type: ignore[operator]
-
-    assert tf.math.reduce_all(
-        output_signal.samples[1][:4] == [0.0, 0.0, 0.0, input_signal.samples[1, 0]]
-    )  # type: ignore[operator]
-
-    assert tf.math.reduce_all(
-        output_signal.samples[1][4:] == tf.concat([input_signal.samples[1][1:], [0.0]], 0)
+        output_signal.samples[:, 4:] == input_signal.samples
     )  # type: ignore[operator]

@@ -98,7 +98,7 @@ class FIRFilter(Component):
     """
 
     #: Filter coefficients
-    taps: tf.Variable  # shape=[batch_size, None]; dtype=tf.float32 or tf.complex64
+    taps: tf.Variable  # shape=[None]; dtype=tf.float32 or tf.complex64
 
     def __init__(
         self,
@@ -117,26 +117,22 @@ class FIRFilter(Component):
         taps: tf.Tensor
     ) -> ElectricalSignal:
         n_taps = tf.shape(taps)[-1]
-        batch_size = tf.shape(signal.samples)[0]
 
         # Pad and transpose samples for tf.nn.conv1d()
         samples = tf.expand_dims(
-            tf.pad(tf.transpose(signal.samples), [[n_taps - 1, n_taps - 1], [0, 0]]),
-            0
+            tf.pad(signal.samples, [[0, 0], [n_taps - 1, n_taps - 1]]),
+            -1
         )  # shape=[1, sample_count + 2 * (n_taps - 1), batch_size]
 
-        # Transpose and reshape filter taps
-        taps = tf.expand_dims(tf.transpose(taps), 1) # shape=[n_taps, 1, batch_size]
-        taps = tf.cond(tf.shape(taps)[-1] == 1, lambda: tf.tile(taps, [1, 1, batch_size]), lambda: taps)
+        # Reshape filter taps
+        taps = tf.reshape(taps, [n_taps, 1, 1])  # shape=[n_taps, 1, 1]
 
-        filtered_samples = tf.transpose(
-            tf.nn.conv1d(
-                samples,
-                filters=taps,
-                stride=1,
-                padding="VALID"
-            )  # shape=[1, sample_count + n_taps, batch_size]
-        )[:, :, 0]  # shape=[batch_size, sample_count + n_taps - 1]
+        filtered_samples = tf.nn.conv1d(
+            samples,
+            filters=taps,
+            stride=1,
+            padding="VALID"
+        )[:, :, 0]  # shape=[batch_size, sample_count + n_taps, 1]
 
         return ElectricalSignal(
             samples=filtered_samples,
