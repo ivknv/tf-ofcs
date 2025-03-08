@@ -178,10 +178,11 @@ class PAMSystem(components.Composition, CommunicationSystem):
 
         return loss_function()
 
-    def setup(self, channel: components.Component, component_parameters: dict[str, Any]) -> None:
+    def set_channel(self, channel: components.Component) -> None:
         self.channel.substitute = channel  # type: ignore[attr-defined]
-        self.component_parameters.clear()
-        self.component_parameters.update(component_parameters)
+
+    def setup(self, channel: components.Component, component_parameters: dict[str, Any]) -> None:
+        super().setup(channel, component_parameters)
 
         parameters = dict(self.component_parameters)
         parameters["batch_size"] = tf.constant(1)

@@ -363,13 +363,8 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
         self._laser.substitute = laser_substitute(self._laser)
         self._local_oscillator.substitute = laser_substitute(self._local_oscillator)
 
-    def setup(
-        self,
-        channel: Component,
-        component_parameters: dict[str, Any]
-    ) -> None:
-        super().setup(channel, component_parameters)
-        self._transmission_layer._set_channel(self.channel)
+    def set_channel(self, channel: Component) -> None:
+        self._transmission_layer._set_channel(channel)
 
     def model_setup(
         self,
@@ -379,4 +374,3 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
     ) -> None:
         super().model_setup(channel, component_parameters, parameter_distributions)
         self._precompute_lasers()
-        self._transmission_layer._set_channel(self.channel)

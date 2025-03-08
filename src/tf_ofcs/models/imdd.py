@@ -286,13 +286,8 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
 
         self._laser.substitute = laser_substitute()
 
-    def setup(
-        self,
-        channel: Component,
-        component_parameters: dict[str, Any]
-    ) -> None:
-        super().setup(channel, component_parameters)
-        self._transmission_layer._set_channel(self.channel)
+    def set_channel(self, channel: Component) -> None:
+        self._transmission_layer._set_channel(channel)
 
     def model_setup(
         self,
@@ -302,4 +297,3 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
     ) -> None:
         super().model_setup(channel, component_parameters, parameter_distributions)
         self._precompute_laser()
-        self._transmission_layer._set_channel(self.channel)

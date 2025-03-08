@@ -57,9 +57,18 @@ class CommunicationSystem:
     component_parameters: dict[str, Any]
     parameter_distributions: dict[str, Any]
 
+    def set_channel(self, channel: "Component") -> None:
+        """
+            Sets the channel.
+
+            :param channel: `Component`, communication channel that will be used from now on
+        """
+
+        raise NotImplementedError
+
     def setup(self, channel: "Component", component_parameters: dict[str, Any]) -> None:
         """
-            Sets the channel and component parameters,
+            Sets the channel (calls `set_channel()`) and component parameters,
             initializes the system for the provided channel and parameters.
             This could include channel estimation.
             This method is not meant to be used during training.
@@ -68,7 +77,7 @@ class CommunicationSystem:
             :param component_parameters: `dict[str, Any]`, component parameters
         """
 
-        self.channel = channel
+        self.set_channel(channel)
         self.component_parameters.clear()
         self.component_parameters.update(component_parameters)
 
@@ -81,7 +90,8 @@ class CommunicationSystem:
         """
             This method is called before model is compiled and possibly trained but after
             all the relevant parameters are known. This could used to set the
-            channel, pre-compute some constants or initialize some variables.
+            channel (by calling `set_channel()`), pre-compute some constants or
+            initialize some variables.
 
             This method is relevant only for trainable models.
 
@@ -91,7 +101,7 @@ class CommunicationSystem:
                                             randomization to be used during training
         """
 
-        self.channel = channel
+        self.set_channel(channel)
         self.component_parameters.clear()
         self.component_parameters.update(component_parameters)
 
