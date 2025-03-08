@@ -69,6 +69,7 @@ class CommunicationSystem:
         """
 
         self.channel = channel
+        self.component_parameters.clear()
         self.component_parameters.update(component_parameters)
 
     def model_setup(
@@ -91,5 +92,8 @@ class CommunicationSystem:
         """
 
         self.channel = channel
+        self.component_parameters.clear()
         self.component_parameters.update(component_parameters)
+
+        self.parameter_distributions.clear()
         self.parameter_distributions.update(parameter_distributions)

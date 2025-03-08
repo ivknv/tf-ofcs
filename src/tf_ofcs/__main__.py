@@ -29,6 +29,7 @@ import keras  # type: ignore[import-untyped] # noqa: E402
 import tensorflow as tf # noqa: E402
 
 from .models import IMDDAutoencoder, IQAutoencoder  # noqa: E402
+from .reference_systems import PAMSystem  # noqa: E402
 from . import components  # noqa: E402
 from .profile import Profile  # noqa: E402
 from .communication_system import CommunicationSystem  # noqa: E402
@@ -60,7 +61,8 @@ def _load_profile(path: str) -> Profile:
 def _create_system(system_profile: Profile.System) -> CommunicationSystem:
     mapping = {
         "IMDDAutoencoder": IMDDAutoencoder,
-        "IQAutoencoder": IQAutoencoder
+        "IQAutoencoder": IQAutoencoder,
+        "PAMSystem": PAMSystem
     }
 
     system = typing.cast(
@@ -335,6 +337,7 @@ class BEROverParameterCommand(Command):
 
             for parameter_value in parameter_values:
                 system_parameters[parameter_name] = tf.expand_dims(parameter_value, 0)
+
                 system.setup(channel, system_parameters)
                 ber = ber_tester(bitseq_length, **system_parameters)
 
