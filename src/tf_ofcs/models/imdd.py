@@ -26,7 +26,7 @@ from ..utils import dbm_to_w
 
 from ..components import (
     Component, Composition, MachZehnderModulator, Laser, Photodiode,
-    BandPassFilter, ArbitraryWaveformGenerator, Lambda, RandomizeParameters,
+    BandPassFilter, SignalFromTensor, Lambda, RandomizeParameters,
     Gain, ExtractSamples, Fork, Identity, MapComponents, Substitute
 )
 
@@ -191,7 +191,7 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
         self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
 
         self.transmitter = Composition([
-            ArbitraryWaveformGenerator(sampling_rate=self.sampling_rate),
+            SignalFromTensor(sampling_rate=self.sampling_rate),
             lpf,
             Fork(shape=[2]),
             MapComponents([self._laser, Identity()]),

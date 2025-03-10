@@ -24,7 +24,7 @@ from .component import Component
 __all__ = [
     "Adder",
     "Subtractor",
-    "ArbitraryWaveformGenerator",
+    "SignalFromTensor",
     "Gain",
     "DigitalToAnalogConverter",
     "AnalogToDigitalConverter",
@@ -67,13 +67,11 @@ class Subtractor(Component):
         )
 
 
-class ArbitraryWaveformGenerator(Component):
+class SignalFromTensor(Component):
     """
-        Generates an arbitrary waveform.
-        Takes a tensor of samples as input and returns a `Signal`
-        with the given samples and sampling rate.
+        Constructs a `Signal` instance from a tensor with specified sampling rate.
 
-        :ivar sampling_rate: `shape=[], dtype=tf.float32`, sampling rate of the generated waveform in Hz
+        :ivar sampling_rate: `shape=[], dtype=tf.float32`, sampling rate of the `Signal`
     """
 
     #: Sampling rate in Hz

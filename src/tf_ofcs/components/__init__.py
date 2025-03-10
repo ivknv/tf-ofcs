@@ -38,7 +38,7 @@ from .utils import (
     RandomizeParameters, PadSignal, Loop, Substitute, SliceSignal
 )
 from .electrical_and_digital import (
-    Adder, Subtractor, ArbitraryWaveformGenerator,
+    Adder, Subtractor, SignalFromTensor,
     Gain, AnalogToDigitalConverter, DigitalToAnalogConverter,
     MZMPreDistortion, PhotodiodePreDistortion
 )
@@ -82,7 +82,7 @@ __all__ = [
     "Fork",
     "Adder",
     "Subtractor",
-    "ArbitraryWaveformGenerator",
+    "SignalFromTensor",
     "Gain",
     "AnalogToDigitalConverter",
     "DigitalToAnalogConverter",
