@@ -4,7 +4,7 @@ import tensorflow as tf
 
 from tf_ofcs import constants
 from tf_ofcs.components import Laser
-from tf_ofcs.datatypes import Timing, OpticalSignal
+from tf_ofcs.datatypes import Timing, Signal
 from tf_ofcs.utils import timing_to_samples
 
 import pytest
@@ -22,7 +22,7 @@ def test_laser(enable_phase_noise: bool) -> None:
 
     laser_output = laser(timing, batch_size=batch_size)
 
-    assert isinstance(laser_output, OpticalSignal)
+    assert isinstance(laser_output, Signal)
     assert tf.math.reduce_all(
         tf.shape(laser_output.samples) == [batch_size, timing.sample_count]
     )  # type: ignore[operator]
@@ -51,7 +51,7 @@ def test_laser_with_frequency_param() -> None:
 
     laser_output = laser(timing)
 
-    assert isinstance(laser_output, OpticalSignal)
+    assert isinstance(laser_output, Signal)
     assert tf.math.reduce_all(
         tf.shape(laser_output.samples) == [3, timing.sample_count]
     )  # type: ignore

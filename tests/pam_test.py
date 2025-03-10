@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 from tf_ofcs.components import PAMSymbolEncoder, PAMSymbolDecoder
-from tf_ofcs.datatypes import DigitalSignal, Timing
+from tf_ofcs.datatypes import Signal, Timing
 
 
 def test_pam_symbol_encoder() -> None:
@@ -16,7 +16,7 @@ def test_pam_symbol_encoder() -> None:
     ])
 
     pam2_symbols = pam2_encoder(pam_input)
-    expected_pam2_symbols = DigitalSignal(
+    expected_pam2_symbols = Signal(
         samples=tf.constant([
             [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0],
             [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0]
@@ -25,7 +25,7 @@ def test_pam_symbol_encoder() -> None:
     )
 
     pam4_symbols = pam4_encoder(pam_input)
-    expected_pam4_symbols = DigitalSignal(
+    expected_pam4_symbols = Signal(
         samples=tf.constant([
             [2.0, 1.0, 0.0, 1.0, 0.0, 3.0],
             [0.0, 0.0, 3.0, 1.0, 2.0, 2.0]
@@ -34,7 +34,7 @@ def test_pam_symbol_encoder() -> None:
     )
 
     pam8_symbols = pam8_encoder(pam_input)
-    expected_pam8_symbols = DigitalSignal(
+    expected_pam8_symbols = Signal(
         samples=tf.constant([
             [4.0, 4.0, 2.0, 3.0],
             [0.0, 3.0, 3.0, 2.0]
@@ -42,9 +42,9 @@ def test_pam_symbol_encoder() -> None:
         timing=Timing(sample_count=4, sampling_rate=1e3)
     )
 
-    assert isinstance(pam2_symbols, DigitalSignal)
-    assert isinstance(pam4_symbols, DigitalSignal)
-    assert isinstance(pam8_symbols, DigitalSignal)
+    assert isinstance(pam2_symbols, Signal)
+    assert isinstance(pam4_symbols, Signal)
+    assert isinstance(pam8_symbols, Signal)
 
     assert tf.math.reduce_all(
         tf.abs(pam2_symbols.samples - expected_pam2_symbols.samples) < 1e-9
@@ -67,18 +67,18 @@ def test_pam_symbol_decoder() -> None:
         [0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 0]
     ])
 
-    pam2_symbols = DigitalSignal(
+    pam2_symbols = Signal(
         samples=tf.cast(expected_bitseq, tf.float32),
         timing=Timing(sample_count=12, sampling_rate=1e3)
     )
-    pam4_symbols = DigitalSignal(
+    pam4_symbols = Signal(
         samples=tf.constant([
             [2.0, 1.0, 0.0, 1.0, 0.0, 3.0],
             [0.0, 0.0, 3.0, 1.0, 2.0, 2.0]
         ]) / 3.0,
         timing=Timing(sample_count=6, sampling_rate=1e3)
     )
-    pam8_symbols = DigitalSignal(
+    pam8_symbols = Signal(
         samples=tf.constant([
             [4.0, 4.0, 2.0, 3.0],
             [0.0, 3.0, 3.0, 2.0]

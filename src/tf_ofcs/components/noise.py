@@ -18,7 +18,7 @@ from typing import Optional
 import tensorflow as tf
 
 from ..utils import to_tensor
-from ..datatypes import ElectricalSignal, OpticalSignal, TensorCompatible
+from ..datatypes import Signal, TensorCompatible
 from .component import Component
 
 __all__ = ["ElectricalAWGN", "OpticalAWGN"]
@@ -63,11 +63,13 @@ class ElectricalAWGN(Component):
 
     def implementation(
         self,
-        input_signal: ElectricalSignal,
+        input_signal: Signal,
         /,
         absolute_db: tf.Tensor,
         relative_db: tf.Tensor
-    ) -> ElectricalSignal:
+    ) -> Signal:
+        assert input_signal.samples.dtype is tf.float32
+
         absolute_noise_amplitude = tf.constant(10.0) ** (absolute_db * 0.1 * 0.5)
         relative_noise_amplitude = tf.constant(10.0) ** (relative_db * 0.1 * 0.5)
 
@@ -90,7 +92,7 @@ class ElectricalAWGN(Component):
             dtype=tf.float32
         )
 
-        return ElectricalSignal(
+        return Signal(
             timing=input_signal.timing,
             samples=absolute_noise + input_signal.samples + tf.abs(input_signal.samples) * relative_noise
         )
@@ -135,11 +137,13 @@ class OpticalAWGN(Component):
 
     def implementation(
         self,
-        input_signal: OpticalSignal,
+        input_signal: Signal,
         /,
         absolute_dbm: tf.Tensor,
         relative_db: tf.Tensor
-    ) -> OpticalSignal:
+    ) -> Signal:
+        assert input_signal.samples.dtype is tf.complex64
+
         # * 0.5 to account for two noise components
         absolute_noise_amplitude = (0.5 * 1e-3) ** 0.5 * tf.constant(10.0) ** (absolute_dbm * 0.1 * 0.5)
         relative_noise_amplitude = 0.5 ** 0.5 * tf.constant(10.0) ** (relative_db * 0.1 * 0.5)
@@ -167,7 +171,7 @@ class OpticalAWGN(Component):
         absolute_noise = tf.complex(absolute_noise_components[0], absolute_noise_components[1])
         relative_noise = tf.complex(relative_noise_components[0], relative_noise_components[1])
 
-        return OpticalSignal(
+        return Signal(
             timing=input_signal.timing,
             samples=(
                 absolute_noise +

@@ -39,11 +39,10 @@ from .utils import (
 )
 from .electrical import (
     ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator,
-    Quantizer, ElectricalGain, AnalogToDigitalConverter, DigitalToAnalogConverter,
+    ElectricalGain, AnalogToDigitalConverter, DigitalToAnalogConverter,
     MZMPreDistortion, PhotodiodePreDistortion
 )
 from .component import Component
-from .optical_gain import OpticalGain
 from .channel_loss_estimator import ChannelLossEstimator
 from .gaussian_pulse_generator import GaussianPulseGenerator
 from .optical_amplifier import OpticalAmplifier
@@ -84,7 +83,6 @@ __all__ = [
     "ElectricalAdder",
     "ElectricalSubtractor",
     "ArbitraryWaveformGenerator",
-    "Quantizer",
     "ElectricalGain",
     "AnalogToDigitalConverter",
     "DigitalToAnalogConverter",
@@ -103,7 +101,6 @@ __all__ = [
     "Substitute",
     "SliceSignal",
     "Component",
-    "OpticalGain",
     "ChannelLossEstimator",
     "GaussianPulseGenerator",
     "OpticalMultiplexer",

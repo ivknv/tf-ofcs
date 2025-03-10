@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 
-from ...datatypes import ElectricalSignal, OpticalSignal
+from ...datatypes import Signal
 from ..component import Component
 
 __all__ = ["TileSignals"]
@@ -27,6 +27,8 @@ class TileSignals(Component):
     """
         Applies `tf.tile()` operation to the input signal, but only to the first
         dimension (`batch_size`).
+
+        :ivar multiples: `shape=[], dtype=tf.int32`, number of times to tile the signal
     """
 
     multiples: tf.Variable  # shape=[]; dtype=tf.int32
@@ -37,14 +39,7 @@ class TileSignals(Component):
         self.multiples = tf.Variable(tf.constant(multiples), name=f"{self.name}__multiples")
         self.local_parameters = ["multiples"]
 
-    def implementation(
-        self,
-        signal: ElectricalSignal | OpticalSignal,
-        /,
-        multiples: tf.Tensor
-    ) -> ElectricalSignal | OpticalSignal:
-        Signal = signal.__class__
-
+    def implementation(self, signal: Signal, /, multiples: tf.Tensor) -> Signal:
         return Signal(
             samples=tf.tile(signal.samples, [multiples, 1]),
             timing=signal.timing

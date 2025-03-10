@@ -20,9 +20,7 @@ import tensorflow as tf
 from ..utils import fftfreq, to_tensor
 from .component import Component
 
-from ..datatypes import (
-    DigitalSignal, ElectricalSignal, OpticalSignal, FrequencyResponseFunction, TensorCompatible, Timing
-)
+from ..datatypes import Signal, FrequencyResponseFunction, TensorCompatible, Timing
 
 __all__ = [
     "BandPassFilter",
@@ -55,10 +53,10 @@ class FFTFilter(Component):
 
         self.frequency_response_function = frequency_response_function
 
-    def call(self, signal: ElectricalSignal | OpticalSignal, /, **kwargs) -> ElectricalSignal | OpticalSignal:
-        Signal = signal.__class__
+    def call(self, signal: Signal, /, **kwargs) -> Signal:
+        assert signal.samples.dtype in (tf.float32, tf.complex64)
 
-        if isinstance(signal, ElectricalSignal):
+        if signal.samples.dtype is not tf.complex64:
             fft = tf.signal.fft(tf.complex(signal.samples, 0.0))
         else:
             fft = tf.signal.fft(signal.samples)
@@ -77,8 +75,8 @@ class FFTFilter(Component):
 
         filtered_samples = tf.signal.ifft(frequency_response * fft)
 
-        if isinstance(signal, ElectricalSignal):
-            filtered_samples = tf.cast(tf.math.real(filtered_samples), tf.float32)
+        if signal.samples.dtype is not filtered_samples.dtype:
+            filtered_samples = tf.cast(tf.math.real(filtered_samples), signal.samples.dtype)
 
         return Signal(timing=signal.timing, samples=filtered_samples)
 
@@ -110,12 +108,9 @@ class FIRFilter(Component):
         self.taps = tf.Variable(to_tensor(taps), name=f"{self.name}__taps")
         self.local_parameters = ["taps"]
 
-    def implementation(
-        self,
-        signal: ElectricalSignal | DigitalSignal,
-        /,
-        taps: tf.Tensor
-    ) -> ElectricalSignal | DigitalSignal:
+    def implementation(self, signal: Signal, /, taps: tf.Tensor) -> Signal:
+        assert signal.samples.dtype is tf.float32
+
         n_taps = tf.shape(taps)[-1]
 
         # Pad and transpose samples for tf.nn.conv1d()
@@ -134,7 +129,7 @@ class FIRFilter(Component):
             padding="VALID"
         )[:, :, 0]  # shape=[batch_size, sample_count + n_taps, 1]
 
-        return signal.__class__(
+        return Signal(
             samples=filtered_samples,
             timing=Timing(
                 sample_count=tf.shape(filtered_samples)[-1],
@@ -172,14 +167,14 @@ class BandPassFilter(Component):
 
     def implementation(
         self,
-        signal: ElectricalSignal | DigitalSignal | OpticalSignal,
+        signal: Signal,
         /,
         min_frequency: tf.Tensor,
         max_frequency: tf.Tensor
-    ) -> ElectricalSignal | DigitalSignal | OpticalSignal:
-        SignalClass = signal.__class__
+    ) -> Signal:
+        assert signal.samples.dtype in (tf.float32, tf.complex64)
 
-        if isinstance(signal, (ElectricalSignal, DigitalSignal)):
+        if signal.samples.dtype is not tf.complex64:
             fft = tf.signal.fft(tf.complex(signal.samples, 0.0))
         else:
             fft = tf.signal.fft(signal.samples)
@@ -193,10 +188,10 @@ class BandPassFilter(Component):
 
         filtered_samples = tf.signal.ifft(filtered_fft)
 
-        if isinstance(signal, (ElectricalSignal, DigitalSignal)):
+        if signal.samples.dtype is not filtered_samples.dtype:
             filtered_samples = tf.math.real(filtered_samples)
 
-        return SignalClass(timing=signal.timing, samples=filtered_samples)
+        return Signal(timing=signal.timing, samples=filtered_samples)
 
 
 class BrickwallFrequencyResponse(Component):

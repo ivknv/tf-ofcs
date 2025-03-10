@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 
-from ...datatypes import ElectricalSignal, OpticalSignal
+from ...datatypes import Signal
 from ..component import Component
 
 __all__ = ["SplitSignals"]
@@ -28,6 +28,7 @@ class SplitSignals(Component):
         Splits signal with shape (batch_size, sample_count)
         into `n` tuples of shape (batch_size // n, sample_count).
 
+        :ivar n: `int`, split factor
     """
 
     n: int
@@ -37,14 +38,7 @@ class SplitSignals(Component):
 
         self.n = n
 
-    def call(
-        self,
-        signal: ElectricalSignal | OpticalSignal,
-        /,
-        **kwargs
-    ) -> tuple[ElectricalSignal, ...] | tuple[OpticalSignal, ...]:
-        Signal = signal.__class__
-
+    def call(self, signal: Signal, /, **kwargs) -> tuple[Signal, ...]:
         batch_size = tf.shape(signal.samples)[0] // self.n
 
         return tuple(

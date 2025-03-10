@@ -2,13 +2,13 @@
 
 import tensorflow as tf
 from tf_ofcs.components import ElectricalGain
-from tf_ofcs.datatypes import ElectricalSignal, Timing
+from tf_ofcs.datatypes import Signal, Timing
 
 
 def test_electrical_gain() -> None:
     gain = ElectricalGain(gain=[0.0, 1.0, 0.5, 2.0])
 
-    input_signal = ElectricalSignal(
+    input_signal = Signal(
         timing=Timing(sampling_rate=1.0, sample_count=100),
         samples=tf.tile(
             tf.reshape(tf.math.cos(tf.range(100, dtype=tf.float32)), [1, 100]),
@@ -18,7 +18,7 @@ def test_electrical_gain() -> None:
 
     output_signal = gain(input_signal)
 
-    assert isinstance(output_signal, ElectricalSignal)
+    assert isinstance(output_signal, Signal)
     assert tf.math.reduce_all(tf.shape(output_signal.samples) == tf.shape(input_signal.samples))  # type: ignore
 
     assert tf.math.reduce_all(

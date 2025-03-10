@@ -2,11 +2,11 @@
 
 import tensorflow as tf
 from tf_ofcs.components import TileSignals
-from tf_ofcs.datatypes import ElectricalSignal, Timing
+from tf_ofcs.datatypes import Signal, Timing
 
 
 def test_tile_signals() -> None:
-    input_signal = ElectricalSignal(
+    input_signal = Signal(
         timing=Timing(sampling_rate=1.0, sample_count=8),
         samples=tf.cast(
             tf.constant([
@@ -26,7 +26,7 @@ def test_tile_signals() -> None:
 
     expected_samples = tf.tile(input_signal.samples, [3, 1])
 
-    assert isinstance(output_signal, ElectricalSignal)
+    assert isinstance(output_signal, Signal)
 
     assert tf.math.reduce_all(tf.shape(output_signal.samples) == (18, 8))  # type: ignore[operator]
 

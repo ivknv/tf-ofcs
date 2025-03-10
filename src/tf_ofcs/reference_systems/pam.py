@@ -17,7 +17,7 @@
 import tensorflow as tf
 
 from .. import components
-from ..datatypes import ElectricalSignal, TensorCompatible
+from ..datatypes import Signal, TensorCompatible
 from ..communication_system import CommunicationSystem
 from ..utils import dbm_to_w, symbol_mapping_to_gray, pam_constellation
 
@@ -167,8 +167,8 @@ class PAMSystem(components.Composition, CommunicationSystem):
 
     def compute_filter_loss(
         self,
-        received_seq: ElectricalSignal,
-        expected_seq: ElectricalSignal,
+        received_seq: Signal,
+        expected_seq: Signal,
     ) -> tf.Tensor:
         received_seq = self.slice_signal(self.rx_filter(received_seq))
         return tf.math.reduce_mean(tf.square(received_seq.samples - expected_seq.samples))

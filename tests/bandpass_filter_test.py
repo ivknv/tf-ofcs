@@ -5,7 +5,7 @@ import tensorflow as tf
 import numpy as np
 
 from tf_ofcs.components import BandPassFilter
-from tf_ofcs.datatypes import ElectricalSignal, Timing
+from tf_ofcs.datatypes import Signal, Timing
 from tf_ofcs.utils import timing_to_samples
 
 
@@ -15,7 +15,7 @@ def test_bandpass_filter() -> None:
 
     time = timing_to_samples(timing)
 
-    input_signal = ElectricalSignal(
+    input_signal = Signal(
         timing=timing,
         samples=[
             tf.math.cos(2 * math.pi * 0.10 * time) +
@@ -27,7 +27,7 @@ def test_bandpass_filter() -> None:
 
     filtered_signal = bandpass_filter(input_signal)
 
-    assert isinstance(filtered_signal, ElectricalSignal)
+    assert isinstance(filtered_signal, Signal)
     assert tf.math.reduce_all(tf.shape(filtered_signal.samples) == [2, 400])  # type: ignore
 
     fft = tf.signal.fft(tf.cast(filtered_signal.samples, tf.complex64))

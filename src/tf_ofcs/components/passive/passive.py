@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 
-from ...datatypes import OpticalSignal, TensorCompatible
+from ...datatypes import Signal, TensorCompatible
 from ... import constants
 from ...utils import fftfreq, to_tensor
 from ..component import Component
@@ -51,14 +51,16 @@ class OpticalPhaseShifter(Component):
 
     def implementation(
         self,
-        input_signal: OpticalSignal,
+        input_signal: Signal,
         /,
         phase_shift: tf.Tensor
-    ) -> OpticalSignal:
+    ) -> Signal:
+        assert input_signal.samples.dtype is tf.complex64
+
         phase_shift = tf.expand_dims(phase_shift, -1)
         shifted_samples = input_signal.samples * tf.math.exp(tf.complex(0.0, phase_shift))
 
-        return OpticalSignal(
+        return Signal(
             timing=input_signal.timing,
             samples=shifted_samples
         )
@@ -150,7 +152,7 @@ class OpticalFiber(Component):
 
     def implementation(
         self,
-        signal: OpticalSignal,
+        signal: Signal,
         /,
         attenuation: tf.Tensor,
         chromatic_dispersion: tf.Tensor,
@@ -158,7 +160,9 @@ class OpticalFiber(Component):
         length: tf.Tensor,
         central_frequency: tf.Tensor,
         step_count: tf.Tensor
-    ) -> OpticalSignal:
+    ) -> Signal:
+        assert signal.samples.dtype is tf.complex64
+
         # shape=[None, 1]
         attenuation = tf.expand_dims(attenuation, -1)
 
@@ -225,24 +229,25 @@ class OpticalFiber(Component):
                 tf.math.exp(tf.complex(0.0, phase_shifts_per_km * length))
             )
 
-        return OpticalSignal(timing=signal.timing, samples=tf.signal.ifft(fft))
+        return Signal(timing=signal.timing, samples=tf.signal.ifft(fft))
 
 
 class OpticalCoupler1x2(Component):
     """
         Splits an optical signal into two equal parts.
-        Returns a tuple containing the two `OpticalSignal` instances.
+        Returns a tuple containing the two `Signal` instances.
     """
 
-    def implementation(self, input_signal: OpticalSignal, /) -> tuple[OpticalSignal, OpticalSignal]:
+    def implementation(self, input_signal: Signal, /) -> tuple[Signal, Signal]:
+        assert input_signal.samples.dtype is tf.complex64
         split_samples = input_signal.samples * 0.5 ** 0.5
 
         return (
-            OpticalSignal(
+            Signal(
                 timing=input_signal.timing,
                 samples=split_samples
             ),
-            OpticalSignal(
+            Signal(
                 timing=input_signal.timing,
                 samples=split_samples
             )
@@ -252,7 +257,7 @@ class OpticalCoupler1x2(Component):
 class OpticalCoupler2x2(Component):
     """
         Mixes two optical signals.
-        Takes and returns `tuple[OpticalSignal, OpticalSignal]`.
+        Takes and returns `tuple[Signal, Signal]`.
 
         :ivar flip: `shape=[], dtype=tf.bool`, if true, the second output will
                     contain the difference of the two input signals
@@ -269,10 +274,13 @@ class OpticalCoupler2x2(Component):
 
     def implementation(
         self,
-        input_signals: tuple[OpticalSignal, OpticalSignal],
+        input_signals: tuple[Signal, Signal],
         /,
         flip: tf.Tensor
-    ) -> tuple[OpticalSignal, OpticalSignal]:
+    ) -> tuple[Signal, Signal]:
+        assert input_signals[0].samples.dtype is tf.complex64
+        assert input_signals[1].samples.dtype is tf.complex64
+
         mixed_samples1 = (input_signals[0].samples + input_signals[1].samples) * 0.5 ** 0.5
 
         mixed_samples2 = tf.cond(
@@ -284,11 +292,11 @@ class OpticalCoupler2x2(Component):
         timing = input_signals[0].timing
 
         return (
-            OpticalSignal(
+            Signal(
                 timing=timing,
                 samples=mixed_samples1
             ),
-            OpticalSignal(
+            Signal(
                 timing=timing,
                 samples=mixed_samples2
             )
@@ -298,16 +306,18 @@ class OpticalCoupler2x2(Component):
 class OpticalCoupler2x1(Component):
     """
         Combines two optical signals into one.
-        Takes `tuple[OpticalSignal, OpticalSignal]` as input and returns a single
-        `OpticalSignal`.
+        Takes `tuple[Signal, Signal]` as input and returns a single `Signal`.
     """
 
-    def implementation(self, input_signals: tuple[OpticalSignal, OpticalSignal], /) -> OpticalSignal:
+    def implementation(self, input_signals: tuple[Signal, Signal], /) -> Signal:
+        assert input_signals[0].samples.dtype is tf.complex64
+        assert input_signals[1].samples.dtype is tf.complex64
+
         mixed_samples = (input_signals[0].samples + input_signals[1].samples) * 0.5 ** 0.5
 
         timing = input_signals[0].timing
 
-        return OpticalSignal(
+        return Signal(
             timing=timing,
             samples=mixed_samples
         )

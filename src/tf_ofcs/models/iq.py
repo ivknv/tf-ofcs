@@ -20,7 +20,7 @@ from typing import Any, Optional
 import tensorflow as tf
 import keras  # type: ignore[import-untyped]
 
-from ..datatypes import ElectricalSignal, OpticalSignal, Timing
+from ..datatypes import Signal, Timing
 from ..utils import bits_to_indices, indices_to_bits
 from ..utils import dbm_to_w
 
@@ -46,7 +46,7 @@ def _to_iq(samples: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
     return tf.reshape(samples[:, 0, :], shape), tf.reshape(samples[:, 1, :], shape)
 
 
-def _from_iq_signal(signals: tuple[ElectricalSignal, ElectricalSignal]) -> tf.Tensor:
+def _from_iq_signal(signals: tuple[Signal, Signal]) -> tf.Tensor:
     i, q = signals  # shape=[batch_size, symbols_per_batch * n]
     shape = tf.shape(i.samples)
     batch_size, sample_count = shape[0], shape[1]
@@ -74,7 +74,7 @@ class _SelectSymbol(Component):
 
     def implementation(
         self,
-        signal: ElectricalSignal | OpticalSignal,
+        signal: Signal | Signal,
         /,
         index: tf.Tensor,
         size: tf.Tensor,
@@ -178,10 +178,10 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
 
         :ivar encoder: `Component`, component that encodes a bit sequence into a tensor
         :ivar encoder_network: `Component`, transmitter layers of the neural network
-        :ivar transmitter: `Component`, component that converts `ElectricalSignal` into an `OpticalSignal`
+        :ivar transmitter: `Component`, component that converts a digital `Signal` into an optical `Signal`
         :ivar channel: `Component`, component that represents the channel
-        :ivar receiver: `Component`, component that converts an `OpticalSignal` into `ElectricalSignal`
-        :ivar decoder: `Component`, component that decodes the `ElectricalSignal` into a bit sequence
+        :ivar receiver: `Component`, component that converts an optical `Signal` into digital `Signal`
+        :ivar decoder: `Component`, component that decodes the digital `Signal` into a bit sequence
         :ivar decoder_network: `Component`, receiver layers of the neural network
     """
 
@@ -324,7 +324,7 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
 
         return tf.stack([i_seq, q_seq], axis=1)  # shape=[batch_size, 2, n * symbols_per_batch]
 
-    def decode_signal(self, input_signal: tuple[ElectricalSignal, ElectricalSignal]) -> tf.Tensor:
+    def decode_signal(self, input_signal: tuple[Signal, Signal]) -> tf.Tensor:
         samples = _from_iq_signal(input_signal)
 
         samples_per_batch = tf.shape(samples)[-1]

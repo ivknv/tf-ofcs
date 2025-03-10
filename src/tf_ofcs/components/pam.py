@@ -20,14 +20,14 @@ import tensorflow as tf
 from ..utils import indices_to_bits, bits_to_indices, pam_constellation, to_tensor
 from .component import Component
 
-from ..datatypes import DigitalSignal, Timing, TensorCompatible
+from ..datatypes import Signal, Timing, TensorCompatible
 
 __all__ = ["PAMSymbolEncoder", "PAMSymbolDecoder"]
 
 
 class PAMSymbolEncoder(Component):
     """
-        This component encodes a bit sequence into a sequence of PAM symbols.
+        This component encodes a bit sequence into a sequence of PAM symbols (`Signal`).
 
         :ivar bits_per_symbol: `shape=[], dtype=tf.int32`, number of bits per symbol
         :ivar mapping: `shape=[2 ** bits_per_symbol], dtype=tf.float32`, mapping of symbol indices to PAM symbols
@@ -65,14 +65,14 @@ class PAMSymbolEncoder(Component):
         mapping: tf.Tensor,
         bits_per_symbol: tf.Tensor,
         symbol_rate: tf.Tensor
-    ) -> DigitalSignal:
+    ) -> Signal:
         batch_size = tf.shape(bitseq)[0]
         bit_count = tf.shape(bitseq)[1]
 
         symbol_indices = bits_to_indices(bitseq, bits_per_symbol)
         symbol_count_per_batch = bit_count // bits_per_symbol
 
-        return DigitalSignal(
+        return Signal(
             samples=tf.reshape(
                 tf.gather(mapping, symbol_indices),
                 (batch_size, symbol_count_per_batch)
@@ -86,7 +86,7 @@ class PAMSymbolEncoder(Component):
 
 class PAMSymbolDecoder(Component):
     """
-        This component decodes a sequence of PAM symbols (`DigitalSignal`) into a bit sequence.
+        This component decodes a sequence of PAM symbols (`Signal`) into a bit sequence.
 
         :ivar bits_per_symbol: `shape=[], dtype=tf.int32`, number of bits per symbol
         :ivar mapping: `shape=[2 ** bits_per_symbol], dtype=tf.float32`, mapping symbol indices to PAM symbols
@@ -116,7 +116,7 @@ class PAMSymbolDecoder(Component):
 
     def implementation(
         self,
-        digital_signal: DigitalSignal,
+        digital_signal: Signal,
         /,
         bits_per_symbol: tf.Tensor,
         mapping: tf.Tensor

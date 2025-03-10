@@ -16,7 +16,7 @@
 
 import tensorflow as tf
 
-from ...datatypes import ElectricalSignal, OpticalSignal
+from ...datatypes import Signal
 from ..component import Component
 
 __all__ = ["MergeSignals"]
@@ -30,16 +30,14 @@ class MergeSignals(Component):
         Of course, the signals don't have to have the same `batch_size`, but
         they must be of the same type (e.g all optical or all electrical) and
         have the same `timing`.
-
     """
 
     def call(
         self,
-        signals: tuple[ElectricalSignal, ...] | tuple[OpticalSignal, ...],
+        signals: tuple[Signal, ...],
         /,
         **kwargs
-    ) -> ElectricalSignal | OpticalSignal:
-        Signal = signals[0].__class__
+    ) -> Signal:
         timing = signals[0].timing
 
         merged = tf.concat([signal.samples for signal in signals], 0)

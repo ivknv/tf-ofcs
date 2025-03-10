@@ -2,11 +2,11 @@
 
 import tensorflow as tf
 from tf_ofcs.components import SplitSignals
-from tf_ofcs.datatypes import ElectricalSignal, Timing
+from tf_ofcs.datatypes import Signal, Timing
 
 
 def test_split_signals() -> None:
-    input_signal = ElectricalSignal(
+    input_signal = Signal(
         timing=Timing(sampling_rate=1.0, sample_count=8),
         samples=tf.cast(
             tf.constant(

@@ -22,7 +22,7 @@ import tensorflow as tf
 from typing import Optional
 
 from . import constants
-from .datatypes import OpticalSignal, DigitalSignal, ElectricalSignal
+from .datatypes import Signal
 from .utils import timing_to_samples
 
 __all__ = [
@@ -37,7 +37,7 @@ __all__ = [
 
 
 def plot_power(
-    signal: OpticalSignal | DigitalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
+    signal: Signal | tuple[Signal, Signal],
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),
     time_units: tuple[float, str] = (1e9, "ns"),
@@ -53,7 +53,7 @@ def plot_power(
             yaxis={"title": f"Power, {power_units[1]}"}
         ))
 
-    if isinstance(signal, (ElectricalSignal, DigitalSignal, OpticalSignal)):
+    if isinstance(signal, Signal):
         time = timing_to_samples(signal.timing) * time_units[0]
         samples = tf.abs(signal.samples[index]) ** 2 * power_units[0]
 
@@ -84,7 +84,7 @@ def plot_power(
 
 
 def plot_envelope(
-    signal: OpticalSignal | DigitalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
+    signal: Signal | tuple[Signal, Signal],
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),
     time_units: tuple[float, str] = (1e9, "ns"),
@@ -100,30 +100,7 @@ def plot_envelope(
             yaxis={"title": f"Envelope, {envelope_units[1]}"}
         ))
 
-    if isinstance(signal, OpticalSignal):
-        time = timing_to_samples(signal.timing) * time_units[0]
-        samples = signal.samples[index] * envelope_units[0]
-
-        figure.add_trace(
-            go.Scatter(x=time, y=tf.math.real(samples), name=f"{label} (real)", **kwargs),
-            row=row,
-            col=col
-        )
-        figure.add_trace(
-            go.Scatter(x=time, y=tf.math.imag(samples), name=f"{label} (imag)", **kwargs),
-            row=row,
-            col=col
-        )
-    elif isinstance(signal, (ElectricalSignal, DigitalSignal)):
-        time = timing_to_samples(signal.timing) * time_units[0]
-        samples = signal.samples[index] * envelope_units[0]
-
-        figure.add_trace(
-            go.Scatter(x=time, y=samples, name=label, **kwargs),
-            row=row,
-            col=col
-        )
-    else: # IQ signal case
+    if isinstance(signal, tuple):  # IQ signal case
         time_i = timing_to_samples(signal[0].timing) * time_units[0]
         samples_i = signal[0].samples[index] * envelope_units[0]
 
@@ -140,12 +117,35 @@ def plot_envelope(
             row=row,
             col=col
         )
+    elif signal.samples.dtype is tf.complex64:
+        time = timing_to_samples(signal.timing) * time_units[0]
+        samples = signal.samples[index] * envelope_units[0]
+
+        figure.add_trace(
+            go.Scatter(x=time, y=tf.math.real(samples), name=f"{label} (real)", **kwargs),
+            row=row,
+            col=col
+        )
+        figure.add_trace(
+            go.Scatter(x=time, y=tf.math.imag(samples), name=f"{label} (imag)", **kwargs),
+            row=row,
+            col=col
+        )
+    else:
+        time = timing_to_samples(signal.timing) * time_units[0]
+        samples = signal.samples[index] * envelope_units[0]
+
+        figure.add_trace(
+            go.Scatter(x=time, y=samples, name=label, **kwargs),
+            row=row,
+            col=col
+        )
 
     return figure
 
 
 def plot_phase(
-    signal: OpticalSignal | tuple[ElectricalSignal, ElectricalSignal] | tuple[DigitalSignal, DigitalSignal],
+    signal: Signal | tuple[Signal, Signal],
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),
     time_units: tuple[float, str] = (1e9, "ns"),
@@ -160,14 +160,14 @@ def plot_phase(
             yaxis={"title": "Phase, degrees", "range": [-180.0, 180.0]}
         ))
 
-    if isinstance(signal, OpticalSignal):
+    if isinstance(signal, tuple):
+        timing = signal[0].timing
+        phase = tf.math.atan2(signal[0].samples[index], signal[1].samples[index])
+    else:
         timing = signal.timing
         samples = signal.samples
 
         phase = tf.math.atan2(tf.math.real(samples[index]), tf.math.imag(samples[index]))
-    else:
-        timing = signal[0].timing
-        phase = tf.math.atan2(signal[0].samples[index], signal[1].samples[index])
 
     phase /= constants.pi / 180.0
 
@@ -212,7 +212,7 @@ def plot_bitseq(
 
 def _plot_spectrum(
     figure: go.Figure,
-    signal: OpticalSignal | ElectricalSignal | DigitalSignal,
+    signal: Signal,
     index: int | tuple[int, ...],
     frequency_scale: float,
     amplitude_scale: float,
@@ -237,13 +237,7 @@ def _plot_spectrum(
 
 
 def plot_spectrum(
-    signal: (
-        OpticalSignal |
-        ElectricalSignal |
-        DigitalSignal |
-        tuple[ElectricalSignal, ElectricalSignal] |
-        tuple[DigitalSignal, DigitalSignal]
-    ),
+    signal: Signal | tuple[Signal, Signal],
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),
     frequency_units: tuple[float, str] = (1e-9, "GHz"),
@@ -259,7 +253,7 @@ def plot_spectrum(
             yaxis={"title": f"Amplitude, {amplitude_units[1]}"}
         ))
 
-    if isinstance(signal, (OpticalSignal, ElectricalSignal, DigitalSignal)):
+    if isinstance(signal, Signal):
         _plot_spectrum(
             figure,
             signal,
@@ -299,11 +293,7 @@ def plot_spectrum(
 
 
 def plot_iq_constellation(
-    signal_or_constellation: (
-        tuple[ElectricalSignal, ElectricalSignal] |
-        tuple[DigitalSignal, DigitalSignal] |
-        tf.Tensor
-    ),
+    signal_or_constellation: tuple[Signal, Signal] | tf.Tensor,
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),
     iq_units: tuple[float, str] = (1.0, "AU"),
@@ -339,7 +329,7 @@ def plot_iq_constellation(
 
 
 def plot_eye_diagram(
-    signal: ElectricalSignal | DigitalSignal,
+    signal: Signal,
     symbol_rate: float | tf.Tensor,
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),

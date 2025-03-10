@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 
-from ...datatypes import ElectricalSignal, OpticalSignal, TensorCompatible, Timing
+from ...datatypes import Signal, TensorCompatible, Timing
 
 from ..component import Component
 
@@ -59,13 +59,12 @@ class PadSignal(Component):
         self.local_parameters = ["left_padding", "right_padding", "unpad"]
 
     def implementation(
-        self, signal: ElectricalSignal | OpticalSignal,
+        self, signal: Signal,
         /,
         left_padding: tf.Tensor,
         right_padding: tf.Tensor,
         unpad: tf.Tensor
-    ) -> ElectricalSignal | OpticalSignal:
-        Signal = signal.__class__
+    ) -> Signal:
         shape = tf.shape(signal.samples)
         dtype = left_padding.dtype
         sample_count = tf.cast(shape[-1], dtype)

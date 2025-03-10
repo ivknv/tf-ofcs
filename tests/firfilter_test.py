@@ -3,7 +3,7 @@
 import tensorflow as tf
 
 from tf_ofcs.components import FIRFilter
-from tf_ofcs.datatypes import ElectricalSignal, Timing
+from tf_ofcs.datatypes import Signal, Timing
 
 
 def test_firfilter() -> None:
@@ -14,7 +14,7 @@ def test_firfilter() -> None:
 
     fir_filter = FIRFilter(delay_kernel)
 
-    input_signal = ElectricalSignal(
+    input_signal = Signal(
         samples=tf.reshape(
             tf.cast(tf.range(timing.sample_count * 2), tf.float32),
             [2, timing.sample_count]
@@ -23,7 +23,7 @@ def test_firfilter() -> None:
     )
     output_signal = fir_filter(input_signal)
 
-    assert isinstance(output_signal, ElectricalSignal)
+    assert isinstance(output_signal, Signal)
     assert tf.math.reduce_all(tf.shape(output_signal.samples) == [2, 1004])  # type: ignore[operator]
 
     assert tf.math.reduce_all(

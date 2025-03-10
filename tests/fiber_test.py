@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 from tf_ofcs.components import OpticalFiber, GaussianPulseGenerator
-from tf_ofcs.datatypes import OpticalSignal, Timing
+from tf_ofcs.datatypes import Signal, Timing
 from tf_ofcs import constants
 
 import pytest
@@ -22,7 +22,7 @@ def test_optical_fiber_attenuation(enable_nonlinear_effects: bool) -> None:
 
     batch_size = tf.size(fiber.attenuation)
 
-    input_signal = OpticalSignal(
+    input_signal = Signal(
         timing=Timing(
             sample_count=tf.constant(10),
             sampling_rate=tf.constant(1.0)
@@ -35,7 +35,7 @@ def test_optical_fiber_attenuation(enable_nonlinear_effects: bool) -> None:
 
     output_signal = fiber(input_signal)
 
-    assert isinstance(output_signal, OpticalSignal)
+    assert isinstance(output_signal, Signal)
     assert tf.math.reduce_all(
         tf.shape(output_signal.samples) == tf.shape(input_signal.samples)
     )  # type: ignore
@@ -74,10 +74,10 @@ def test_optical_fiber_chromatic_dispersion(enable_nonlinear_effects: bool) -> N
     pulse = pulse_generator(timing)
     pulse_after_fiber = fiber(pulse)
 
-    def estimate_max_power(signal: OpticalSignal) -> tf.Tensor:
+    def estimate_max_power(signal: Signal) -> tf.Tensor:
         return tf.math.reduce_max(tf.abs(signal.samples) ** 2, axis=-1)
 
-    def estimate_pulse_duration(signal: OpticalSignal) -> tf.Tensor:
+    def estimate_pulse_duration(signal: Signal) -> tf.Tensor:
         max_power = estimate_max_power(signal)[0]
         indices = tf.where(tf.abs(signal.samples[0]) ** 2 >= 0.5 * max_power)
 

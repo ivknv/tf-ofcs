@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 from tf_ofcs.components import OpticalAWGN, Laser
-from tf_ofcs.datatypes import OpticalSignal, Timing
+from tf_ofcs.datatypes import Signal, Timing
 from tf_ofcs.utils import from_db, dbm_to_w
 
 
@@ -31,7 +31,7 @@ def test_optical_awgn() -> None:
         optical_awgn__absolute_dbm=absolute_noise
     )
 
-    assert isinstance(signal_with_relative_noise, OpticalSignal)
+    assert isinstance(signal_with_relative_noise, Signal)
     assert tf.math.reduce_all(
         tf.shape(signal_with_relative_noise.samples) == tf.shape(input_signal.samples)
     )  # type: ignore

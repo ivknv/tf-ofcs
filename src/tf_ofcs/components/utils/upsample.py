@@ -17,13 +17,23 @@
 from typing import Optional
 import tensorflow as tf
 from ..component import Component
-from ...datatypes import DigitalSignal, ElectricalSignal, OpticalSignal, TensorCompatible, Timing
+from ...datatypes import Signal, TensorCompatible, Timing
 from ...utils import to_tensor
 
 __all__ = ["Upsample"]
 
 
 class Upsample(Component):
+    """
+        Upsamples the input signal by a given factor.
+
+        The upsampling is performed by repeating each sample of the input signal
+        by the given factor. The sampling rate of the output signal is also
+        multiplied by the same factor.
+
+        :ivar factor: `shape=[], dtype=tf.int32`, upsampling factor
+    """
+
     #: Upsampling factor
     factor: tf.Variable  # shape=[]; dtype=int32
 
@@ -39,12 +49,10 @@ class Upsample(Component):
 
     def implementation(
         self,
-        signal: ElectricalSignal | DigitalSignal | OpticalSignal,
+        signal: Signal,
         /,
         factor: tf.Tensor,
-    ) -> ElectricalSignal | DigitalSignal | OpticalSignal:
-        Signal = signal.__class__
-
+    ) -> Signal:
         signal_samples = tf.repeat(signal.samples, factor, axis=1)
 
         return Signal(

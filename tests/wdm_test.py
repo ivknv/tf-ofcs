@@ -6,13 +6,13 @@ from tf_ofcs.components import (
     OpticalMultiplexer, Laser, OpticalDemultiplexer,
     WDMBrickwallFrequencyResponse
 )
-from tf_ofcs.datatypes import OpticalSignal, Timing
+from tf_ofcs.datatypes import Signal, Timing
 
 
 def test_optical_multiplexer() -> None:
     omux = OpticalMultiplexer(4)
 
-    input_signal = OpticalSignal(
+    input_signal = Signal(
         timing=Timing(sampling_rate=1.0, sample_count=8),
         samples=tf.cast(tf.reshape(tf.range(64), [8, 8]), tf.complex64)
     )
@@ -24,7 +24,7 @@ def test_optical_multiplexer() -> None:
 
     output_signal = omux(input_signal)
 
-    assert isinstance(output_signal, OpticalSignal)
+    assert isinstance(output_signal, Signal)
     assert tf.math.reduce_all(tf.shape(output_signal.samples) == [2, 8])  # type: ignore[operator]
 
     error = tf.abs(output_signal.samples - expected_output_signal)
@@ -54,12 +54,12 @@ def test_optical_demultiplexer() -> None:
 
     mux_signal = omux(signal_before_mux)
 
-    assert isinstance(mux_signal, OpticalSignal)
+    assert isinstance(mux_signal, Signal)
     assert tf.math.reduce_all(tf.shape(mux_signal.samples) == [1, 1000])  # type: ignore[operator]
 
     output_signal = odemux(mux_signal)
 
-    assert isinstance(output_signal, OpticalSignal)
+    assert isinstance(output_signal, Signal)
     assert tf.math.reduce_all(tf.shape(output_signal.samples) == [3, 1000])  # type: ignore[operator]
 
     error = tf.abs((output_signal.samples - signal_before_mux.samples) / signal_before_mux.samples)

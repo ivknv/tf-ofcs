@@ -21,7 +21,7 @@ from .. import constants
 from .component import Component
 from ..utils import to_tensor
 
-from ..datatypes import ElectricalSignal, OpticalSignal, TensorCompatible
+from ..datatypes import Signal, TensorCompatible
 
 __all__ = ["MachZehnderModulator"]
 
@@ -30,9 +30,9 @@ class MachZehnderModulator(Component):
     """
         Mach-Zehnder modulator (MZM) implementation.
 
-        Expects a `tuple[OpticalSignal, ElectricalSignal]` as input.
-        The first tuple element is the carrier signal, the second is the
-        modulation signal.
+        Expects a `tuple[Signal, Signal]` as input.
+        The first tuple element is the carrier signal (optical signal),
+        the second is the modulation signal (electrical signal).
 
         The modulation signal's samples must be in range `[0.0, 1.0]`.
         Value of `0` corresponds to a phase shift of `0`, while a value of `1`
@@ -60,11 +60,14 @@ class MachZehnderModulator(Component):
 
     def implementation(
         self,
-        inputs: tuple[OpticalSignal, ElectricalSignal],
+        inputs: tuple[Signal, Signal],
         /,
         extinction_ratio: tf.Tensor
-    ) -> OpticalSignal:
+    ) -> Signal:
         carrier_signal, modulation_signal = inputs
+
+        assert carrier_signal.samples.dtype is tf.complex64
+        assert modulation_signal.samples.dtype is tf.float32
 
         k = tf.expand_dims(1.0 / extinction_ratio, -1)
 
@@ -77,4 +80,4 @@ class MachZehnderModulator(Component):
             ),
         )
 
-        return OpticalSignal(timing=carrier_signal.timing, samples=modulated_signal)
+        return Signal(timing=carrier_signal.timing, samples=modulated_signal)

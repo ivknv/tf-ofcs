@@ -17,13 +17,21 @@
 from typing import Optional
 import tensorflow as tf
 from ..component import Component
-from ...datatypes import DigitalSignal, ElectricalSignal, OpticalSignal, TensorCompatible, Timing
+from ...datatypes import Signal, TensorCompatible, Timing
 from ...utils import to_tensor
 
 __all__ = ["Downsample"]
 
 
 class Downsample(Component):
+    """
+        Downsamples input signal by specified factor.
+        Takes every `factor`-th sample of the input signal, starting from `time_offset`.
+
+        :ivar factor: `shape=[]; dtype=tf.int32`, downsampling factor
+        :ivar time_offset: `shape=[]; dtype=tf.float32`, time offset before downsampling
+    """
+
     #: Downsampling factor
     factor: tf.Variable  # shape=[]; dtype=int32
 
@@ -44,13 +52,11 @@ class Downsample(Component):
 
     def implementation(
         self,
-        signal: ElectricalSignal | DigitalSignal | OpticalSignal,
+        signal: Signal,
         /,
         factor: tf.Tensor,
         time_offset: tf.Tensor
-    ) -> ElectricalSignal | DigitalSignal | OpticalSignal:
-        Signal = signal.__class__
-
+    ) -> Signal:
         shift = tf.cast(tf.round(signal.timing.sampling_rate * time_offset), tf.int32)
 
         signal_samples = signal.samples[:, shift::factor]

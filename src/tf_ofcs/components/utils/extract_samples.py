@@ -16,12 +16,14 @@
 
 import tensorflow as tf
 from ..component import Component
-from ...datatypes import ElectricalSignal, OpticalSignal
+from ...datatypes import Signal
 
 __all__ = ["ExtractSamples"]
 
 
 class ExtractSamples(Component):
-    def call(self, signal: ElectricalSignal | OpticalSignal, /, **kwargs) -> tf.Tensor:
-        assert isinstance(signal, (ElectricalSignal, OpticalSignal))
+    """Extracts samples from the signal, returns a tensor."""
+
+    def call(self, signal: Signal, /, **kwargs) -> tf.Tensor:
+        assert isinstance(signal, Signal)
         return signal.samples

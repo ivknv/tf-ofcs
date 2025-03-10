@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 
-from ..datatypes import OpticalSignal, TensorCompatible, Timing
+from ..datatypes import Signal, TensorCompatible, Timing
 from .component import Component
 from ..utils import timing_to_samples, to_tensor
 
@@ -25,7 +25,13 @@ __all__ = ["GaussianPulseGenerator"]
 
 
 class GaussianPulseGenerator(Component):
-    """Creates a single Gaussian pulse."""
+    """
+        Creates a single optical Gaussian pulse. Takes a `Timing` instance as input.
+
+        :ivar fwhm_duration: `shape=[None], dtype=tf.float32`, FWHM (fullwidth at half maximum) pulse duration
+        :ivar power: `shape=[None], dtype=tf.float32`, power (amplitude squared) of the pulse in watts
+        :ivar batch_size: `shape=[], dtype=tf.int32`, output signal batch size
+    """
 
     #: FWHM (full width at half maximum) pulse duration
     fwhm_duration: tf.Variable  # shape=[None]; dtype=float32
@@ -33,7 +39,7 @@ class GaussianPulseGenerator(Component):
     #: Power (amplitude squared) of the pulse in watts
     power: tf.Variable  # shape=[None]; dtype=float32
 
-    #: The output signal has shape (batch_size, parameter_dims, sample_count)
+    #: The output signal has shape (batch_size, sample_count)
     batch_size: tf.Variable  # shape=[]; dtype=int32
 
     def __init__(
@@ -58,7 +64,7 @@ class GaussianPulseGenerator(Component):
         fwhm_duration: tf.Tensor,
         power: tf.Tensor,
         batch_size: tf.Tensor
-    ) -> OpticalSignal:
+    ) -> Signal:
         fwhm_duration = tf.expand_dims(fwhm_duration, -1)
         power = tf.expand_dims(power, -1)
 
@@ -75,4 +81,4 @@ class GaussianPulseGenerator(Component):
             lambda: samples
         )
 
-        return OpticalSignal(timing=timing, samples=samples)
+        return Signal(timing=timing, samples=samples)

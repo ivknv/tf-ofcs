@@ -18,7 +18,7 @@ from typing import Optional
 import tensorflow as tf
 
 from .component import Component
-from ..datatypes import OpticalSignal, TensorCompatible
+from ..datatypes import Signal, TensorCompatible
 from ..utils import to_tensor
 from .. import constants
 
@@ -26,7 +26,14 @@ __all__ = ["OpticalAmplifier"]
 
 
 class OpticalAmplifier(Component):
-    """Generic optical amplifier."""
+    """
+        Generic optical amplifier.
+
+        :ivar gain: `shape=[None], dtype=tf.float32`, amplifier gain (unitless)
+        :ivar noise_figure: `shape=[None], dtype=tf.float32`, amplifier noise figure unitless
+        :ivar central_frequency: `shape=[None], dtype=tf.float32`, central frequency in Hz
+        :ivar rng: `tf.random.Generator`, random number generator
+    """
 
     #: Amplifier gain (unitless)
     gain: tf.Variable  # shape=[None]; dtype=tf.float32
@@ -62,12 +69,12 @@ class OpticalAmplifier(Component):
 
     def implementation(
         self,
-        signal: OpticalSignal,
+        signal: Signal,
         /,
         gain: tf.Tensor,
         noise_figure: tf.Tensor,
         central_frequency: tf.Tensor
-    ) -> OpticalSignal:
+    ) -> Signal:
         # Spectral density of spontaneous emission in W/Hz
         S_sp = 0.5 * constants.h * noise_figure * gain * central_frequency
 
@@ -90,7 +97,7 @@ class OpticalAmplifier(Component):
 
         noise = tf.complex(_noise(), _noise())
 
-        return OpticalSignal(
+        return Signal(
             timing=signal.timing,
             samples=tf.add(
                 tf.multiply(

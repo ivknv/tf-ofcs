@@ -18,7 +18,7 @@ from typing import Optional
 import tensorflow as tf
 
 from ...utils import fftfreq, to_tensor
-from ...datatypes import FrequencyResponseFunction, OpticalSignal, TensorCompatible
+from ...datatypes import FrequencyResponseFunction, Signal, TensorCompatible
 from ..component import Component
 
 __all__ = ["OpticalMultiplexer", "OpticalDemultiplexer"]
@@ -39,7 +39,9 @@ class OpticalMultiplexer(Component):
         self.n = tf.Variable(to_tensor(n), name=f"{self.name}__n")
         self.local_parameters = ["n"]
 
-    def implementation(self, input_signal: OpticalSignal, /, n: tf.Tensor) -> OpticalSignal:
+    def implementation(self, input_signal: Signal, /, n: tf.Tensor) -> Signal:
+        assert input_signal.samples.dtype is tf.complex64
+
         shape = tf.shape(input_signal.samples)
         batch_size = shape[0]
 
@@ -53,7 +55,7 @@ class OpticalMultiplexer(Component):
             axis=1
         ) / tf.math.sqrt(tf.complex(tf.cast(n, tf.float32), 0.0))
 
-        return OpticalSignal(timing=input_signal.timing, samples=output_samples)
+        return Signal(timing=input_signal.timing, samples=output_samples)
 
 
 class OpticalDemultiplexer(Component):
@@ -86,10 +88,12 @@ class OpticalDemultiplexer(Component):
 
     def call(
         self,
-        input_signal: OpticalSignal,
+        input_signal: Signal,
         /,
         **kwargs
-    ) -> OpticalSignal:
+    ) -> Signal:
+        assert input_signal.samples.dtype is tf.complex64
+
         fft = tf.signal.fft(input_signal.samples)
         fft_freqs = fftfreq(tf.shape(fft)[-1], 1.0 / input_signal.timing.sampling_rate)
 
@@ -111,4 +115,4 @@ class OpticalDemultiplexer(Component):
         fft = tf.tile(fft, [n_outputs, 1])
         samples = tf.signal.ifft(frequency_response * fft)
 
-        return OpticalSignal(timing=input_signal.timing, samples=samples)
+        return Signal(timing=input_signal.timing, samples=samples)

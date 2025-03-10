@@ -17,7 +17,7 @@
 import tensorflow as tf
 
 from typing import Optional
-from ..datatypes import ElectricalSignal, TensorCompatible, Timing, OpticalSignal
+from ..datatypes import Signal, TensorCompatible, Timing
 
 from .component import Component
 from ..utils import timing_to_samples, to_tensor
@@ -28,7 +28,7 @@ __all__ = ["Laser"]
 
 class Laser(Component):
     """
-        Models a laser. Takes a `Timing` or `ElectricalSignal` or `OpticalSignal`
+        Models a laser. Takes a `Timing` or `Signal`
         as input. If the input is a signal rather than timing, then the timing
         will be extracted from the signal. Outputs an `OpticalSignal` instance.
 
@@ -87,14 +87,14 @@ class Laser(Component):
 
     def implementation(
         self,
-        timing_or_signal: Timing | ElectricalSignal | OpticalSignal,
+        timing_or_signal: Timing | Signal,
         /,
         power: tf.Tensor,
         frequency: tf.Tensor,
         linewidth: tf.Tensor,
         batch_size: tf.Tensor
-    ) -> OpticalSignal:
-        if isinstance(timing_or_signal, (ElectricalSignal, OpticalSignal)):
+    ) -> Signal:
+        if isinstance(timing_or_signal, Signal):
             timing = timing_or_signal.timing
         else:
             timing = timing_or_signal
@@ -127,4 +127,4 @@ class Laser(Component):
             lambda: samples
         )
 
-        return OpticalSignal(timing=timing, samples=samples)
+        return Signal(timing=timing, samples=samples)

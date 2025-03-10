@@ -16,7 +16,7 @@
 
 from typing import Optional
 import tensorflow as tf
-from ..datatypes import ElectricalSignal, OpticalSignal, TensorCompatible
+from ..datatypes import Signal, TensorCompatible
 from ..utils import to_tensor
 from .component import Component
 
@@ -57,11 +57,13 @@ class Photodiode(Component):
 
     def implementation(
         self,
-        signal: OpticalSignal,
+        signal: Signal,
         /,
         sensitivity: tf.Tensor,
         maximum_power: tf.Tensor
-    ) -> ElectricalSignal:
+    ) -> Signal:
+        assert signal.samples.dtype is tf.complex64
+
         sensitivity = tf.expand_dims(sensitivity, -1)
         maximum_power = tf.expand_dims(maximum_power, -1)
 
@@ -74,7 +76,4 @@ class Photodiode(Component):
             tf.float32
         )
 
-        return ElectricalSignal(
-            timing=signal.timing,
-            samples=samples
-        )
+        return Signal(timing=signal.timing, samples=samples)

@@ -18,7 +18,7 @@ from typing import Any, Optional
 import tensorflow as tf
 
 from ..component import Component
-from ...datatypes import TensorCompatible, ElectricalSignal, OpticalSignal, Timing
+from ...datatypes import TensorCompatible, Signal, Timing
 
 __all__ = ["SliceSignal"]
 
@@ -52,14 +52,12 @@ class SliceSignal(Component):
 
     def implementation(
         self,
-        signal: ElectricalSignal | OpticalSignal,
+        signal: Signal,
         /,
         start: tf.Tensor,
         end: tf.Tensor,
         **kwargs
     ) -> Any:
-        Signal = signal.__class__
-
         end = tf.cond(end < 0, lambda: tf.shape(signal.samples)[-1] + end, lambda: end)
 
         return Signal(

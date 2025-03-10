@@ -21,16 +21,9 @@ from typing import Protocol, Union
 __all__ = [
     "Timing",
     "timing_spec",
-    "ElectricalSignal",
-    "electrical_signal_spec",
-    "DigitalSignal",
-    "digital_signal_spec",
-    "OpticalSignal",
-    "optical_signal_spec",
+    "Signal",
     "bit_dtype",
     "bit_sequence_spec",
-    "IQSignal",
-    "iq_signal_spec",
     "FrequencyResponseFunction",
     "TensorCompatible"
 ]
@@ -50,52 +43,16 @@ timing_spec = Timing.Spec(
 )
 
 
-class ElectricalSignal(tf.experimental.ExtensionType):
+class Signal(tf.experimental.ExtensionType):
     #: Signal's timing information
     timing: Timing
 
     #: Signal's samples
-    samples: tf.Tensor  # shape=[batch_size, timing.sample_count]; dtype=tf.float32;
+    samples: tf.Tensor  # shape=[batch_size, timing.sample_count]; dtype=tf.float32 or tf.complex64
 
-
-electrical_signal_spec = ElectricalSignal.Spec(
-    timing=timing_spec,
-    samples=tf.TensorSpec(shape=[None, None], dtype=tf.float32)
-)
-
-
-class DigitalSignal(tf.experimental.ExtensionType):
-    #: Signal's timing information
-    timing: Timing
-
-    #: Signal's samples
-    samples: tf.Tensor  # shape=[batch_size, timing.sample_count]; dtype=tf.float32
-
-
-digital_signal_spec = DigitalSignal.Spec(
-    timing=timing_spec,
-    samples=tf.TensorSpec(shape=[None, None], dtype=tf.int32)
-)
-
-
-class OpticalSignal(tf.experimental.ExtensionType):
-    #: Signal's timing information
-    timing: Timing
-
-    #: Signal's samples
-    samples: tf.Tensor  # shape=[batch_size, timing.sample_count]; dtype=tf.complex64
-
-
-optical_signal_spec = OpticalSignal.Spec(
-    timing=timing_spec,
-    samples=tf.TensorSpec(shape=[None, None], dtype=tf.complex64)
-)
 
 bit_dtype = tf.int32
 bit_sequence_spec = tf.TensorSpec(shape=[None, None], dtype=bit_dtype)
-
-IQSignal = tuple[ElectricalSignal, ElectricalSignal]
-iq_signal_spec = (electrical_signal_spec, electrical_signal_spec)
 
 
 class FrequencyResponseFunction(Protocol):

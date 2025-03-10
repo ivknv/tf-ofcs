@@ -2,9 +2,7 @@
 
 import tensorflow as tf
 from tf_ofcs.components import Photodiode
-from tf_ofcs.datatypes import (
-    OpticalSignal, ElectricalSignal, Timing
-)
+from tf_ofcs.datatypes import Signal, Timing
 from tf_ofcs.utils import timing_to_samples
 from tf_ofcs.utils import dbm_to_w
 from tf_ofcs import constants
@@ -20,7 +18,7 @@ def test_photodiode() -> None:
 
     power = dbm_to_w(-3.0)
 
-    input_signal = OpticalSignal(
+    input_signal = Signal(
         timing=timing,
         samples=tf.cast(
             tf.tile(
@@ -46,7 +44,7 @@ def test_photodiode() -> None:
         )
     ])
 
-    assert isinstance(received_signal, ElectricalSignal)
+    assert isinstance(received_signal, Signal)
     assert tf.math.reduce_all(
         tf.shape(received_signal.samples) == tf.shape(expected_signal_samples)
     )  # type: ignore

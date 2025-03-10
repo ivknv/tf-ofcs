@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 
-from ..datatypes import DigitalSignal, TensorCompatible, ElectricalSignal, Timing
+from ..datatypes import Signal, TensorCompatible, Timing
 from ..utils import adjust_symbol_for_mzm, to_tensor
 from .component import Component
 
@@ -25,7 +25,6 @@ __all__ = [
     "ElectricalAdder",
     "ElectricalSubtractor",
     "ArbitraryWaveformGenerator",
-    "Quantizer",
     "ElectricalGain",
     "DigitalToAnalogConverter",
     "AnalogToDigitalConverter",
@@ -38,11 +37,14 @@ class ElectricalAdder(Component):
     """
         Adds two electrical signals together.
         Takes a tuple of two electrical signals as input and returns a single
-        `ElectricalSignal` with the sum of the two signals.
+        `Signal` with the sum of the two signals.
     """
 
-    def implementation(self, input_signals: tuple[ElectricalSignal, ElectricalSignal], /) -> ElectricalSignal:
-        return ElectricalSignal(
+    def implementation(self, input_signals: tuple[Signal, Signal], /) -> Signal:
+        assert input_signals[0].samples.dtype is tf.float32
+        assert input_signals[1].samples.dtype is tf.float32
+
+        return Signal(
             timing=input_signals[0].timing,
             samples=input_signals[0].samples + input_signals[1].samples
         )
@@ -52,11 +54,14 @@ class ElectricalSubtractor(Component):
     """
         Subtracts two electrical signals.
         Takes a tuple of two electrical signals as input and returns a single
-        `ElectricalSignal` with the difference of the two signals.
+        `Signal` with the difference of the two signals.
     """
 
-    def implementation(self, input_signals: tuple[ElectricalSignal, ElectricalSignal], /) -> ElectricalSignal:
-        return ElectricalSignal(
+    def implementation(self, input_signals: tuple[Signal, Signal], /) -> Signal:
+        assert input_signals[0].samples.dtype is tf.float32
+        assert input_signals[1].samples.dtype is tf.float32
+
+        return Signal(
             timing=input_signals[0].timing,
             samples=input_signals[0].samples - input_signals[1].samples
         )
@@ -65,7 +70,7 @@ class ElectricalSubtractor(Component):
 class ArbitraryWaveformGenerator(Component):
     """
         Generates an arbitrary waveform.
-        Takes a tensor of samples as input and returns a `ElectricalSignal`
+        Takes a tensor of samples as input and returns a `Signal`
         with the given samples and sampling rate.
 
         :ivar sampling_rate: `shape=[], dtype=tf.float32`, sampling rate of the generated waveform in Hz
@@ -84,42 +89,14 @@ class ArbitraryWaveformGenerator(Component):
         self.sampling_rate = tf.Variable(to_tensor(sampling_rate), name=f"{self.name}__sampling_rate")
         self.local_parameters = ["sampling_rate"]
 
-    def implementation(self, input_samples: tf.Tensor, /, sampling_rate: tf.Tensor) -> ElectricalSignal:
-        return ElectricalSignal(
+    def implementation(self, input_samples: tf.Tensor, /, sampling_rate: tf.Tensor) -> Signal:
+        return Signal(
             timing=Timing(
                 sampling_rate=sampling_rate,
                 sample_count=tf.shape(input_samples)[-1]
             ),
             samples=input_samples
         )
-
-
-class Quantizer(Component):
-    """
-        Quantizes the input electrical signal.
-        Takes an `ElectricalSignal` as input and returns a `ElectricalSignal`
-        with the samples quantized to the given step size.
-
-        :ivar step: `shape=[None], dtype=tf.float32`, quantization step size
-    """
-
-    step: tf.Variable  # shape=[None]; dtype=float32
-
-    def __init__(
-        self,
-        step: TensorCompatible,
-        name: Optional[str] = None
-    ) -> None:
-        super().__init__(name=name)
-
-        self.step = tf.Variable(to_tensor(step), name=f"{self.name}__step")
-        self.local_parameters = ["step"]
-
-    def implementation(self, signal: ElectricalSignal, /, step: tf.Tensor) -> ElectricalSignal:
-        step = tf.expand_dims(step, -1)
-        quantized_samples = tf.round(signal.samples / step) * step
-
-        return ElectricalSignal(timing=signal.timing, samples=quantized_samples)
 
 
 class ElectricalGain(Component):
@@ -141,15 +118,12 @@ class ElectricalGain(Component):
         self.gain = tf.Variable(to_tensor(gain), name=f"{self.name}__gain")
         self.local_parameters = ["gain"]
 
-    def implementation(
-        self,
-        signal: ElectricalSignal | DigitalSignal,
-        /,
-        gain: tf.Tensor
-    ) -> ElectricalSignal | DigitalSignal:
+    def implementation(self, signal: Signal, /, gain: tf.Tensor) -> Signal:
+        assert signal.samples.dtype is tf.float32
+
         gain = tf.expand_dims(gain, -1)
 
-        return signal.__class__(
+        return Signal(
             timing=signal.timing,
             samples=signal.samples * gain
         )
@@ -158,7 +132,7 @@ class ElectricalGain(Component):
 class DigitalToAnalogConverter(Component):
     """
         Converts a digital signal to an analog electrical signal.
-        Takes a `DigitalSignal` as input and returns an `ElectricalSignal`
+        Takes a digital `Signal` as input and returns an electrical `Signal`
         with the corresponding analog voltage levels.
 
         :ivar step: `shape=[None], dtype=tf.float32`, amplitude step for each digital level
@@ -190,13 +164,15 @@ class DigitalToAnalogConverter(Component):
 
     def implementation(
         self,
-        digital_signal: DigitalSignal,
+        digital_signal: Signal,
         /,
         step: tf.Tensor,
         min_level: tf.Tensor,
         max_level: tf.Tensor,
         sampling_rate: tf.Tensor
-    ) -> ElectricalSignal:
+    ) -> Signal:
+        assert digital_signal.samples.dtype is tf.float32
+
         step = tf.expand_dims(step, -1)
         min_level = tf.expand_dims(min_level, -1)
         max_level = tf.expand_dims(max_level, -1)
@@ -227,7 +203,7 @@ class DigitalToAnalogConverter(Component):
             axis=-1
         )
 
-        return ElectricalSignal(
+        return Signal(
             samples=analog_samples,
             timing=Timing(
                 sample_count=tf.shape(analog_samples)[-1],
@@ -239,7 +215,7 @@ class DigitalToAnalogConverter(Component):
 class AnalogToDigitalConverter(Component):
     """
         Converts an analog electrical signal to a digital signal.
-        Takes an `ElectricalSignal` as input and returns an `DigitalSignal`
+        Takes an electrical `Signal` as input and returns an digital `Signal`
         with the corresponding digital levels.
 
         :ivar step: `shape=[None], dtype=tf.float32`, amplitude step for each digital level
@@ -271,13 +247,15 @@ class AnalogToDigitalConverter(Component):
 
     def implementation(
         self,
-        analog_signal: ElectricalSignal,
+        analog_signal: Signal,
         /,
         step: tf.Tensor,
         min_level: tf.Tensor,
         max_level: tf.Tensor,
         sampling_rate: tf.Tensor
-    ) -> DigitalSignal:
+    ) -> Signal:
+        assert analog_signal.samples.dtype is tf.float32
+
         step = tf.expand_dims(step, -1)
         min_level = tf.expand_dims(min_level, -1)
         max_level = tf.expand_dims(max_level, -1)
@@ -306,7 +284,7 @@ class AnalogToDigitalConverter(Component):
             ) / step
         ) * step
 
-        return DigitalSignal(
+        return Signal(
             samples=digital_samples,
             timing=Timing(
                 sample_count=tf.shape(digital_samples)[-1],
@@ -321,8 +299,10 @@ class MZMPreDistortion(Component):
         the non-linearity of the Mach-Zehnder Modulator (MZM).
     """
 
-    def implementation(self, input_signal: DigitalSignal, /) -> DigitalSignal:
-        return DigitalSignal(
+    def implementation(self, input_signal: Signal, /) -> Signal:
+        assert input_signal.samples.dtype is tf.float32
+
+        return Signal(
             samples=adjust_symbol_for_mzm(input_signal.samples),
             timing=input_signal.timing
         )
@@ -334,8 +314,10 @@ class PhotodiodePreDistortion(Component):
         the non-linearity of the photodiode.
     """
 
-    def implementation(self, input_signal: DigitalSignal, /) -> DigitalSignal:
-        return DigitalSignal(
+    def implementation(self, input_signal: Signal, /) -> Signal:
+        assert input_signal.samples.dtype is tf.float32
+
+        return Signal(
             samples=tf.sqrt(input_signal.samples),
             timing=input_signal.timing
         )

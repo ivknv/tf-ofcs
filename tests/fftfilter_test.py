@@ -5,7 +5,7 @@ import tensorflow as tf
 import math
 
 from tf_ofcs.components import FFTFilter, Lambda
-from tf_ofcs.datatypes import ElectricalSignal, Timing
+from tf_ofcs.datatypes import Signal, Timing
 from tf_ofcs.utils import timing_to_samples
 
 
@@ -26,7 +26,7 @@ def test_fftfilter() -> None:
     timing = Timing(sampling_rate=2.0, sample_count=400)
     time = timing_to_samples(timing)
 
-    input_signal = ElectricalSignal(
+    input_signal = Signal(
         timing=timing,
         samples=[
             tf.math.cos(2 * math.pi * 0.10 * time) +
@@ -38,7 +38,7 @@ def test_fftfilter() -> None:
 
     filtered_signal = fft_filter(input_signal)
 
-    assert isinstance(filtered_signal, ElectricalSignal)
+    assert isinstance(filtered_signal, Signal)
     assert tf.math.reduce_all(tf.shape(filtered_signal.samples) == [2, 400])  # type: ignore[operator]
 
     expected_samples = input_signal.samples * 0.5

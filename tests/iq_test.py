@@ -3,7 +3,7 @@
 import itertools
 import tensorflow as tf
 
-from tf_ofcs.datatypes import Timing, ElectricalSignal
+from tf_ofcs.datatypes import Timing, Signal
 from tf_ofcs.components import (
     IQSymbolEncoder, IQSymbolDecoder, IQEncoder, IQDecoder
 )
@@ -130,8 +130,8 @@ def test_iq_encoder() -> None:
 
     i_signal, q_signal = encoder(qam16_bitseq)
 
-    assert isinstance(i_signal, ElectricalSignal)
-    assert isinstance(q_signal, ElectricalSignal)
+    assert isinstance(i_signal, Signal)
+    assert isinstance(q_signal, Signal)
 
     assert tf.math.reduce_all(tf.shape(i_signal.samples) == tf.shape(expected_i_samples))  # type: ignore
     assert tf.math.reduce_all(tf.shape(q_signal.samples) == tf.shape(expected_q_samples))  # type: ignore
@@ -155,7 +155,7 @@ def test_iq_decoder() -> None:
 
     timing = Timing(sample_count=tf.constant(24), sampling_rate=tf.constant(1.0))
 
-    i_signal = ElectricalSignal(
+    i_signal = Signal(
         timing=timing,
         samples=tf.reshape(
             tf.repeat(
@@ -168,7 +168,7 @@ def test_iq_decoder() -> None:
             (2, 24)
         )
     )
-    q_signal = ElectricalSignal(
+    q_signal = Signal(
         timing=timing,
         samples=tf.reshape(
             tf.repeat(

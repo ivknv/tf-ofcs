@@ -20,7 +20,7 @@ from typing import Any, Optional
 import tensorflow as tf
 import keras  # type: ignore[import-untyped]
 
-from ..datatypes import ElectricalSignal, Timing
+from ..datatypes import Signal, Timing
 from ..utils import bits_to_indices, indices_to_bits
 from ..utils import dbm_to_w
 
@@ -39,8 +39,8 @@ def _clip(x: tf.Tensor) -> tf.Tensor:
     return tf.clip_by_value(x, 0.0, 1.0)
 
 
-def _slice_signal(signal: ElectricalSignal, start: int, end: int) -> ElectricalSignal:
-    return ElectricalSignal(
+def _slice_signal(signal: Signal, start: int, end: int) -> Signal:
+    return Signal(
         timing=Timing(sample_count=end - start, sampling_rate=signal.timing.sampling_rate),
         samples=signal.samples[:, start:end]
     )
@@ -137,10 +137,10 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
 
         :ivar encoder: `Component`, component that encodes a bit sequence into a tensor
         :ivar encoder_network: `Component`, transmitter layers of the neural network
-        :ivar transmitter: `Component`, component that converts `ElectricalSignal` into an `OpticalSignal`
+        :ivar transmitter: `Component`, component that converts a digital `Signal` into an optical `Signal`
         :ivar channel: `Component`, component that represents the channel
-        :ivar receiver: `Component`, component that converts an `OpticalSignal` into `ElectricalSignal`
-        :ivar decoder: `Component`, component that decodes the `ElectricalSignal` into a bit sequence
+        :ivar receiver: `Component`, component that converts an optical `Signal` into a digital `Signal`
+        :ivar decoder: `Component`, component that decodes the digital `Signal` into a bit sequence
         :ivar decoder_network: `Component`, receiver layers of the neural network
         :ivar component_parameters: `dict[str, Any]`, arbitrary parameters for the components in the system
 
@@ -256,7 +256,7 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
 
         return tf.reshape(x, (batch_size, self.n * symbols_per_batch))
 
-    def decode_signal(self, input_signal: ElectricalSignal) -> tf.Tensor:
+    def decode_signal(self, input_signal: Signal) -> tf.Tensor:
         sample_count = tf.size(input_signal.samples)
         batch_size = tf.shape(input_signal.samples)[0]
 

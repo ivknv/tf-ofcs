@@ -19,12 +19,7 @@ import math
 
 import tensorflow as tf
 
-from ..datatypes import (
-    TensorCompatible, bit_dtype,
-    ElectricalSignal,
-    IQSignal,
-    Timing
-)
+from ..datatypes import TensorCompatible, bit_dtype, Signal, Timing
 
 from .component import Component
 from .mzm import MachZehnderModulator
@@ -183,7 +178,7 @@ class IQEncoder(Component):
 
         self.local_parameters = ["sampling_rate", "data_rate"]
 
-    def call(self, bitseq: tf.Tensor, /, tracing_level: int = 0, **kwargs) -> IQSignal:
+    def call(self, bitseq: tf.Tensor, /, tracing_level: int = 0, **kwargs) -> tuple[Signal, Signal]:
         assert isinstance(bitseq, tf.Tensor)
         assert bitseq.dtype is bit_dtype
 
@@ -216,16 +211,16 @@ class IQEncoder(Component):
         q_samples = tf.repeat(iq_sequences[:,:,1], repeat_count, axis=-1)[:,:sample_count]
 
         return (
-            ElectricalSignal(timing=timing, samples=i_samples),
-            ElectricalSignal(timing=timing, samples=q_samples)
+            Signal(timing=timing, samples=i_samples),
+            Signal(timing=timing, samples=q_samples)
         )
 
 
 class IQModulator(Composition):
     """
-        IQ modulator. Expects a `tuple[OpticalSignal, (ElectricalSignal, ElectricalSignal)]`
-        as input. The first tuple element is the carrier signal, the second is
-        the modulation signal.
+        IQ modulator. Expects a `tuple[Signal, tuple[Signal, Signal]]`
+        as input. The first tuple element is the carrier signal (optical signal),
+        the second is the modulation signal (electrical I and Q signals).
     """
 
     def __init__(self, *, mzm: Optional[Component] = None, name: Optional[str] = None) -> None:
@@ -237,23 +232,23 @@ class IQModulator(Composition):
         identity = Identity(name=f"{self.name}__identity")
 
         self.components = [
-            # input: (OpticalSignal, (ElectricalSignal, ElectricalSignal))
+            # input: (optical Signal, (electrical Signal, electrical Signal))
             MapComponents([
                 Composition([
-                    OpticalCoupler1x2(name=f"{self.name}__coupler1x2"),  # (OpticalSignal, OpticalSignal)
+                    OpticalCoupler1x2(name=f"{self.name}__coupler1x2"),  # (optical Signal, optical Signal)
                     MapComponents([
                         identity,
                         OpticalPhaseShifter(phase_shift=[0.5 * math.pi], name=f"{self.name}__phase_shifter")
                     ])
-                ]),  # (OpticalSignal, OpticalSignal)
+                ]),  # (optical Signal, optical Signal)
                 identity  # (ElectricalSignal, ElectricalSignal)
-            ]),  # ((OpticalSignal 0, OpticalSignal 1), (ElectricalSignal 0, ElectricalSignal 1))
+            ]),  # ((optical Signal 0, optical Signal 1), (electrical Signal 0, electrical Signal 1))
 
             Reindex(indices=[[(0, 0), (1, 0)], [(0, 1), (1, 1)]], name=f"{self.name}__reindex"),
-            # reindex output: ((OpticalSignal 0, ElectricalSignal 0), (OpticalSignal 1, ElectricalSignal 1))
+            # reindex output: ((optical Signal 0, electrical Signal 0), (optical Signal 1, electrical Signal 1))
 
-            MapComponents(mzm),  # (OpticalSignal, OpticalSignal)
-            OpticalCoupler2x1(name=f"{self.name}__coupler_2x1")  # OpticalSignal
+            MapComponents(mzm),  # (optical Signal, optical Signal)
+            OpticalCoupler2x1(name=f"{self.name}__coupler_2x1")  # optical Signal
         ]
 
 
@@ -288,53 +283,53 @@ class IQReceiver(Composition):
 
         # This is a coherent IQ receiver
         self.components = [
-            coupler1x2,  # (OpticalSignal, OpticalSignal)
-            Fork(shape=[2], name=f"{self.name}__fork"),  # 2 * ((OpticalSignal, OpticalSignal))
+            coupler1x2,  # (optical signal, optical signal)
+            Fork(shape=[2], name=f"{self.name}__fork"),  # 2 * ((optical signal, optical signal))
             MapComponents(
                 [
-                    identity,  # (OpticalSignal, OpticalSignal)
+                    identity,  # (optical signal, optical signal)
                     Composition(
                         components=[
-                            Reindex(indices=(0,), name=f"{self.name}__reindex1"),  # OpticalSignal
-                            local_oscillator,  # OpticalSignal
-                            coupler1x2,  # (OpticalSignal, OpticalSignal)
+                            Reindex(indices=(0,), name=f"{self.name}__reindex1"),  # optical signal
+                            local_oscillator,  # optical signal
+                            coupler1x2,  # (optical signal, optical signal)
                             MapComponents(
                                 [
                                     OpticalPhaseShifter(
                                         phase_shift=[math.pi / 2],
                                         name=f"{self.name}__optical_phase_shifter"
-                                    ),  # OpticalSignal
-                                    identity  # OpticalSignal
+                                    ),  # optical signal
+                                    identity  # optical signal
                                 ],
                                 name=f"{self.name}__map_components2"
-                            )  # (OpticalSignal, OpticalSignal)
+                            )  # (optical signal, optical signal)
                         ],
                         name=f"{self.name}__composition1"
                     )
                 ],
                 name=f"{self.name}__map_components1"
-            ),  # 2 * ((OpticalSignal, OpticalSignal))
+            ),  # 2 * ((optical signal, optical signal))
             Reindex(
                 indices=[[(1, 1), (0, 0)], [(0, 1), (1, 0)]],
                 name=f"{self.name}__reindex2"
-            ),  # 2 * ((OpticalSignal, OpticalSignal),)
+            ),  # 2 * ((optical signal, optical signal),)
             MapComponents(
                 Composition(
                     [
                         OpticalCoupler2x2(
                             flip=True,
                             name=f"{self.name}__optical_coupler2x2"
-                        ),  # (OpticalSignal, OpticalSignal)
+                        ),  # (optical signal, optical signal)
                         MapComponents(
                             photodiode,
                             name=f"{self.name}__map_components4"
-                        ),  # (ElectricalSignal, ElectricalSignal)
-                        ElectricalSubtractor(name=f"{self.name}__electrical_subtractor")  # ElectricalSignal
+                        ),  # (electrical signal, electrical signal)
+                        ElectricalSubtractor(name=f"{self.name}__electrical_subtractor")  # electrical signal
                     ],
                     name=f"{self.name}__composition2"
                 ),
                 name=f"{self.name}__map_components3"
-            ),  # (ElectricalSignal, ElectricalSignal)
+            ),  # (electrical signal, electrical signal)
         ]
 
 
@@ -368,7 +363,7 @@ class IQDecoder(Component):
 
     def _extract_iq_symbols(
         self,
-        iq_signal: IQSignal,
+        iq_signal: tuple[Signal, Signal],
         bits_per_symbol: tf.Tensor,
         data_rate: tf.Tensor
     ) -> tf.Tensor:
@@ -398,7 +393,7 @@ class IQDecoder(Component):
 
         return iq_symbols
 
-    def call(self, iq_signal: IQSignal, /, tracing_level: int = 0, **kwargs) -> tf.Tensor:
+    def call(self, iq_signal: tuple[Signal, Signal], /, tracing_level: int = 0, **kwargs) -> tf.Tensor:
         data_rate = self.get_component_parameter(kwargs, "data_rate")
         bits_per_symbol = self.symbol_decoder.get_component_parameter(kwargs, "bits_per_symbol")
 
