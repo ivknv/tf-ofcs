@@ -5,7 +5,7 @@ import tensorflow as tf
 from tf_ofcs.components import (
     IQEncoder, IQDecoder, IQSymbolEncoder, IQSymbolDecoder, IQModulator,
     IQReceiver, Composition, Laser, BandPassFilter, OpticalAWGN, OpticalFiber,
-    Photodiode, MapComponents, ElectricalGain, Fork, Reindex, Identity
+    Photodiode, MapComponents, Gain, Fork, Reindex, Identity
 )
 from tf_ofcs.utils import dbm_to_w, from_db, wavelength_nm_to_frequency
 
@@ -66,7 +66,7 @@ def test_qam4_system() -> None:
             photodiode=Composition([Photodiode(), lpf]),
             local_oscillator=local_oscillator
         ),  # (ElectricalSignal, ElectricalSignal)
-        MapComponents(ElectricalGain([1.0 / expected_symbol_scale])),  # (ElectricalSignal, ElectricalSignal)
+        MapComponents(Gain([1.0 / expected_symbol_scale])),  # (ElectricalSignal, ElectricalSignal)
         IQDecoder(
             data_rate=data_rate,
             symbol_decoder=IQSymbolDecoder(

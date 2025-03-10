@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from tf_ofcs.components import ElectricalGain
+from tf_ofcs.components import Gain
 from tf_ofcs.datatypes import Signal, Timing
 
 
 def test_electrical_gain() -> None:
-    gain = ElectricalGain(gain=[0.0, 1.0, 0.5, 2.0])
+    gain = Gain(gain=[0.0, 1.0, 0.5, 2.0])
 
     input_signal = Signal(
         timing=Timing(sampling_rate=1.0, sample_count=100),

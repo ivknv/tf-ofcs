@@ -27,7 +27,7 @@ from ..utils import dbm_to_w
 from ..components import (
     Component, Composition, MachZehnderModulator, Laser, Photodiode,
     BandPassFilter, ArbitraryWaveformGenerator, Lambda, RandomizeParameters,
-    ElectricalGain, ExtractSamples, Fork, Identity, MapComponents, Substitute
+    Gain, ExtractSamples, Fork, Identity, MapComponents, Substitute
 )
 
 from ..communication_system import CommunicationSystem
@@ -206,7 +206,7 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
                 dark_current=dbm_to_w(tf.constant([-20.0]))
             ),
             lpf,
-            ElectricalGain(gain=[1e5])
+            Gain(gain=[1e5])
         ], name="receiver")
 
         self.encoder_network = Lambda(

@@ -26,7 +26,7 @@ from .mzm import MachZehnderModulator
 from .passive import OpticalCoupler1x2, OpticalCoupler2x1, OpticalCoupler2x2, OpticalPhaseShifter
 from .utils import Composition, Fork, Identity, MapComponents, Reindex
 from ..utils import adjust_symbol_for_mzm, indices_to_bits, bits_to_indices, to_tensor
-from .electrical import ElectricalSubtractor
+from .electrical_and_digital import Subtractor
 
 __all__ = ["IQSymbolEncoder", "IQSymbolDecoder", "IQEncoder", "IQModulator", "IQReceiver"]
 
@@ -324,7 +324,7 @@ class IQReceiver(Composition):
                             photodiode,
                             name=f"{self.name}__map_components4"
                         ),  # (electrical signal, electrical signal)
-                        ElectricalSubtractor(name=f"{self.name}__electrical_subtractor")  # electrical signal
+                        Subtractor(name=f"{self.name}__electrical_subtractor")  # electrical signal
                     ],
                     name=f"{self.name}__composition2"
                 ),

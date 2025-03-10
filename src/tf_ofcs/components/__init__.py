@@ -37,9 +37,9 @@ from .utils import (
     ExtractSamples, Lambda, SplitSignals, MergeSignals, TileSignals,
     RandomizeParameters, PadSignal, Loop, Substitute, SliceSignal
 )
-from .electrical import (
-    ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator,
-    ElectricalGain, AnalogToDigitalConverter, DigitalToAnalogConverter,
+from .electrical_and_digital import (
+    Adder, Subtractor, ArbitraryWaveformGenerator,
+    Gain, AnalogToDigitalConverter, DigitalToAnalogConverter,
     MZMPreDistortion, PhotodiodePreDistortion
 )
 from .component import Component
@@ -80,10 +80,10 @@ __all__ = [
     "Identity",
     "Reindex",
     "Fork",
-    "ElectricalAdder",
-    "ElectricalSubtractor",
+    "Adder",
+    "Subtractor",
     "ArbitraryWaveformGenerator",
-    "ElectricalGain",
+    "Gain",
     "AnalogToDigitalConverter",
     "DigitalToAnalogConverter",
     "MZMPreDistortion",

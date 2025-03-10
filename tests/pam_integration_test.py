@@ -5,7 +5,7 @@ import tensorflow as tf
 from tf_ofcs.components import (
     PAMSymbolEncoder, PAMSymbolDecoder, Composition, Laser, BandPassFilter,
     MachZehnderModulator, OpticalAWGN, OpticalFiber, Photodiode,
-    ElectricalGain, Fork, MapComponents, Identity, DigitalToAnalogConverter,
+    Gain, Fork, MapComponents, Identity, DigitalToAnalogConverter,
     AnalogToDigitalConverter, MZMPreDistortion, PhotodiodePreDistortion,
     Upsample, Downsample
 )
@@ -81,7 +81,7 @@ def test_pam4_system() -> None:
             sampling_rate=adc_sampling_rate
         ),  # DigitalSignal
         Downsample(factor=int(adc_sampling_rate / symbol_rate), time_offset=0.5 * symbol_rate),
-        ElectricalGain(1.0 / expected_symbol_scale),  # DigitalSignal
+        Gain(1.0 / expected_symbol_scale),  # DigitalSignal
         PAMSymbolDecoder(
             bits_per_symbol=bits_per_symbol,
             mapping=mapping

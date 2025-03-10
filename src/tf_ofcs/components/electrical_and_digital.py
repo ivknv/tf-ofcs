@@ -22,10 +22,10 @@ from ..utils import adjust_symbol_for_mzm, to_tensor
 from .component import Component
 
 __all__ = [
-    "ElectricalAdder",
-    "ElectricalSubtractor",
+    "Adder",
+    "Subtractor",
     "ArbitraryWaveformGenerator",
-    "ElectricalGain",
+    "Gain",
     "DigitalToAnalogConverter",
     "AnalogToDigitalConverter",
     "MZMPreDistortion",
@@ -33,10 +33,10 @@ __all__ = [
 ]
 
 
-class ElectricalAdder(Component):
+class Adder(Component):
     """
-        Adds two electrical signals together.
-        Takes a tuple of two electrical signals as input and returns a single
+        Adds two electrical or digital signals together.
+        Takes a tuple of two signals as input and returns a single
         `Signal` with the sum of the two signals.
     """
 
@@ -50,10 +50,10 @@ class ElectricalAdder(Component):
         )
 
 
-class ElectricalSubtractor(Component):
+class Subtractor(Component):
     """
-        Subtracts two electrical signals.
-        Takes a tuple of two electrical signals as input and returns a single
+        Subtracts two electrical or digital signals.
+        Takes a tuple of two signals as input and returns a single
         `Signal` with the difference of the two signals.
     """
 
@@ -99,9 +99,9 @@ class ArbitraryWaveformGenerator(Component):
         )
 
 
-class ElectricalGain(Component):
+class Gain(Component):
     """
-        Applies a gain to the input electrical signal.
+        Multiplies the input electrical or digital signal by a `gain` factor.
 
         :ivar gain: `shape=[None], dtype=tf.float32`, gain to apply to the signal
     """

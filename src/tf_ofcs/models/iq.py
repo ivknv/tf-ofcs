@@ -27,7 +27,7 @@ from ..utils import dbm_to_w
 from ..components import (
     Component, Composition, IQModulator, Laser, IQReceiver, Photodiode,
     BandPassFilter, ArbitraryWaveformGenerator, Lambda, RandomizeParameters,
-    MapComponents, ElectricalGain, Fork, Identity, Reindex, Substitute
+    MapComponents, Gain, Fork, Identity, Reindex, Substitute
 )
 from ..communication_system import CommunicationSystem
 
@@ -271,7 +271,7 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
                 self._local_oscillator
             ),
             lpf,
-            MapComponents(ElectricalGain(gain=[1e5]))
+            MapComponents(Gain(gain=[1e5]))
         ], name="receiver")
 
         self.encoder_network = Lambda(
