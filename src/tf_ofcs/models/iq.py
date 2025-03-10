@@ -266,7 +266,7 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
             IQReceiver(
                 Photodiode(
                     maximum_power=dbm_to_w(tf.constant([3.0])),
-                    sensitivity=dbm_to_w(tf.constant([-20.0]))
+                    dark_current=dbm_to_w(tf.constant([-20.0]))
                 ),
                 self._local_oscillator
             ),

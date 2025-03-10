@@ -10,7 +10,7 @@ from tf_ofcs import constants
 
 def test_photodiode() -> None:
     photodiode = Photodiode(
-        sensitivity=dbm_to_w(tf.constant([-10.0, -1.0, -10.0])),
+        dark_current=dbm_to_w(tf.constant([-10.0, -1.0, -10.0])),
         maximum_power=dbm_to_w(tf.constant([0.0, 0.0, -2.0]))
     )
 
@@ -31,15 +31,13 @@ def test_photodiode() -> None:
 
     received_signal = photodiode(input_signal)
     expected_signal_samples = tf.stack([
-        tf.abs(input_signal.samples[0]) ** 2,
-        tf.clip_by_value(
-            tf.abs(input_signal.samples[1]) ** 2,
-            photodiode.sensitivity[1],
+        tf.abs(input_signal.samples[0]) ** 2 + photodiode.dark_current[0],
+        tf.math.minimum(
+            tf.abs(input_signal.samples[1]) ** 2 + photodiode.dark_current[1],
             photodiode.maximum_power[1]
         ),
-        tf.clip_by_value(
-            tf.abs(input_signal.samples[2]) ** 2,
-            photodiode.sensitivity[2],
+        tf.math.minimum(
+            tf.abs(input_signal.samples[2]) ** 2 + photodiode.dark_current[2],
             photodiode.maximum_power[2]
         )
     ])

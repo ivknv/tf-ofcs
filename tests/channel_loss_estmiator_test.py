@@ -9,7 +9,7 @@ from tf_ofcs.utils import from_db
 
 def test_channel_loss_estimator() -> None:
     laser = Laser(power=[1e-3, 2e-3], batch_size=2)
-    photodiode = Photodiode()
+    photodiode = Photodiode(dark_current=[0.0])
     channel = OpticalFiber(
         attenuation=[0.22, 0.3],
         chromatic_dispersion=[0.0, 0.0],

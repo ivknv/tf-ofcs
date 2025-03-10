@@ -69,7 +69,7 @@ def test_pam4_system() -> None:
         ),  # OpticalSignal
 
         Photodiode(
-            sensitivity=dbm_to_w(tf.constant([-15.0])),
+            dark_current=dbm_to_w(tf.constant([-15.0])),
             maximum_power=maximum_power
         ),  # ElectricalSignal
         lpf,  # ElectricalSignal

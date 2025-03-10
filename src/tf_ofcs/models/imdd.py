@@ -203,7 +203,7 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
         self.receiver = Composition([
             Photodiode(
                 maximum_power=dbm_to_w(tf.constant([3.0])),
-                sensitivity=dbm_to_w(tf.constant([-20.0]))
+                dark_current=dbm_to_w(tf.constant([-20.0]))
             ),
             lpf,
             ElectricalGain(gain=[1e5])

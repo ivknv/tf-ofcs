@@ -63,7 +63,7 @@ class PAMSystem(components.Composition, CommunicationSystem):
         self.laser = components.Laser(power=dbm_to_w([2.0]), name="laser")
         self.photodiode = components.Photodiode(
             maximum_power=maximum_power,
-            sensitivity=dbm_to_w(tf.constant([-20.0]))
+            dark_current=dbm_to_w(tf.constant([-20.0]))
         )
 
         padding = (n_taps - tf.constant(1)) // 2
