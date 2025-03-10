@@ -23,6 +23,8 @@ __all__ = [
     "timing_spec",
     "ElectricalSignal",
     "electrical_signal_spec",
+    "DigitalSignal",
+    "digital_signal_spec",
     "OpticalSignal",
     "optical_signal_spec",
     "bit_dtype",
@@ -59,6 +61,20 @@ class ElectricalSignal(tf.experimental.ExtensionType):
 electrical_signal_spec = ElectricalSignal.Spec(
     timing=timing_spec,
     samples=tf.TensorSpec(shape=[None, None], dtype=tf.float32)
+)
+
+
+class DigitalSignal(tf.experimental.ExtensionType):
+    #: Signal's timing information
+    timing: Timing
+
+    #: Signal's samples
+    samples: tf.Tensor  # shape=[batch_size, timing.sample_count]; dtype=tf.float32
+
+
+digital_signal_spec = DigitalSignal.Spec(
+    timing=timing_spec,
+    samples=tf.TensorSpec(shape=[None, None], dtype=tf.int32)
 )
 
 

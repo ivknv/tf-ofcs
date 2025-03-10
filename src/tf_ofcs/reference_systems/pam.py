@@ -14,13 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import math
 import tensorflow as tf
 
 from .. import components
 from ..datatypes import ElectricalSignal, TensorCompatible
-from ..utils import dbm_to_w, pam_constellation, symbol_mapping_to_gray
 from ..communication_system import CommunicationSystem
+from ..utils import dbm_to_w, symbol_mapping_to_gray, pam_constellation
 
 from typing import Any, Optional
 
@@ -43,6 +42,15 @@ class PAMSystem(components.Composition, CommunicationSystem):
         self.bits_per_symbol = tf.constant(bits_per_symbol)
         self.data_rate = tf.constant(data_rate)
 
+        maximum_power = dbm_to_w(tf.constant([3.0]))
+        adc_step = maximum_power / 256.0
+        adc_sampling_rate = 84e9
+        dac_step = 1.0 / 256.0
+
+        symbol_rate = self.data_rate / tf.cast(self.bits_per_symbol, tf.float32)
+        oversampling_factor = int(adc_sampling_rate / symbol_rate)
+        sim_upsampling_factor = 4
+
         self.component_parameters = {}
         self.parameter_distributions = {}
 
@@ -54,7 +62,7 @@ class PAMSystem(components.Composition, CommunicationSystem):
         )
         self.laser = components.Laser(power=dbm_to_w([2.0]), name="laser")
         self.photodiode = components.Photodiode(
-            maximum_power=dbm_to_w(tf.constant([3.0])),
+            maximum_power=maximum_power,
             sensitivity=dbm_to_w(tf.constant([-20.0]))
         )
 
@@ -69,36 +77,48 @@ class PAMSystem(components.Composition, CommunicationSystem):
         else:
             self.slice_signal = components.Identity()
 
-        self.bitseq_generator = components.BitSequenceGenerator(length=self.bits_per_symbol * 32, rng=self.rng)
+        self.bitseq_generator = components.BitSequenceGenerator(length=self.bits_per_symbol * 512, rng=self.rng)
         self.channel = components.Substitute(components.Identity())
 
-        self.downsampler = components.Downsample(4)
+        self.sim_upsampler = components.Upsample(sim_upsampling_factor)
 
         mapping = symbol_mapping_to_gray(list(pam_constellation(self.bits_per_symbol).numpy()))
 
-        self.encoder = components.PAMEncoder(
-            sampling_rate=self.sampling_rate,
-            data_rate=self.data_rate,
-            symbol_encoder=components.PAMSymbolEncoder(
-                bits_per_symbol=self.bits_per_symbol,
-                mapping=tf.sqrt(mapping),
-                adjust_for_mzm=True,
-                name="pam_symbol_encoder"
-            ),
-            name="encoder"
+        self._pam_encoder = components.PAMSymbolEncoder(
+            bits_per_symbol=self.bits_per_symbol,
+            mapping=mapping,
+            symbol_rate=symbol_rate,
+            name="pam_symbol_encoder"
         )
+        self.encoder = components.Composition([
+            self._pam_encoder,
+            components.PhotodiodePreDistortion(),
+            components.MZMPreDistortion()
+        ], name="encoder")
 
-        self.decoder = components.PAMDecoder(
-            data_rate=self.data_rate,
-            symbol_decoder=components.PAMSymbolDecoder(
-                bits_per_symbol=self.bits_per_symbol,
-                mapping=mapping,
-                name="pam_symbol_decoder"
-            ),
+        self.decoder = components.PAMSymbolDecoder(
+            bits_per_symbol=self.bits_per_symbol,
+            mapping=mapping,
             name="decoder"
         )
 
+        self.dac = components.DigitalToAnalogConverter(
+            step=dac_step,
+            sampling_rate=adc_sampling_rate,
+            min_level=0.0,
+            max_level=1.0
+        )
+
+        self.adc = components.AnalogToDigitalConverter(
+            step=adc_step,
+            min_level=0.0,
+            max_level=maximum_power,
+            sampling_rate=adc_sampling_rate
+        )
+
         self.transmitter = components.Composition([
+            self.dac,
+            self.sim_upsampler,
             self.lpf,
             components.Fork(shape=[2]),
             components.MapComponents([self.laser, components.Identity()]),
@@ -108,10 +128,10 @@ class PAMSystem(components.Composition, CommunicationSystem):
         self.receiver = components.Composition([
             self.photodiode,
             self.lpf,
-            self.downsampler,
-            components.Identity(name="before_filter"),
+            self.adc,
             self.rx_filter,
             self.slice_signal,
+            components.Downsample(factor=oversampling_factor, time_offset=0.5 / symbol_rate)
         ], name="receiver")
 
         self.components = [
@@ -124,25 +144,21 @@ class PAMSystem(components.Composition, CommunicationSystem):
 
         self.test_sequence_generator = components.Composition([
             self.bitseq_generator,
-            self.encoder,
             components.Fork([2]),
             components.MapComponents([
                 components.Composition([
+                    self.encoder,
                     self.transmitter,
                     self.channel,
                     self.photodiode,
                     self.lpf,
-                    self.downsampler,
+                    self.adc
                 ]),
                 components.Composition([
+                    self._pam_encoder,
+                    components.Upsample(factor=sim_upsampling_factor * oversampling_factor),
                     self.lpf,
-                    components.Lambda(
-                        lambda signal: ElectricalSignal(
-                            samples=tf.square(tf.math.cos(math.pi * signal.samples)),
-                            timing=signal.timing
-                        )
-                    ),
-                    self.downsampler
+                    components.Downsample(factor=sim_upsampling_factor)
                 ])
             ])
         ])
@@ -165,7 +181,12 @@ class PAMSystem(components.Composition, CommunicationSystem):
         n_taps = tf.shape(self.rx_filter.taps)[-1]
         self.rx_filter.taps.assign(
             tf.pad(
-                [[tf.math.reduce_sum(expected.samples) / tf.math.reduce_sum(actual.samples)]],
+                [[
+                    tf.math.divide_no_nan(
+                        tf.math.reduce_sum(expected.samples),
+                        tf.math.reduce_sum(actual.samples)
+                    )
+                ]],
                 [[0, 0], [(n_taps - 1) // 2, (n_taps - 1) // 2]]
             )
         )

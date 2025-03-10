@@ -17,7 +17,7 @@
 from .laser import Laser
 from .photodiode import Photodiode
 from .mzm import MachZehnderModulator
-from .pam import PAMSymbolEncoder, PAMSymbolDecoder, PAMEncoder, PAMDecoder
+from .pam import PAMSymbolEncoder, PAMSymbolDecoder
 from .iq import (
     IQSymbolEncoder, IQSymbolDecoder, IQEncoder, IQModulator, IQReceiver, IQDecoder
 )
@@ -39,7 +39,8 @@ from .utils import (
 )
 from .electrical import (
     ElectricalAdder, ElectricalSubtractor, ArbitraryWaveformGenerator,
-    Quantizer, ElectricalGain
+    Quantizer, ElectricalGain, AnalogToDigitalConverter, DigitalToAnalogConverter,
+    MZMPreDistortion, PhotodiodePreDistortion
 )
 from .component import Component
 from .optical_gain import OpticalGain
@@ -53,8 +54,6 @@ __all__ = [
     "Photodiode",
     "PAMSymbolEncoder",
     "PAMSymbolDecoder",
-    "PAMEncoder",
-    "PAMDecoder",
     "IQSymbolEncoder",
     "IQSymbolDecoder",
     "IQEncoder",
@@ -87,6 +86,10 @@ __all__ = [
     "ArbitraryWaveformGenerator",
     "Quantizer",
     "ElectricalGain",
+    "AnalogToDigitalConverter",
+    "DigitalToAnalogConverter",
+    "MZMPreDistortion",
+    "PhotodiodePreDistortion",
     "Downsample",
     "Upsample",
     "ExtractSamples",

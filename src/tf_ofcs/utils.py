@@ -253,14 +253,26 @@ def psk_constellation(
     return iq_mapping
 
 
-def pam_constellation(bits_per_symbol: tf.Tensor, size: typing.Optional[tf.Tensor] = None) -> tf.Tensor:
+def pam_constellation(
+    bits_per_symbol: tf.Tensor,
+    size: typing.Optional[tf.Tensor] = None
+) -> tf.Tensor:
+    """
+        Produces a PAM constellation.
+
+        :param bits_per_symbol: `shape=[], dtype=tf.int32`, number of bits per symbol.
+        :param size: `shape=[], dtype=tf.int32`, size of the constellation.
+
+        :return: `shape=[size], dtype=tf.float32`, PAM constellation.
+    """
+
     symbol_count = tf.math.pow(2, bits_per_symbol)
 
     if size is None:
         size = symbol_count
 
     return tf.concat([
-        tf.cast(tf.range(symbol_count) / (symbol_count - 1), tf.float32),
+        tf.cast(tf.range(symbol_count), tf.float32) / tf.cast(symbol_count - 1, tf.float32),
         tf.fill([size - symbol_count], 0.0)
     ], 0)
 

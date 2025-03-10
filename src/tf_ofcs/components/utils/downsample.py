@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 from ..component import Component
-from ...datatypes import ElectricalSignal, OpticalSignal, TensorCompatible, Timing
+from ...datatypes import DigitalSignal, ElectricalSignal, OpticalSignal, TensorCompatible, Timing
 from ...utils import to_tensor
 
 __all__ = ["Downsample"]
@@ -44,11 +44,11 @@ class Downsample(Component):
 
     def implementation(
         self,
-        signal: ElectricalSignal | OpticalSignal,
+        signal: ElectricalSignal | DigitalSignal | OpticalSignal,
         /,
         factor: tf.Tensor,
         time_offset: tf.Tensor
-    ) -> ElectricalSignal | OpticalSignal:
+    ) -> ElectricalSignal | DigitalSignal | OpticalSignal:
         Signal = signal.__class__
 
         shift = tf.cast(tf.round(signal.timing.sampling_rate * time_offset), tf.int32)

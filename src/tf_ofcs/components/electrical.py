@@ -17,8 +17,8 @@
 from typing import Optional
 import tensorflow as tf
 
-from ..datatypes import TensorCompatible, ElectricalSignal, Timing
-from ..utils import to_tensor
+from ..datatypes import DigitalSignal, TensorCompatible, ElectricalSignal, Timing
+from ..utils import adjust_symbol_for_mzm, to_tensor
 from .component import Component
 
 __all__ = [
@@ -26,7 +26,11 @@ __all__ = [
     "ElectricalSubtractor",
     "ArbitraryWaveformGenerator",
     "Quantizer",
-    "ElectricalGain"
+    "ElectricalGain",
+    "DigitalToAnalogConverter",
+    "AnalogToDigitalConverter",
+    "MZMPreDistortion",
+    "PhotodiodePreDistortion"
 ]
 
 
@@ -137,10 +141,201 @@ class ElectricalGain(Component):
         self.gain = tf.Variable(to_tensor(gain), name=f"{self.name}__gain")
         self.local_parameters = ["gain"]
 
-    def implementation(self, signal: ElectricalSignal, /, gain: tf.Tensor) -> ElectricalSignal:
+    def implementation(
+        self,
+        signal: ElectricalSignal | DigitalSignal,
+        /,
+        gain: tf.Tensor
+    ) -> ElectricalSignal | DigitalSignal:
         gain = tf.expand_dims(gain, -1)
 
-        return ElectricalSignal(
+        return signal.__class__(
             timing=signal.timing,
             samples=signal.samples * gain
+        )
+
+
+class DigitalToAnalogConverter(Component):
+    """
+        Converts a digital signal to an analog electrical signal.
+        Takes a `DigitalSignal` as input and returns an `ElectricalSignal`
+        with the corresponding analog voltage levels.
+
+        :ivar step: `shape=[None], dtype=tf.float32`, amplitude step for each digital level
+        :ivar min_level: `shape=[None], dtype=tf.float32`, minimum signal level
+        :ivar max_level: `shape=[None], dtype=tf.float32`, maximum signal level
+        :ivar sampling_rate: `shape=[], dtype=tf.float32`, sampling rate of the output signal in Hz
+    """
+
+    step: tf.Variable  # shape=[None]; dtype=tf.float32
+    min_level: tf.Variable  # shape=[None]; dtype=tf.float32
+    max_level: tf.Variable  # shape=[None]; dtype=tf.float32
+    sampling_rate: tf.Variable  # shape=[]; dtype=tf.float32
+
+    def __init__(
+        self,
+        step: TensorCompatible,
+        sampling_rate: TensorCompatible,
+        min_level: TensorCompatible = 0.0,
+        max_level: TensorCompatible = 1.0,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.step = tf.Variable(to_tensor(step), name=f"{self.name}__step")
+        self.min_level = tf.Variable(to_tensor(min_level), name=f"{self.name}__min_level")
+        self.max_level = tf.Variable(to_tensor(max_level), name=f"{self.name}__max_level")
+        self.sampling_rate = tf.Variable(to_tensor(sampling_rate), name=f"{self.name}__sampling_rate")
+        self.local_parameters = ["step", "min_level", "max_level", "sampling_rate"]
+
+    def implementation(
+        self,
+        digital_signal: DigitalSignal,
+        /,
+        step: tf.Tensor,
+        min_level: tf.Tensor,
+        max_level: tf.Tensor,
+        sampling_rate: tf.Tensor
+    ) -> ElectricalSignal:
+        step = tf.expand_dims(step, -1)
+        min_level = tf.expand_dims(min_level, -1)
+        max_level = tf.expand_dims(max_level, -1)
+
+        upsample_factor = tf.cast(
+            sampling_rate / digital_signal.timing.sampling_rate,
+            tf.int32
+        )
+
+        tf.debugging.assert_less(
+            tf.abs(
+                tf.subtract(
+                    tf.cast(upsample_factor, tf.float32),
+                    sampling_rate / digital_signal.timing.sampling_rate
+                )
+            ),
+            1e-6,
+            message="Got fractional upsampling factor"
+        )
+
+        analog_samples = tf.repeat(
+            tf.clip_by_value(
+                tf.round(digital_signal.samples / step) * step,
+                min_level,
+                max_level
+            ),
+            upsample_factor,
+            axis=-1
+        )
+
+        return ElectricalSignal(
+            samples=analog_samples,
+            timing=Timing(
+                sample_count=tf.shape(analog_samples)[-1],
+                sampling_rate=sampling_rate
+            )
+        )
+
+
+class AnalogToDigitalConverter(Component):
+    """
+        Converts an analog electrical signal to a digital signal.
+        Takes an `ElectricalSignal` as input and returns an `DigitalSignal`
+        with the corresponding digital levels.
+
+        :ivar step: `shape=[None], dtype=tf.float32`, amplitude step for each digital level
+        :ivar min_level: `shape=[None], dtype=tf.float32`, minimum signal level
+        :ivar max_level: `shape=[None], dtype=tf.float32`, maximum signal level
+        :ivar sampling_rate: `shape=[], dtype=tf.float32`, sampling rate of the output digital signal in Hz
+    """
+
+    step: tf.Variable  # shape=[None]; dtype=tf.float32
+    min_level: tf.Variable  # shape=[None]; dtype=tf.float32
+    max_level: tf.Variable  # shape=[None]; dtype=tf.float32
+    sampling_rate: tf.Variable  # shape=[]; dtype=tf.float32
+
+    def __init__(
+        self,
+        step: TensorCompatible,
+        sampling_rate: TensorCompatible,
+        min_level: TensorCompatible = 0.0,
+        max_level: TensorCompatible = 1.0,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.step = tf.Variable(to_tensor(step), name=f"{self.name}__step")
+        self.min_level = tf.Variable(to_tensor(min_level), name=f"{self.name}__min_level")
+        self.max_level = tf.Variable(to_tensor(max_level), name=f"{self.name}__max_level")
+        self.sampling_rate = tf.Variable(to_tensor(sampling_rate), name=f"{self.name}__sampling_rate")
+        self.local_parameters = ["step", "min_level", "max_level", "sampling_rate"]
+
+    def implementation(
+        self,
+        analog_signal: ElectricalSignal,
+        /,
+        step: tf.Tensor,
+        min_level: tf.Tensor,
+        max_level: tf.Tensor,
+        sampling_rate: tf.Tensor
+    ) -> DigitalSignal:
+        step = tf.expand_dims(step, -1)
+        min_level = tf.expand_dims(min_level, -1)
+        max_level = tf.expand_dims(max_level, -1)
+
+        downsample_factor = tf.cast(
+            analog_signal.timing.sampling_rate / sampling_rate,
+            tf.int32
+        )
+
+        tf.debugging.assert_less(
+            tf.abs(
+                tf.subtract(
+                    tf.cast(downsample_factor, tf.float32),
+                    analog_signal.timing.sampling_rate / sampling_rate
+                )
+            ),
+            1e-6,
+            message="Got fractional downsampling factor"
+        )
+
+        digital_samples = tf.round(
+            tf.clip_by_value(
+                analog_signal.samples[:, ::downsample_factor],
+                min_level,
+                max_level
+            ) / step
+        ) * step
+
+        return DigitalSignal(
+            samples=digital_samples,
+            timing=Timing(
+                sample_count=tf.shape(digital_samples)[-1],
+                sampling_rate=sampling_rate
+            )
+        )
+
+
+class MZMPreDistortion(Component):
+    """
+        Applies pre-distortion to the input digital signal to compensate for
+        the non-linearity of the Mach-Zehnder Modulator (MZM).
+    """
+
+    def implementation(self, input_signal: DigitalSignal, /) -> DigitalSignal:
+        return DigitalSignal(
+            samples=adjust_symbol_for_mzm(input_signal.samples),
+            timing=input_signal.timing
+        )
+
+
+class PhotodiodePreDistortion(Component):
+    """
+        Applies pre-distortion to the input digital signal to compensate for
+        the non-linearity of the photodiode.
+    """
+
+    def implementation(self, input_signal: DigitalSignal, /) -> DigitalSignal:
+        return DigitalSignal(
+            samples=tf.sqrt(input_signal.samples),
+            timing=input_signal.timing
         )

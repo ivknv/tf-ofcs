@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 
-from ...datatypes import ElectricalSignal, OpticalSignal, Timing
+from ...datatypes import ElectricalSignal, OpticalSignal, TensorCompatible, Timing
 
 from ..component import Component
 
@@ -42,8 +42,8 @@ class PadSignal(Component):
 
     def __init__(
         self,
-        left_padding: float | tf.Tensor,
-        right_padding: Optional[float | tf.Tensor] = None,
+        left_padding: TensorCompatible,
+        right_padding: Optional[TensorCompatible] = None,
         unpad: bool | tf.Tensor = False,
         name: Optional[str] = None
     ) -> None:

@@ -22,7 +22,7 @@ import tensorflow as tf
 from typing import Optional
 
 from . import constants
-from .datatypes import OpticalSignal, ElectricalSignal
+from .datatypes import OpticalSignal, DigitalSignal, ElectricalSignal
 from .utils import timing_to_samples
 
 __all__ = [
@@ -37,7 +37,7 @@ __all__ = [
 
 
 def plot_power(
-    signal: OpticalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
+    signal: OpticalSignal | DigitalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),
     time_units: tuple[float, str] = (1e9, "ns"),
@@ -53,7 +53,7 @@ def plot_power(
             yaxis={"title": f"Power, {power_units[1]}"}
         ))
 
-    if isinstance(signal, (ElectricalSignal, OpticalSignal)):
+    if isinstance(signal, (ElectricalSignal, DigitalSignal, OpticalSignal)):
         time = timing_to_samples(signal.timing) * time_units[0]
         samples = tf.abs(signal.samples[index]) ** 2 * power_units[0]
 
@@ -84,7 +84,7 @@ def plot_power(
 
 
 def plot_envelope(
-    signal: OpticalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
+    signal: OpticalSignal | DigitalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),
     time_units: tuple[float, str] = (1e9, "ns"),
@@ -114,7 +114,7 @@ def plot_envelope(
             row=row,
             col=col
         )
-    elif isinstance(signal, ElectricalSignal):
+    elif isinstance(signal, (ElectricalSignal, DigitalSignal)):
         time = timing_to_samples(signal.timing) * time_units[0]
         samples = signal.samples[index] * envelope_units[0]
 
@@ -145,7 +145,7 @@ def plot_envelope(
 
 
 def plot_phase(
-    signal: OpticalSignal | tuple[ElectricalSignal, ElectricalSignal],
+    signal: OpticalSignal | tuple[ElectricalSignal, ElectricalSignal] | tuple[DigitalSignal, DigitalSignal],
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),
     time_units: tuple[float, str] = (1e9, "ns"),
@@ -212,7 +212,7 @@ def plot_bitseq(
 
 def _plot_spectrum(
     figure: go.Figure,
-    signal: OpticalSignal | ElectricalSignal,
+    signal: OpticalSignal | ElectricalSignal | DigitalSignal,
     index: int | tuple[int, ...],
     frequency_scale: float,
     amplitude_scale: float,
@@ -237,7 +237,13 @@ def _plot_spectrum(
 
 
 def plot_spectrum(
-    signal: OpticalSignal | ElectricalSignal | tuple[ElectricalSignal, ElectricalSignal],
+    signal: (
+        OpticalSignal |
+        ElectricalSignal |
+        DigitalSignal |
+        tuple[ElectricalSignal, ElectricalSignal] |
+        tuple[DigitalSignal, DigitalSignal]
+    ),
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),
     frequency_units: tuple[float, str] = (1e-9, "GHz"),
@@ -253,7 +259,7 @@ def plot_spectrum(
             yaxis={"title": f"Amplitude, {amplitude_units[1]}"}
         ))
 
-    if isinstance(signal, (OpticalSignal, ElectricalSignal)):
+    if isinstance(signal, (OpticalSignal, ElectricalSignal, DigitalSignal)):
         _plot_spectrum(
             figure,
             signal,
@@ -293,7 +299,11 @@ def plot_spectrum(
 
 
 def plot_iq_constellation(
-    signal_or_constellation: tuple[ElectricalSignal, ElectricalSignal] | tf.Tensor,
+    signal_or_constellation: (
+        tuple[ElectricalSignal, ElectricalSignal] |
+        tuple[DigitalSignal, DigitalSignal] |
+        tf.Tensor
+    ),
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),
     iq_units: tuple[float, str] = (1.0, "AU"),
@@ -329,7 +339,7 @@ def plot_iq_constellation(
 
 
 def plot_eye_diagram(
-    signal: ElectricalSignal,
+    signal: ElectricalSignal | DigitalSignal,
     symbol_rate: float | tf.Tensor,
     figure: Optional[go.Figure] = None,
     index: int | tuple[int, ...] = (0,),

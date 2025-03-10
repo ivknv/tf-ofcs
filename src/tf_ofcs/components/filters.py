@@ -21,7 +21,7 @@ from ..utils import fftfreq, to_tensor
 from .component import Component
 
 from ..datatypes import (
-    ElectricalSignal, OpticalSignal, FrequencyResponseFunction, TensorCompatible, Timing
+    DigitalSignal, ElectricalSignal, OpticalSignal, FrequencyResponseFunction, TensorCompatible, Timing
 )
 
 __all__ = [
@@ -112,10 +112,10 @@ class FIRFilter(Component):
 
     def implementation(
         self,
-        signal: ElectricalSignal,
+        signal: ElectricalSignal | DigitalSignal,
         /,
         taps: tf.Tensor
-    ) -> ElectricalSignal:
+    ) -> ElectricalSignal | DigitalSignal:
         n_taps = tf.shape(taps)[-1]
 
         # Pad and transpose samples for tf.nn.conv1d()
@@ -134,7 +134,7 @@ class FIRFilter(Component):
             padding="VALID"
         )[:, :, 0]  # shape=[batch_size, sample_count + n_taps, 1]
 
-        return ElectricalSignal(
+        return signal.__class__(
             samples=filtered_samples,
             timing=Timing(
                 sample_count=tf.shape(filtered_samples)[-1],
@@ -172,14 +172,14 @@ class BandPassFilter(Component):
 
     def implementation(
         self,
-        signal: ElectricalSignal | OpticalSignal,
+        signal: ElectricalSignal | DigitalSignal | OpticalSignal,
         /,
         min_frequency: tf.Tensor,
         max_frequency: tf.Tensor
-    ) -> ElectricalSignal | OpticalSignal:
+    ) -> ElectricalSignal | DigitalSignal | OpticalSignal:
         SignalClass = signal.__class__
 
-        if isinstance(signal, ElectricalSignal):
+        if isinstance(signal, (ElectricalSignal, DigitalSignal)):
             fft = tf.signal.fft(tf.complex(signal.samples, 0.0))
         else:
             fft = tf.signal.fft(signal.samples)
@@ -193,7 +193,7 @@ class BandPassFilter(Component):
 
         filtered_samples = tf.signal.ifft(filtered_fft)
 
-        if isinstance(signal, ElectricalSignal):
+        if isinstance(signal, (ElectricalSignal, DigitalSignal)):
             filtered_samples = tf.math.real(filtered_samples)
 
         return SignalClass(timing=signal.timing, samples=filtered_samples)

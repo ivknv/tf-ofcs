@@ -20,9 +20,9 @@ import math
 import tensorflow as tf
 
 from ..datatypes import (
-    TensorCompatible, bit_dtype, bit_sequence_spec,
+    TensorCompatible, bit_dtype,
     ElectricalSignal,
-    IQSignal, iq_signal_spec,
+    IQSignal,
     Timing
 )
 

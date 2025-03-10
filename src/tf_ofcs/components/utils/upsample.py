@@ -17,7 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 from ..component import Component
-from ...datatypes import ElectricalSignal, OpticalSignal, TensorCompatible, Timing
+from ...datatypes import DigitalSignal, ElectricalSignal, OpticalSignal, TensorCompatible, Timing
 from ...utils import to_tensor
 
 __all__ = ["Upsample"]
@@ -39,10 +39,10 @@ class Upsample(Component):
 
     def implementation(
         self,
-        signal: ElectricalSignal | OpticalSignal,
+        signal: ElectricalSignal | DigitalSignal | OpticalSignal,
         /,
         factor: tf.Tensor,
-    ) -> ElectricalSignal | OpticalSignal:
+    ) -> ElectricalSignal | DigitalSignal | OpticalSignal:
         Signal = signal.__class__
 
         signal_samples = tf.repeat(signal.samples, factor, axis=1)

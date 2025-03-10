@@ -85,10 +85,13 @@ class OpticalFiberAWGN(components.Composition):
         step_count: int | tf.Tensor = 3,
         enable_nonlinear_effects: bool = True,
         osnr: TensorCompatible = tf.constant([30.0]),
+        padding: TensorCompatible = tf.constant(0.0),
         name: Optional[str] = None
     ) -> None:
         super().__init__([], name=name)
+
         self.components = [
+            components.PadSignal(padding, name=f"{self.name}__pad_signal"),
             components.OpticalFiber(
                 attenuation=attenuation,
                 chromatic_dispersion=chromatic_dispersion,
@@ -99,6 +102,7 @@ class OpticalFiberAWGN(components.Composition):
                 enable_nonlinear_effects=enable_nonlinear_effects,
                 name=f"{self.name}__optical_fiber"
             ),
+            components.PadSignal(padding, unpad=True, name=f"{self.name}__pad_signal"),
             components.OpticalAWGN(
                 relative_db=-tf.convert_to_tensor(osnr),
                 name=f"{self.name}__optical_awgn"
