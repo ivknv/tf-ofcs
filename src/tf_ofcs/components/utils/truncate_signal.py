@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Optional
+from typing import Literal, Optional
 import tensorflow as tf
 
 from ..component import Component
@@ -27,26 +27,32 @@ class TruncateSignal(Component):
     """
         Truncates the signal along the last dimension from both sides.
 
-        :ivar left: `shape=[]; dtype=tf.int32`, number of samples to truncate from the start
-        :ivar right: `shape=[]; dtype=tf.int32`, number of samples to truncate from the end
+        :ivar left: `shape=[]; dtype=tf.int32`, number of samples or time to truncate from the start
+        :ivar right: `shape=[]; dtype=tf.int32`, number of samples or time to truncate from the end
     """
 
-    #: Start index
-    left: tf.Variable  # shape=[]; dtype=tf.int32
-
-    #: End index
-    right: tf.Variable  # shape=[]; dtype=tf.int32
+    left: tf.Variable  # shape=[]; dtype=tf.int32 or tf.float32
+    right: tf.Variable  # shape=[]; dtype=tf.int32 or tf.float32
+    mode: Literal["samples"] | Literal["time"]
 
     def __init__(
         self,
-        left: TensorCompatible = 0,
-        right: TensorCompatible = 0,
+        left: Optional[TensorCompatible] = None,
+        right: Optional[TensorCompatible] = None,
+        mode: Literal["samples"] | Literal["time"] = "samples",
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
+        if left is None:
+            left = 0 if mode == "samples" else 0.0
+
+        if right is None:
+            right = 0 if mode == "samples" else 0.0
+
         self.left = tf.Variable(tf.constant(left), name=f"{self.name}__left")
         self.right = tf.Variable(tf.constant(right), name=f"{self.name}__right")
+        self.mode = mode
 
         self.local_parameters = ["left", "right"]
 
@@ -55,11 +61,18 @@ class TruncateSignal(Component):
         signal: Signal,
         /,
         left: tf.Tensor,
-        right: tf.Tensor,
-        **kwargs
-    ) -> Any:
+        right: tf.Tensor
+    ) -> Signal:
         sample_count = tf.shape(signal.samples)[-1]
-        truncated = signal.samples[:, left:tf.math.maximum(sample_count - right, 0)]
+
+        if self.mode == "time":
+            left = tf.cast(left * signal.timing.sampling_rate, dtype=tf.int32)
+            right = tf.cast(right * signal.timing.sampling_rate, dtype=tf.int32)
+
+        start = tf.math.minimum(left, sample_count)
+        end = tf.math.maximum(sample_count - right, 0)
+
+        truncated = signal.samples[:, start:end]
 
         return Signal(
             timing=Timing(

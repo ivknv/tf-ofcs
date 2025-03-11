@@ -17,8 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 from ..component import Component
-from ...datatypes import Signal, TensorCompatible, Timing
-from ...utils import to_tensor
+from ...datatypes import Signal, Timing
 
 __all__ = ["Downsample"]
 
@@ -26,45 +25,30 @@ __all__ = ["Downsample"]
 class Downsample(Component):
     """
         Downsamples input signal by specified factor.
-        Takes every `factor`-th sample of the input signal, starting from `time_offset`.
+        Takes every `factor`-th sample of the input signal.
 
-        :ivar factor: `shape=[]; dtype=tf.int32`, downsampling factor
-        :ivar time_offset: `shape=[]; dtype=tf.float32`, time offset before downsampling
+        :ivar factor: `int` or `tf.Tensor`, downsampling factor
     """
 
     #: Downsampling factor
-    factor: tf.Variable  # shape=[]; dtype=int32
-
-    #: Shift signal in time before taking samples
-    time_offset: tf.Variable  # shape=[]; dtype=float32
+    factor: int | tf.Tensor
 
     def __init__(
         self,
-        factor: TensorCompatible,
-        time_offset: TensorCompatible = 0.0,
+        factor: int,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.factor = tf.Variable(to_tensor(factor), name=f"{self.name}__factor")
-        self.time_offset = tf.Variable(to_tensor(time_offset), name=f"{self.name}__time_offset")
-        self.local_parameters = ["factor", "time_offset"]
+        self.factor = factor
 
-    def implementation(
-        self,
-        signal: Signal,
-        /,
-        factor: tf.Tensor,
-        time_offset: tf.Tensor
-    ) -> Signal:
-        shift = tf.cast(tf.round(signal.timing.sampling_rate * time_offset), tf.int32)
-
-        signal_samples = signal.samples[:, shift::factor]
+    def implementation(self, signal: Signal, /) -> Signal:
+        signal_samples = signal.samples[:, ::self.factor]
 
         return Signal(
             timing=Timing(
                 sample_count=tf.shape(signal_samples)[-1],
-                sampling_rate=signal.timing.sampling_rate / tf.cast(factor, tf.float32)
+                sampling_rate=signal.timing.sampling_rate / tf.cast(self.factor, tf.float32)
             ),
             samples=signal_samples
         )

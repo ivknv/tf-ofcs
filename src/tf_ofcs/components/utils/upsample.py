@@ -17,8 +17,7 @@
 from typing import Optional
 import tensorflow as tf
 from ..component import Component
-from ...datatypes import Signal, TensorCompatible, Timing
-from ...utils import to_tensor
+from ...datatypes import Signal, Timing
 
 __all__ = ["Upsample"]
 
@@ -31,34 +30,27 @@ class Upsample(Component):
         by the given factor. The sampling rate of the output signal is also
         multiplied by the same factor.
 
-        :ivar factor: `shape=[], dtype=tf.int32`, upsampling factor
+        :ivar factor: `int` or `tf.Tensor`, upsampling factor
     """
 
-    #: Upsampling factor
-    factor: tf.Variable  # shape=[]; dtype=int32
+    factor: int | tf.Tensor
 
     def __init__(
         self,
-        factor: TensorCompatible,
+        factor: int | tf.Tensor,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.factor = tf.Variable(to_tensor(factor), name=f"{self.name}__factor")
-        self.local_parameters = ["factor"]
+        self.factor = factor
 
-    def implementation(
-        self,
-        signal: Signal,
-        /,
-        factor: tf.Tensor,
-    ) -> Signal:
-        signal_samples = tf.repeat(signal.samples, factor, axis=1)
+    def implementation(self, signal: Signal, /) -> Signal:
+        signal_samples = tf.repeat(signal.samples, self.factor, axis=1)
 
         return Signal(
             timing=Timing(
                 sample_count=tf.shape(signal_samples)[-1],
-                sampling_rate=signal.timing.sampling_rate * tf.cast(factor, tf.float32)
+                sampling_rate=signal.timing.sampling_rate * tf.cast(self.factor, tf.float32)
             ),
             samples=signal_samples
         )

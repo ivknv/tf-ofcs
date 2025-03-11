@@ -78,6 +78,7 @@ class IQSystem(components.Composition, CommunicationSystem):
         )
 
         self.truncate_signal = components.TruncateSignal(left=padding, right=padding)
+        self.offset_signal = components.TruncateSignal(left=0.5 / symbol_rate, mode="time")
 
         self.bitseq_generator = components.BitSequenceGenerator(length=self.bits_per_symbol * 512, rng=self.rng)
         self.channel = components.Substitute(components.Identity())
@@ -146,12 +147,13 @@ class IQSystem(components.Composition, CommunicationSystem):
                 photodiode=self.photodiode,
                 local_oscillator=self.local_oscillator
             ),
+            components.MapComponents(self.offset_signal),
             self.adc,
             self.lpf,
             components.Identity("before_filter"),
             self.rx_filter,
             self.truncate_signal,
-            components.Downsample(factor=oversampling_factor, time_offset=0.5 / symbol_rate),
+            components.Downsample(factor=oversampling_factor),
         ], name="receiver")
 
         self.components = [
@@ -174,12 +176,14 @@ class IQSystem(components.Composition, CommunicationSystem):
                         photodiode=self.photodiode,
                         local_oscillator=self.local_oscillator
                     ),
+                    components.MapComponents(self.offset_signal),
                     self.adc,
                     self.lpf
                 ]),
                 components.Composition([
                     self._iq_encoder,
                     components.Upsample(factor=oversampling_factor),
+                    self.offset_signal,
                     self.lpf
                 ])
             ])
