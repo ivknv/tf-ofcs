@@ -19,7 +19,8 @@ from .photodiode import Photodiode
 from .mzm import MachZehnderModulator
 from .pam import PAMSymbolEncoder, PAMSymbolDecoder
 from .iq import (
-    IQSymbolEncoder, IQSymbolDecoder, IQEncoder, IQModulator, IQReceiver, IQDecoder
+    IQSymbolEncoder, IQSymbolDecoder, IQModulator, IQReceiver,
+    IQToComplex, ComplexToIQ
 )
 from .noise import ElectricalAWGN, OpticalAWGN
 from .passive import (
@@ -55,10 +56,10 @@ __all__ = [
     "PAMSymbolDecoder",
     "IQSymbolEncoder",
     "IQSymbolDecoder",
-    "IQEncoder",
     "IQModulator",
     "IQReceiver",
-    "IQDecoder",
+    "IQToComplex",
+    "ComplexToIQ",
     "MachZehnderModulator",
     "ElectricalAWGN",
     "OpticalAWGN",

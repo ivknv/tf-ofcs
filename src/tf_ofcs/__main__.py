@@ -30,7 +30,7 @@ import keras  # type: ignore[import-untyped] # noqa: E402
 import tensorflow as tf # noqa: E402
 
 from .models import IMDDAutoencoder, IQAutoencoder  # noqa: E402
-from .reference_systems import PAMSystem  # noqa: E402
+from .reference_systems import PAMSystem, IQSystem  # noqa: E402
 from . import components  # noqa: E402
 from .profile import Profile  # noqa: E402
 from .communication_system import CommunicationSystem  # noqa: E402
@@ -63,7 +63,8 @@ def _create_system(system_profile: Profile.System) -> CommunicationSystem:
     mapping = {
         "IMDDAutoencoder": IMDDAutoencoder,
         "IQAutoencoder": IQAutoencoder,
-        "PAMSystem": PAMSystem
+        "PAMSystem": PAMSystem,
+        "QAMSystem": IQSystem
     }
 
     system = typing.cast(

@@ -198,7 +198,7 @@ class DigitalToAnalogConverter(Component):
                 max_level
             ),
             upsample_factor,
-            axis=-1
+            axis=1
         )
 
         return Signal(
@@ -295,15 +295,30 @@ class MZMPreDistortion(Component):
     """
         Applies pre-distortion to the input digital signal to compensate for
         the non-linearity of the Mach-Zehnder Modulator (MZM).
+
+        If the signal is complex-valued, the real and imaginary parts are
+        processed separately.
     """
 
     def implementation(self, input_signal: Signal, /) -> Signal:
-        assert input_signal.samples.dtype is tf.float32
+        assert input_signal.samples.dtype in (tf.float32, tf.complex64)
 
-        return Signal(
-            samples=adjust_symbol_for_mzm(input_signal.samples),
-            timing=input_signal.timing
-        )
+        if input_signal.samples.dtype is tf.complex64:
+            samples = adjust_symbol_for_mzm(
+                tf.stack(
+                    [
+                        tf.math.real(input_signal.samples),
+                        tf.math.imag(input_signal.samples)
+                    ],
+                    axis=-1
+                )
+            )
+
+            samples = tf.complex(samples[:, :, 0], samples[:, :, 1])
+        else:
+            samples = adjust_symbol_for_mzm(input_signal.samples)
+
+        return Signal(samples=samples, timing=input_signal.timing)
 
 
 class PhotodiodePreDistortion(Component):
