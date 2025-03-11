@@ -117,9 +117,10 @@ class PAMSystem(components.Composition, CommunicationSystem):
         )
 
         self.transmitter = components.Composition([
+            components.Upsample(oversampling_factor),
+            self.lpf,
             self.dac,
             self.sim_upsampler,
-            self.lpf,
             components.Fork(shape=[2]),
             components.MapComponents([self.laser, components.Identity()]),
             components.MachZehnderModulator(name="modulator")
@@ -127,8 +128,8 @@ class PAMSystem(components.Composition, CommunicationSystem):
 
         self.receiver = components.Composition([
             self.photodiode,
-            self.lpf,
             self.adc,
+            self.lpf,
             self.rx_filter,
             self.slice_signal,
             components.Downsample(factor=oversampling_factor, time_offset=0.5 / symbol_rate)
@@ -151,14 +152,13 @@ class PAMSystem(components.Composition, CommunicationSystem):
                     self.transmitter,
                     self.channel,
                     self.photodiode,
-                    self.lpf,
-                    self.adc
+                    self.adc,
+                    self.lpf
                 ]),
                 components.Composition([
                     self._pam_encoder,
-                    components.Upsample(factor=sim_upsampling_factor * oversampling_factor),
-                    self.lpf,
-                    components.Downsample(factor=sim_upsampling_factor)
+                    components.Upsample(factor=oversampling_factor),
+                    self.lpf
                 ])
             ])
         ])
