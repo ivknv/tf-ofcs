@@ -109,7 +109,7 @@ class FIRFilter(Component):
         self.local_parameters = ["taps"]
 
     def implementation(self, signal: Signal, /, taps: tf.Tensor) -> Signal:
-        assert signal.samples.dtype is tf.float32
+        assert signal.samples.dtype in (tf.float32, tf.complex64)
 
         n_taps = tf.shape(taps)[-1]
 
@@ -122,12 +122,32 @@ class FIRFilter(Component):
         # Reshape filter taps
         taps = tf.reshape(taps, [n_taps, 1, 1])  # shape=[n_taps, 1, 1]
 
-        filtered_samples = tf.nn.conv1d(
-            samples,
-            filters=taps,
-            stride=1,
-            padding="VALID"
-        )[:, :, 0]  # shape=[batch_size, sample_count + n_taps, 1]
+        if signal.samples.dtype is tf.complex64 or taps.dtype is tf.complex64:
+            # TensorFlow's conv1d() doesn't support complex types so we have to
+            # rewrite complex convolution in terms of real numbers
+            # Re(h * x) = Re(h) * Re(x) - Im(h) * Im(x)
+            # Im(h * x) = Re(h) * Im(x) + Im(h) * Re(x)
+
+            h_real = tf.math.real(taps)
+            h_imag = tf.math.imag(taps)
+
+            x_real = tf.math.real(samples)
+            x_imag = tf.math.imag(samples)
+
+            filtered_real = tf.subtract(
+                tf.nn.conv1d(x_real, filters=h_real, stride=1, padding="VALID"),
+                tf.nn.conv1d(x_imag, filters=h_imag, stride=1, padding="VALID")
+            )[:, :, 0]  # shape=[batch_size, sample_count + n_taps, 1]
+
+            filtered_imag = tf.add(
+                tf.nn.conv1d(x_imag, filters=h_real, stride=1, padding="VALID"),
+                tf.nn.conv1d(x_real, filters=h_imag, stride=1, padding="VALID")
+            )[:, :, 0]  # shape=[batch_size, sample_count + n_taps, 1]
+
+            filtered_samples = tf.complex(filtered_real, filtered_imag)
+        else:
+            # shape=[batch_size, sample_count + n_taps, 1]
+            filtered_samples = tf.nn.conv1d(samples, filters=taps, stride=1, padding="VALID")[:, :, 0]
 
         return Signal(
             samples=filtered_samples,

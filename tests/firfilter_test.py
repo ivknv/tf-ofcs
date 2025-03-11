@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import numpy as np
 import tensorflow as tf
 
 from tf_ofcs.components import FIRFilter
@@ -32,3 +33,27 @@ def test_firfilter() -> None:
     assert tf.math.reduce_all(
         output_signal.samples[:, 4:] == input_signal.samples
     )  # type: ignore[operator]
+
+
+def test_complex_firfilter() -> None:
+    kernel = tf.complex([0.0, 0.7, -3.0, 0.0], [0.0, 0.3, 0.0, 3.5])
+    samples = tf.complex(
+        tf.cast(tf.range(20), tf.float32),
+        tf.cast(tf.range(20, 0, -1), tf.float32)
+    )
+
+    fir_filter = FIRFilter(kernel)
+
+    input_signal = Signal(
+        samples=[samples],
+        timing=Timing(sample_count=tf.shape(samples)[-1], sampling_rate=1e9)
+    )
+    output_signal = fir_filter(input_signal)
+
+    assert isinstance(output_signal, Signal)
+    assert tf.math.reduce_all(tf.shape(output_signal.samples) == [1, 23])  # type: ignore[operator]
+
+    # Compare against numpy's convolve()
+    expected = np.convolve(samples.numpy(), kernel[::-1].numpy())
+
+    assert tf.math.reduce_all(tf.abs(output_signal.samples[0] - expected) < 1e-6)  # type: ignore[operator]
