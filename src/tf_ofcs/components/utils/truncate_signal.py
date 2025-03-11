@@ -66,10 +66,10 @@ class TruncateSignal(Component):
         sample_count = tf.shape(signal.samples)[-1]
 
         if self.mode == "time":
-            left = tf.cast(left * signal.timing.sampling_rate, dtype=tf.int32)
-            right = tf.cast(right * signal.timing.sampling_rate, dtype=tf.int32)
+            left = tf.cast(tf.round(left * signal.timing.sampling_rate), dtype=tf.int32)
+            right = tf.cast(tf.round(right * signal.timing.sampling_rate), dtype=tf.int32)
 
-        start = tf.math.minimum(left, sample_count)
+        start = left
         end = tf.math.maximum(sample_count - right, 0)
 
         truncated = signal.samples[:, start:end]
