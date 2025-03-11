@@ -28,9 +28,9 @@ from .passive import (
     OpticalCoupler2x2, OpticalCoupler2x1, OpticalMultiplexer, OpticalDemultiplexer
 )
 from .filters import (
-    BandPassFilter, FFTFilter, FIRFilter, BrickwallFrequencyResponse,
-    WDMBrickwallFrequencyResponse, GaussianFrequencyResponse,
-    BesselFrequencyResponse
+    BandPassFilter, FFTFilter, FIRFilter, RaisedCosineFrequencyResponse,
+    RootRaisedCosineFrequencyResponse, BrickwallFrequencyResponse,
+    WDMBrickwallFrequencyResponse, GaussianFrequencyResponse, BesselFrequencyResponse
 )
 from .ber import BERTester
 from .utils import (
@@ -72,6 +72,8 @@ __all__ = [
     "FFTFilter",
     "FIRFilter",
     "BERTester",
+    "RaisedCosineFrequencyResponse",
+    "RootRaisedCosineFrequencyResponse",
     "BrickwallFrequencyResponse",
     "WDMBrickwallFrequencyResponse",
     "GaussianFrequencyResponse",

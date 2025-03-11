@@ -19,6 +19,7 @@ import tensorflow as tf
 
 from ..utils import fftfreq, to_tensor
 from .component import Component
+from .. import constants
 
 from ..datatypes import Signal, FrequencyResponseFunction, TensorCompatible, Timing
 
@@ -26,6 +27,8 @@ __all__ = [
     "BandPassFilter",
     "FFTFilter",
     "FIRFilter",
+    "RaisedCosineFrequencyResponse",
+    "RootRaisedCosineFrequencyResponse",
     "BrickwallFrequencyResponse",
     "WDMBrickwallFrequencyResponse",
     "GaussianFrequencyResponse",
@@ -69,7 +72,7 @@ class FFTFilter(Component):
 
         frequency_response = self.frequency_response_function(
             freqs,
-            batch_size=tf.constant(tf.shape(fft)[0]),
+            batch_size=tf.shape(fft)[0],
             **kwargs
         )
 
@@ -212,6 +215,113 @@ class BandPassFilter(Component):
             filtered_samples = tf.math.real(filtered_samples)
 
         return Signal(timing=signal.timing, samples=filtered_samples)
+
+
+class RaisedCosineFrequencyResponse(Component):
+    """
+        Implements raised cosine filter's frequency response function.
+
+        :ivar rolloff_factor: `shape=[], dtype=tf.float32`, roll-off factor
+        :ivar symbol_rate: `shape=[], dtype=tf.float32`, symbol rate
+        :ivar batch_size: `shape=[], dtype=tf.int32`, batch size of the output
+    """
+
+    rolloff_factor: tf.Variable  # shape=[]; dtype=tf.float32
+
+    #: Symbol rate
+    symbol_rate: tf.Variable  # shape=[]; dtype=tf.float32
+    batch_size: tf.Variable  # shape=[]; dtype=tf.int32
+
+    def __init__(
+        self,
+        rolloff_factor: TensorCompatible,
+        symbol_rate: TensorCompatible,
+        batch_size: TensorCompatible = 1,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.rolloff_factor = tf.Variable(to_tensor(rolloff_factor), name=f"{self.name}__rolloff_factor")
+        self.symbol_rate = tf.Variable(to_tensor(symbol_rate), name=f"{self.name}__symbol_rate")
+        self.batch_size = tf.Variable(to_tensor(batch_size), name=f"{self.name}__batch_size")
+
+        self.local_parameters = ["rolloff_factor", "symbol_rate","batch_size"]
+        self.global_parameters = ["batch_size"]
+
+    def implementation(
+        self,
+        frequencies: tf.Tensor,
+        /,
+        rolloff_factor: tf.Tensor,
+        symbol_rate: tf.Tensor,
+        batch_size: tf.Tensor
+    ) -> tf.Tensor:
+        T = 1.0 / symbol_rate
+        frequencies = tf.abs(frequencies)
+        result = tf.where(
+            tf.less_equal(frequencies, (1.0 - rolloff_factor) / (2 * T)),
+            tf.ones_like(frequencies, dtype=tf.float32),
+            tf.zeros_like(frequencies, dtype=tf.float32)
+        )
+        transition_band = tf.logical_and(
+            tf.greater(frequencies, (1.0 - rolloff_factor) / (2 * T)),
+            tf.less_equal(frequencies, (1.0 + rolloff_factor) / (2 * T))
+        )
+        result = tf.where(
+            transition_band,
+            0.5 * (1.0 + tf.cos(
+                tf.multiply(
+                    constants.pi * T / rolloff_factor,
+                    frequencies - (1.0 - rolloff_factor) / (2 * T)
+                )
+            )),
+            result
+        )
+
+        return tf.complex(result, 0.0)
+
+
+class RootRaisedCosineFrequencyResponse(Component):
+    """
+        Implements root raised cosine filter's frequency response function.
+
+        :ivar rolloff_factor: `shape=[], dtype=tf.float32`, roll-off factor
+        :ivar symbol_rate: `shape=[], dtype=tf.float32`, symbol rate
+        :ivar batch_size: `shape=[], dtype=tf.int32`, batch size of the output
+    """
+
+    rolloff_factor: tf.Variable  # shape=[]; dtype=tf.float32
+
+    #: Symbol rate
+    symbol_rate: tf.Variable  # shape=[]; dtype=tf.float32
+    batch_size: tf.Variable  # shape=[]; dtype=tf.int32
+
+    def __init__(
+        self,
+        rolloff_factor: TensorCompatible,
+        symbol_rate: TensorCompatible,
+        batch_size: TensorCompatible = 1,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+
+        self.rolloff_factor = tf.Variable(to_tensor(rolloff_factor), name=f"{self.name}__rolloff_factor")
+        self.symbol_rate = tf.Variable(to_tensor(symbol_rate), name=f"{self.name}__symbol_rate")
+        self.batch_size = tf.Variable(to_tensor(batch_size), name=f"{self.name}__batch_size")
+        self._rc_fr = RaisedCosineFrequencyResponse(
+            rolloff_factor=self.rolloff_factor,
+            symbol_rate=self.symbol_rate,
+            batch_size=self.batch_size,
+            name=f"{self.name}__rrc"
+        )
+
+        self.local_parameters = ["rolloff_factor", "symbol_rate","batch_size"]
+        self.global_parameters = ["batch_size"]
+
+    def implementation(self, frequencies: tf.Tensor, /, **kwargs) -> tf.Tensor:
+        response = self._rc_fr.implementation(frequencies, **kwargs)
+
+        return tf.math.divide_no_nan(response, tf.complex(tf.sqrt(tf.abs(response)), 0.0))
 
 
 class BrickwallFrequencyResponse(Component):
