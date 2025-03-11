@@ -36,7 +36,7 @@ from .ber import BERTester
 from .utils import (
     Composition, MapComponents, Identity, Reindex, Fork, Downsample, Upsample,
     ExtractSamples, Lambda, SplitSignals, MergeSignals, TileSignals,
-    RandomizeParameters, PadSignal, Loop, Substitute, SliceSignal
+    RandomizeParameters, PadSignal, Loop, Substitute, TruncateSignal
 )
 from .electrical_and_digital import (
     Adder, Subtractor, SignalFromTensor,
@@ -100,7 +100,7 @@ __all__ = [
     "PadSignal",
     "Loop",
     "Substitute",
-    "SliceSignal",
+    "TruncateSignal",
     "Component",
     "ChannelLossEstimator",
     "GaussianPulseGenerator",

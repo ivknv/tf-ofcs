@@ -20,50 +20,51 @@ import tensorflow as tf
 from ..component import Component
 from ...datatypes import TensorCompatible, Signal, Timing
 
-__all__ = ["SliceSignal"]
+__all__ = ["TruncateSignal"]
 
 
-class SliceSignal(Component):
+class TruncateSignal(Component):
     """
-        Slices the signal along the last dimension.
+        Truncates the signal along the last dimension from both sides.
 
-        :ivar start: `shape=[]; dtype=tf.int32`, start index of the slice
-        :ivar end: `shape=[]; dtype=tf.int32`, end index of the slice
+        :ivar left: `shape=[]; dtype=tf.int32`, number of samples to truncate from the start
+        :ivar right: `shape=[]; dtype=tf.int32`, number of samples to truncate from the end
     """
 
     #: Start index
-    start: tf.Variable  # shape=[]; dtype=tf.int32
+    left: tf.Variable  # shape=[]; dtype=tf.int32
 
     #: End index
-    end: tf.Variable  # shape=[]; dtype=tf.int32
+    right: tf.Variable  # shape=[]; dtype=tf.int32
 
     def __init__(
         self,
-        start: TensorCompatible = 0,
-        end: TensorCompatible = 0,
+        left: TensorCompatible = 0,
+        right: TensorCompatible = 0,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
-        self.start = tf.Variable(tf.constant(start), name=f"{self.name}__start")
-        self.end = tf.Variable(tf.constant(end), name=f"{self.name}__end")
+        self.left = tf.Variable(tf.constant(left), name=f"{self.name}__left")
+        self.right = tf.Variable(tf.constant(right), name=f"{self.name}__right")
 
-        self.local_parameters = ["start", "end"]
+        self.local_parameters = ["left", "right"]
 
     def implementation(
         self,
         signal: Signal,
         /,
-        start: tf.Tensor,
-        end: tf.Tensor,
+        left: tf.Tensor,
+        right: tf.Tensor,
         **kwargs
     ) -> Any:
-        end = tf.cond(end < 0, lambda: tf.shape(signal.samples)[-1] + end, lambda: end)
+        sample_count = tf.shape(signal.samples)[-1]
+        truncated = signal.samples[:, left:tf.math.maximum(sample_count - right, 0)]
 
         return Signal(
             timing=Timing(
-                sample_count=end - start,
+                sample_count=tf.shape(truncated)[-1],
                 sampling_rate=signal.timing.sampling_rate
             ),
-            samples=signal.samples[:, start:end]
+            samples=truncated
         )

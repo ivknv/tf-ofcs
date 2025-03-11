@@ -77,10 +77,7 @@ class IQSystem(components.Composition, CommunicationSystem):
             name="rx_filter"
         )
 
-        if n_taps > 1:  # type: ignore
-            self.slice_signal: components.Component = components.SliceSignal(start=padding, end=-padding)
-        else:
-            self.slice_signal = components.Identity()
+        self.truncate_signal = components.TruncateSignal(left=padding, right=padding)
 
         self.bitseq_generator = components.BitSequenceGenerator(length=self.bits_per_symbol * 512, rng=self.rng)
         self.channel = components.Substitute(components.Identity())
@@ -153,7 +150,7 @@ class IQSystem(components.Composition, CommunicationSystem):
             self.lpf,
             components.Identity("before_filter"),
             self.rx_filter,
-            self.slice_signal,
+            self.truncate_signal,
             components.Downsample(factor=oversampling_factor, time_offset=0.5 / symbol_rate),
         ], name="receiver")
 
@@ -195,7 +192,7 @@ class IQSystem(components.Composition, CommunicationSystem):
         received_seq: Signal,
         expected_seq: Signal,
     ) -> tf.Tensor:
-        received_seq = self.slice_signal(self.rx_filter(received_seq))
+        received_seq = self.truncate_signal(self.rx_filter(received_seq))
         return tf.math.reduce_mean(tf.square(tf.abs(received_seq.samples - expected_seq.samples)))
 
     @tf.function
