@@ -303,8 +303,11 @@ class MZMPreDistortion(Component):
     def implementation(self, input_signal: Signal, /) -> Signal:
         assert input_signal.samples.dtype in (tf.float32, tf.complex64)
 
+        def _clip(samples: tf.Tensor) -> tf.Tensor:
+            return tf.clip_by_value(samples, -1.0, 1.0)
+
         if input_signal.samples.dtype is tf.complex64:
-            samples = adjust_symbol_for_mzm(
+            samples = adjust_symbol_for_mzm(_clip(
                 tf.stack(
                     [
                         tf.math.real(input_signal.samples),
@@ -312,11 +315,11 @@ class MZMPreDistortion(Component):
                     ],
                     axis=-1
                 )
-            )
+            ))
 
             samples = tf.complex(samples[:, :, 0], samples[:, :, 1])
         else:
-            samples = adjust_symbol_for_mzm(input_signal.samples)
+            samples = adjust_symbol_for_mzm(_clip(input_signal.samples))
 
         return Signal(samples=samples, timing=input_signal.timing)
 
@@ -331,6 +334,6 @@ class PhotodiodePreDistortion(Component):
         assert input_signal.samples.dtype is tf.float32
 
         return Signal(
-            samples=tf.sqrt(input_signal.samples),
+            samples=tf.sqrt(tf.math.maximum(input_signal.samples, 0.0)),
             timing=input_signal.timing
         )
