@@ -48,6 +48,7 @@ from .channel_loss_estimator import ChannelLossEstimator
 from .gaussian_pulse_generator import GaussianPulseGenerator
 from .optical_amplifier import OpticalAmplifier
 from .bit_sequence_generator import BitSequenceGenerator
+from .carrier_phase_recovery import DecisionDirectedPhaseRecovery
 
 __all__ = [
     "Laser",
@@ -109,5 +110,6 @@ __all__ = [
     "OpticalMultiplexer",
     "OpticalDemultiplexer",
     "OpticalAmplifier",
-    "BitSequenceGenerator"
+    "BitSequenceGenerator",
+    "DecisionDirectedPhaseRecovery"
 ]
