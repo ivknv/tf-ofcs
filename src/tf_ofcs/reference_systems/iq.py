@@ -146,16 +146,11 @@ class IQSystem(components.Composition, CommunicationSystem):
                 photodiode=self.photodiode,
                 local_oscillator=self.local_oscillator
             ),
-            components.MapComponents(
-                components.TruncateSignal(
-                    left=0.5 / symbol_rate,
-                    mode="time"
-                )
-            ),
             self.adc,
             self.lpf,
             components.Identity("before_filter"),
             self.rx_filter,
+            components.TruncateSignal(left=0.5 / symbol_rate, mode="time"),
             self.truncate_signal,
             components.Downsample(factor=oversampling_factor),
         ], name="receiver")

@@ -127,11 +127,12 @@ class PAMSystem(components.Composition, CommunicationSystem):
 
         self.receiver = components.Composition([
             self.photodiode,
-            components.TruncateSignal(left=0.5 / symbol_rate, mode="time"),
             self.adc,
             self.lpf,
+            components.Identity(name="before_filter"),
             self.rx_filter,
             self.truncate_signal,
+            components.TruncateSignal(left=0.5 / symbol_rate, mode="time"),
             components.Downsample(factor=oversampling_factor)
         ], name="receiver")
 

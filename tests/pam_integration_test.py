@@ -8,14 +8,14 @@ from tf_ofcs.utils import wavelength_nm_to_frequency
 
 
 def test_pam4_system() -> None:
-    data_rate = 21e9
+    data_rate = 42e9
     snr = 35.0
 
     system = PAMSystem(bits_per_symbol=2, data_rate=data_rate, n_taps=13)
     system.rng.reset_from_seed(1234)
 
     attenuation = 0.2
-    length = 10.0
+    length = 20.0
 
     channel = Composition([
         PadSignal(0.125),
@@ -37,7 +37,7 @@ def test_pam4_system() -> None:
         [1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0]
     ])
 
-    system.setup(channel, {"lpf__symbol_rate": 84e9, "lpf__rolloff_factor": 0.0})
+    system.setup(channel, {"lpf__symbol_rate": 32e9, "lpf__rolloff_factor": 0.5})
 
     output_sequence = system(input_sequence, **system.component_parameters)
     expected_output_sequence = input_sequence
