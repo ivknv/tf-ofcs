@@ -55,10 +55,12 @@ class PAMSystem(components.Composition, CommunicationSystem):
         self.parameter_distributions = {}
 
         self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
-        self.lpf = components.BandPassFilter(
-            min_frequency=[0.0],
-            max_frequency=[self.data_rate],
-            name="lpf"
+        self.lpf = components.FFTFilter(
+            components.RootRaisedCosineFrequencyResponse(
+                rolloff_factor=0.0,
+                symbol_rate=symbol_rate,
+                name="lpf"
+            )
         )
         self.laser = components.Laser(power=dbm_to_w([2.0]), name="laser")
         self.photodiode = components.Photodiode(
@@ -89,6 +91,8 @@ class PAMSystem(components.Composition, CommunicationSystem):
         )
         self.encoder = components.Composition([
             self._pam_encoder,
+            components.Upsample(oversampling_factor),
+            self.lpf,
             components.PhotodiodePreDistortion(),
             components.MZMPreDistortion()
         ], name="encoder")
@@ -114,8 +118,6 @@ class PAMSystem(components.Composition, CommunicationSystem):
         )
 
         self.transmitter = components.Composition([
-            components.Upsample(oversampling_factor),
-            self.lpf,
             self.dac,
             self.sim_upsampler,
             components.Fork(shape=[2]),
@@ -156,6 +158,7 @@ class PAMSystem(components.Composition, CommunicationSystem):
                 components.Composition([
                     self._pam_encoder,
                     components.Upsample(factor=oversampling_factor),
+                    self.lpf,
                     self.lpf
                 ])
             ])

@@ -57,13 +57,13 @@ class IQSystem(components.Composition, CommunicationSystem):
         self.parameter_distributions = {}
 
         self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
-        self.lpf = components.Composition([
-            components.BandPassFilter(
-                min_frequency=[0.0],
-                max_frequency=[self.data_rate],
+        self.lpf = components.FFTFilter(
+            components.RootRaisedCosineFrequencyResponse(
+                rolloff_factor=0.5,
+                symbol_rate=symbol_rate,
                 name="lpf"
             )
-        ])
+        )
         self.laser = components.Laser(power=dbm_to_w([2.0]), name="laser")
         self.local_oscillator = components.Laser(power=dbm_to_w([-8.0]), name="local_oscillator")
         self.photodiode = components.Photodiode(
@@ -92,8 +92,9 @@ class IQSystem(components.Composition, CommunicationSystem):
         )
         self.encoder = components.Composition([
             self._iq_encoder,
-            components.MZMPreDistortion(),
-            components.Upsample(factor=oversampling_factor)
+            components.Upsample(factor=oversampling_factor),
+            self.lpf,
+            components.MZMPreDistortion()
         ], name="encoder")
 
         self.decoder = components.IQSymbolDecoder(
@@ -127,7 +128,6 @@ class IQSystem(components.Composition, CommunicationSystem):
         ])
 
         self.transmitter = components.Composition([
-            self.lpf,
             self.dac,
             components.MapComponents(self.sim_upsampler),
             components.Fork(shape=[2]),

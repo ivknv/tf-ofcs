@@ -2,14 +2,14 @@
 
 import tensorflow as tf
 
-from tf_ofcs.components import Composition, OpticalAWGN, OpticalFiber
+from tf_ofcs.components import Composition, OpticalAWGN, OpticalFiber, PadSignal
 from tf_ofcs.reference_systems import PAMSystem
 from tf_ofcs.utils import wavelength_nm_to_frequency
 
 
 def test_pam4_system() -> None:
-    data_rate = 42e9
-    snr = 30.0
+    data_rate = 21e9
+    snr = 35.0
 
     system = PAMSystem(bits_per_symbol=2, data_rate=data_rate, n_taps=13)
     system.rng.reset_from_seed(1234)
@@ -18,6 +18,7 @@ def test_pam4_system() -> None:
     length = 10.0
 
     channel = Composition([
+        PadSignal(0.125),
         OpticalAWGN(relative_db=[-snr], rng=system.rng),
         OpticalFiber(
              attenuation=[attenuation],
@@ -26,7 +27,8 @@ def test_pam4_system() -> None:
              length=[length],
              central_frequency=wavelength_nm_to_frequency(1550.0),
              step_count=1
-        )
+        ),
+        PadSignal(0.125, unpad=True)
     ])
 
     input_sequence = tf.constant([
@@ -35,9 +37,9 @@ def test_pam4_system() -> None:
         [1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0]
     ])
 
-    system.setup(channel, {})
+    system.setup(channel, {"lpf__symbol_rate": 84e9, "lpf__rolloff_factor": 0.0})
 
-    output_sequence = system(input_sequence)
+    output_sequence = system(input_sequence, **system.component_parameters)
     expected_output_sequence = input_sequence
 
     assert isinstance(output_sequence, tf.Tensor)
