@@ -21,7 +21,7 @@ from ..datatypes import Signal, TensorCompatible
 from ..communication_system import CommunicationSystem
 from ..utils import dbm_to_w, to_tensor
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 __all__ = ["IQSystem"]
 
@@ -37,7 +37,7 @@ class IQSystem(components.Composition, CommunicationSystem):
         data_rate: TensorCompatible = 42e9,
         n_taps: TensorCompatible = 13,
         enable_phase_noise: bool = False,
-        enable_carrier_phase_recovery: bool = False,
+        carrier_phase_recovery: Literal["decision_directed"] | Literal["viterbi_viterbi"] | None = None,
         name: Optional[str] = None
     ) -> None:
         components.Composition.__init__(self, [], name=name)
@@ -165,11 +165,19 @@ class IQSystem(components.Composition, CommunicationSystem):
             components.Downsample(factor=oversampling_factor),
         ], name="receiver")
 
-        if enable_carrier_phase_recovery:
+        if carrier_phase_recovery == "decision_directed":
             self.receiver.components.append(
                 components.DecisionDirectedPhaseRecovery(
                     window_length=4,
                     mapping=tf.complex(to_tensor(mapping)[:, 0], to_tensor(mapping)[:, 1])
+                )
+            )
+        elif carrier_phase_recovery == "viterbi_viterbi":
+            self.receiver.components.append(
+                components.ViterbiViterbiPhaseRecovery(
+                    window_length=4,
+                    M=tf.shape(mapping)[0],
+                    phase_offset=0.0
                 )
             )
 
