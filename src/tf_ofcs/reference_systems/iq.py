@@ -19,7 +19,7 @@ import tensorflow as tf
 from .. import components
 from ..datatypes import Signal, TensorCompatible
 from ..communication_system import CommunicationSystem
-from ..utils import dbm_to_w
+from ..utils import dbm_to_w, to_tensor
 
 from typing import Any, Optional
 
@@ -36,6 +36,8 @@ class IQSystem(components.Composition, CommunicationSystem):
         bits_per_symbol: TensorCompatible = 2,
         data_rate: TensorCompatible = 42e9,
         n_taps: TensorCompatible = 13,
+        enable_phase_noise: bool = False,
+        enable_carrier_phase_recovery: bool = False,
         name: Optional[str] = None
     ) -> None:
         components.Composition.__init__(self, [], name=name)
@@ -64,8 +66,16 @@ class IQSystem(components.Composition, CommunicationSystem):
                 name="lpf"
             )
         )
-        self.laser = components.Laser(power=dbm_to_w([2.0]), name="laser")
-        self.local_oscillator = components.Laser(power=dbm_to_w([-8.0]), name="local_oscillator")
+        self.laser = components.Laser(
+            power=dbm_to_w([2.0]),
+            enable_phase_noise=enable_phase_noise,
+            name="laser"
+        )
+        self.local_oscillator = components.Laser(
+            power=dbm_to_w([-8.0]),
+            enable_phase_noise=enable_phase_noise,
+            name="local_oscillator"
+        )
         self.photodiode = components.Photodiode(
             maximum_power=maximum_power,
             dark_current=dbm_to_w(tf.constant([-20.0]))
@@ -150,10 +160,18 @@ class IQSystem(components.Composition, CommunicationSystem):
             self.lpf,
             components.Identity("before_filter"),
             self.rx_filter,
-            components.TruncateSignal(left=0.5 / symbol_rate, mode="time"),
             self.truncate_signal,
+            components.TruncateSignal(left=0.5 / symbol_rate, mode="time"),
             components.Downsample(factor=oversampling_factor),
         ], name="receiver")
+
+        if enable_carrier_phase_recovery:
+            self.receiver.components.append(
+                components.DecisionDirectedPhaseRecovery(
+                    window_length=4,
+                    mapping=tf.complex(to_tensor(mapping)[:, 0], to_tensor(mapping)[:, 1])
+                )
+            )
 
         self.components = [
             self.encoder,
