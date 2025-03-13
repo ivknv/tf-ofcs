@@ -239,12 +239,13 @@ def symbol_mapping_to_gray(mapping: list) -> list:
 
 def psk_constellation(
     bits_per_symbol: int,
-    psk_mapping: typing.Optional[Sequence[float]] = None
+    psk_mapping: typing.Optional[Sequence[float]] = None,
+    phase_offset: float = math.pi * 1.25
 ) -> list[list[float]]:
     if psk_mapping is None:
         symbol_count = 2 ** bits_per_symbol
         psk_mapping = [
-            2 * math.pi * (-i) / symbol_count + math.pi * 1.25
+            2 * math.pi * (-i) / symbol_count + phase_offset
             for i in range(symbol_count)
         ]
 
