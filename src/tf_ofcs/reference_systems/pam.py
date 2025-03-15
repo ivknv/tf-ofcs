@@ -26,162 +26,153 @@ from typing import Any, Optional
 __all__ = ["PAMSystem"]
 
 
-class PAMSystem(components.Composition, CommunicationSystem):
-    data_rate: TensorCompatible
+class PAMSystem(CommunicationSystem):
+    rng: tf.random.Generator
 
     def __init__(
         self,
-        bits_per_symbol: TensorCompatible = 4,
-        data_rate: TensorCompatible = 42e9,
-        n_taps: TensorCompatible = 13,
+        bits_per_symbol: int = 4,
+        data_rate: float = 42e9,
+        n_taps: int = 13,
         name: Optional[str] = None
     ) -> None:
-        components.Composition.__init__(self, [], name=name)
-
-        self.sampling_rate = 336e9
-        self.bits_per_symbol = tf.constant(bits_per_symbol)
-        self.data_rate = tf.constant(data_rate)
-
         maximum_power = dbm_to_w(tf.constant([3.0]))
         adc_step = maximum_power / 256.0
         adc_sampling_rate = 84e9
         dac_step = 1.0 / 256.0
 
-        symbol_rate = self.data_rate / tf.cast(self.bits_per_symbol, tf.float32)
+        symbol_rate = data_rate / tf.cast(bits_per_symbol, tf.float32)
         oversampling_factor = int(adc_sampling_rate / symbol_rate)
         sim_upsampling_factor = 4
 
-        self.component_parameters = {}
-        self.parameter_distributions = {}
-
         self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
-        self.lpf = components.FFTFilter(
+        lpf = components.FFTFilter(
             components.RootRaisedCosineFrequencyResponse(
                 rolloff_factor=0.0,
                 symbol_rate=symbol_rate,
                 name="lpf"
             )
         )
-        self.laser = components.Laser(power=dbm_to_w([2.0]), name="laser")
-        self.photodiode = components.Photodiode(
+        laser = components.Laser(power=dbm_to_w([2.0]), name="laser")
+        photodiode = components.Photodiode(
             maximum_power=maximum_power,
             dark_current=dbm_to_w(tf.constant([-20.0]))
         )
 
         padding = (n_taps - tf.constant(1)) // 2
-        self.rx_filter = components.FIRFilter(
+        self._rx_filter = components.FIRFilter(
             taps=tf.pad([[1.0]], [[0, 0], [padding, padding]]),
             name="rx_filter"
         )
 
-        self.truncate_signal = components.TruncateSignal(left=padding, right=padding)
+        self._truncate_signal = components.TruncateSignal(left=padding, right=padding)
+        bitseq_generator = components.BitSequenceGenerator(length=bits_per_symbol * 512, rng=self.rng)
+        sim_upsampler = components.Upsample(sim_upsampling_factor)
 
-        self.bitseq_generator = components.BitSequenceGenerator(length=self.bits_per_symbol * 512, rng=self.rng)
-        self.channel = components.Substitute(components.Identity())
+        mapping = symbol_mapping_to_gray(
+            list(pam_constellation(tf.constant(bits_per_symbol)).numpy())
+        )
 
-        self.sim_upsampler = components.Upsample(sim_upsampling_factor)
-
-        mapping = symbol_mapping_to_gray(list(pam_constellation(self.bits_per_symbol).numpy()))
-
-        self._pam_encoder = components.PAMSymbolEncoder(
-            bits_per_symbol=self.bits_per_symbol,
+        pam_encoder = components.PAMSymbolEncoder(
+            bits_per_symbol=bits_per_symbol,
             mapping=mapping,
             symbol_rate=symbol_rate,
             name="pam_symbol_encoder"
         )
-        self.encoder = components.Composition([
-            self._pam_encoder,
+        encoder = components.Composition([
+            pam_encoder,
             components.Upsample(oversampling_factor),
-            self.lpf,
+            lpf,
             components.PhotodiodePreDistortion(),
             components.MZMPreDistortion()
         ], name="encoder")
 
-        self.decoder = components.PAMSymbolDecoder(
-            bits_per_symbol=self.bits_per_symbol,
+        decoder = components.PAMSymbolDecoder(
+            bits_per_symbol=bits_per_symbol,
             mapping=mapping,
             name="decoder"
         )
 
-        self.dac = components.DigitalToAnalogConverter(
+        dac = components.DigitalToAnalogConverter(
             step=dac_step,
             sampling_rate=adc_sampling_rate,
             min_level=0.0,
             max_level=1.0
         )
 
-        self.adc = components.AnalogToDigitalConverter(
+        adc = components.AnalogToDigitalConverter(
             step=adc_step,
             min_level=0.0,
             max_level=maximum_power,
             sampling_rate=adc_sampling_rate
         )
 
-        self.transmitter = components.Composition([
-            self.dac,
-            self.sim_upsampler,
+        transmitter = components.Composition([
+            dac,
+            sim_upsampler,
             components.Fork(shape=[2]),
-            components.MapComponents([self.laser, components.Identity()]),
+            components.MapComponents([laser, components.Identity()]),
             components.MachZehnderModulator(name="modulator")
         ], name="transmitter")
 
-        self.receiver = components.Composition([
-            self.photodiode,
-            self.adc,
-            self.lpf,
+        receiver = components.Composition([
+            photodiode,
+            adc,
+            lpf,
             components.Identity(name="before_filter"),
-            self.rx_filter,
-            self.truncate_signal,
+            self._rx_filter,
+            self._truncate_signal,
             components.TruncateSignal(left=0.5 / symbol_rate, mode="time"),
             components.Downsample(factor=oversampling_factor)
         ], name="receiver")
 
-        self.components = [
-            self.encoder,
-            self.transmitter,
-            self.channel,
-            self.receiver,
-            self.decoder
-        ]
+        super().__init__(
+            bits_per_symbol=bits_per_symbol,
+            encoder=encoder,
+            decoder=decoder,
+            transmitter=transmitter,
+            receiver=receiver,
+            name=name
+        )
 
-        self.test_sequence_generator = components.Composition([
-            self.bitseq_generator,
+        self._test_sequence_generator = components.Composition([
+            bitseq_generator,
             components.Fork([2]),
             components.MapComponents([
                 components.Composition([
                     self.encoder,
                     self.transmitter,
                     self.channel,
-                    self.photodiode,
-                    self.adc,
-                    self.lpf
+                    photodiode,
+                    adc,
+                    lpf
                 ]),
                 components.Composition([
-                    self._pam_encoder,
+                    pam_encoder,
                     components.Upsample(factor=oversampling_factor),
-                    self.lpf,
-                    self.lpf
+                    lpf,
+                    lpf
                 ])
             ])
         ])
 
-        self.optimizer = tf.optimizers.Adam(learning_rate=1.0)
+        self._optimizer = tf.optimizers.Adam(learning_rate=1.0)
 
     def compute_filter_loss(
         self,
         received_seq: Signal,
         expected_seq: Signal,
     ) -> tf.Tensor:
-        received_seq = self.truncate_signal(self.rx_filter(received_seq))
+        received_seq = self._truncate_signal(self._rx_filter(received_seq))
         return tf.math.reduce_mean(tf.square(received_seq.samples - expected_seq.samples))
 
     @tf.function
     def train_filter(self, steps: TensorCompatible = 3000, **parameters) -> tf.Tensor:
-        actual, expected = self.test_sequence_generator(**parameters)
+        actual, expected = self._test_sequence_generator(**parameters)
 
         # Initialize the filter, figure out gain
-        n_taps = tf.shape(self.rx_filter.taps)[-1]
-        self.rx_filter.taps.assign(
+        n_taps = tf.shape(self._rx_filter.taps)[-1]
+        self._rx_filter.taps.assign(
             tf.pad(
                 [[
                     tf.math.divide_no_nan(
@@ -197,12 +188,9 @@ class PAMSystem(components.Composition, CommunicationSystem):
             return self.compute_filter_loss(actual, expected)
 
         for _ in tf.range(steps):
-            self.optimizer.minimize(loss_function, var_list=[self.rx_filter.taps])
+            self._optimizer.minimize(loss_function, var_list=[self._rx_filter.taps])
 
         return loss_function()
-
-    def set_channel(self, channel: components.Component) -> None:
-        self.channel.substitute = channel  # type: ignore[attr-defined]
 
     def setup(self, channel: components.Component, component_parameters: dict[str, Any]) -> None:
         super().setup(channel, component_parameters)

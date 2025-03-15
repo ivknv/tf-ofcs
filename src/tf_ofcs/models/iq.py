@@ -94,26 +94,71 @@ class _SelectSymbol(Component):
 class TransmissionLayer(keras.layers.Layer):
     def __init__(
         self,
-        autoencoder: "IQAutoencoder",
+        *,
+        M: int,
+        N: int,
+        n: int,
+        sampling_rate: float,
+        encoder_network: Callable[[tf.Tensor], tf.Tensor],
+        decoder_network: Callable[[tf.Tensor], tf.Tensor],
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name, trainable=False)
 
-        M = autoencoder.M
-        N = autoencoder.N
-
-        self._channel = Substitute(autoencoder.channel)
-        self._component_parameters = autoencoder.component_parameters
-        self._parameter_distributions = autoencoder.parameter_distributions
+        self._channel = Substitute(Identity())
+        self._component_parameters: dict[str, Any] = {}
+        self._parameter_distributions: dict[str, Any] = {}
         self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
 
-        self._N = N
         self._M = M
+        self._N = N
+        self._n = n
+        self._sampling_rate = sampling_rate
+
+        bandwidth = 32e9 # Hz
+
+        lpf = MapComponents(
+            BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth]),
+            name="lpf"
+        )
+
+        self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
+        self._local_oscillator = Substitute(Laser(power=dbm_to_w([-6.0]), name="local_oscillator"))
+
+        self._transmitter = Composition([
+            Lambda(_to_iq, name="to_iq"),
+            MapComponents(
+                SignalFromTensor(sampling_rate=sampling_rate),
+                name="iq_waveform_generator"
+            ),
+            lpf,
+            Fork(shape=[2]),
+            MapComponents([
+                Composition([
+                    Reindex(indices=(0,)),
+                    self._laser
+                ]),
+                Identity()
+            ]),
+            IQModulator(),
+        ], name="transmitter")
+
+        self._receiver = Composition([
+            IQReceiver(
+                Photodiode(
+                    maximum_power=dbm_to_w(tf.constant([3.0])),
+                    dark_current=dbm_to_w(tf.constant([-20.0]))
+                ),
+                self._local_oscillator
+            ),
+            lpf,
+            MapComponents(Gain(gain=[1e5]))
+        ], name="receiver")
 
         self._communication_system = Composition([
-            autoencoder.transmitter,
+            self._transmitter,
             self._channel,
-            autoencoder.receiver,
+            self._receiver,
             MapComponents(_SelectSymbol(name="select_symbol")),
             Lambda(_from_iq_signal)
         ])
@@ -127,6 +172,29 @@ class TransmissionLayer(keras.layers.Layer):
 
     def _set_channel(self, channel: Component) -> None:
         self._channel.substitute = channel
+
+    def _precompute_lasers(self) -> None:
+        """
+            Replace laser by a function that returns a constant precomputed signal.
+            This can speed up training a bit, but requires the assumption that
+            laser signal doesn't change inbetween steps.
+        """
+
+        def laser_substitute(laser: Substitute) -> Callable:
+            timing = Timing(sampling_rate=self._sampling_rate, sample_count=self._n // 2 * self._N)
+            params = dict(self._component_parameters)
+            params["batch_size"] = tf.constant(1)
+            signal = laser.component(timing, **params)
+
+            return lambda *args, **kwargs: Signal(
+                samples=tf.tile(signal.samples, [kwargs["batch_size"], 1]),
+                timing=signal.timing
+            )
+
+            return lambda *args, **kwargs: signal
+
+        self._laser.substitute = laser_substitute(self._laser)
+        self._local_oscillator.substitute = laser_substitute(self._local_oscillator)
 
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
         batch_size = tf.shape(inputs)[0]
@@ -166,28 +234,22 @@ class TransmissionLayer(keras.layers.Layer):
         return {}
 
 
-class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
+class IQAutoencoderModel(keras.models.Sequential):
     """
         An autoencoder model with an IQ modulator.
 
         :ivar M: `int`, number of values a single message (symbol) carries
         :ivar n: `int`, number of samples per symbol produced by the transmitter
         :ivar N: `int`, number of adjacent symbols transmitted during training (must be odd)
-        :ivar sampling_rate: `float`, sampling rate of the system in samples/second
-        :ivar bits_per_symbol: `int`, number of bits a single message (symbol) carries
 
-        :ivar encoder: `Component`, component that encodes a bit sequence into a tensor
         :ivar encoder_network: `Component`, transmitter layers of the neural network
-        :ivar transmitter: `Component`, component that converts a digital `Signal` into an optical `Signal`
-        :ivar channel: `Component`, component that represents the channel
-        :ivar receiver: `Component`, component that converts an optical `Signal` into digital `Signal`
-        :ivar decoder: `Component`, component that decodes the digital `Signal` into a bit sequence
         :ivar decoder_network: `Component`, receiver layers of the neural network
     """
 
     M: int
     n: int
     N: int
+    bits_per_symbol: int
 
     encoder_network: Component
     decoder_network: Component
@@ -202,7 +264,6 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
         keras.Sequential.__init__(self, name=name)
 
         self.bits_per_symbol = int(math.log2(M))
-        self.sampling_rate = 336e9
 
         #: Size of the input one-hot vector
         self.M = M
@@ -219,9 +280,6 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
         if n % 2 != 0:
             raise ValueError("n must be even")
 
-        self.component_parameters = {}
-        self.parameter_distributions = {}
-
         self._tx1_layer = keras.layers.Dense(2 * M, activation="relu", name="tx1")
         self._tx2_layer = keras.layers.Dense(2 * M, activation="relu", name="tx2")
         self._tx3_layer = keras.layers.Dense(n, activation=_clip, name="tx3")
@@ -232,47 +290,6 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
         self.add(self._tx2_layer)
         self.add(self._tx3_layer)
         self.add(self._tx_reshape_layer)
-
-        bandwidth = 32e9 # Hz
-
-        lpf = MapComponents(
-            BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth]),
-            name="lpf"
-        )
-
-        self.channel = Identity()
-        self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
-        self._local_oscillator = Substitute(Laser(power=dbm_to_w([-6.0]), name="local_oscillator"))
-
-        self.transmitter = Composition([
-            Lambda(_to_iq, name="to_iq"),
-            MapComponents(
-                SignalFromTensor(sampling_rate=self.sampling_rate),
-                name="iq_waveform_generator"
-            ),
-            lpf,
-            Fork(shape=[2]),
-            MapComponents([
-                Composition([
-                    Reindex(indices=(0,)),
-                    self._laser
-                ]),
-                Identity()
-            ]),
-            IQModulator(),
-        ], name="transmitter")
-
-        self.receiver = Composition([
-            IQReceiver(
-                Photodiode(
-                    maximum_power=dbm_to_w(tf.constant([3.0])),
-                    dark_current=dbm_to_w(tf.constant([-20.0]))
-                ),
-                self._local_oscillator
-            ),
-            lpf,
-            MapComponents(Gain(gain=[1e5]))
-        ], name="receiver")
 
         self.encoder_network = Lambda(
             lambda x: self._tx_reshape_layer(self._tx3_layer(self._tx2_layer(self._tx1_layer(x)))),
@@ -286,7 +303,15 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
         self.encoder = Lambda(self.encode_input)
         self.decoder = Lambda(self.decode_signal)
 
-        self._transmission_layer = TransmissionLayer(autoencoder=self, name="transmission")
+        self._transmission_layer = TransmissionLayer(
+            M=M,
+            N=N,
+            n=n,
+            sampling_rate=336e9,
+            encoder_network=self.encoder_network,
+            decoder_network=self.decoder_network,
+            name="transmission"
+        )
 
         self.add(self._transmission_layer)
 
@@ -347,30 +372,51 @@ class IQAutoencoder(keras.models.Sequential, CommunicationSystem):
 
         return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
 
-    def _precompute_lasers(self) -> None:
-        """
-            Replace laser by a function that returns a constant precomputed signal.
-            This can speed up training a bit, but requires the assumption that
-            laser signal doesn't change inbetween steps.
-        """
-
-        def laser_substitute(laser: Substitute) -> Callable:
-            timing = Timing(sampling_rate=self.sampling_rate, sample_count=self.n // 2 * self.N)
-            signal = laser.component(timing, **self.component_parameters)
-
-            return lambda *args, **kwargs: signal
-
-        self._laser.substitute = laser_substitute(self._laser)
-        self._local_oscillator.substitute = laser_substitute(self._local_oscillator)
-
-    def set_channel(self, channel: Component) -> None:
-        self._transmission_layer._set_channel(channel)
-
-    def model_setup(
+    def _setup(
         self,
         channel: Component,
         component_parameters: dict[str, Any],
         parameter_distributions: dict[str, Any]
     ) -> None:
-        super().model_setup(channel, component_parameters, parameter_distributions)
-        self._precompute_lasers()
+        self._transmission_layer._set_channel(channel)
+
+        self._transmission_layer._component_parameters.clear()
+        self._transmission_layer._component_parameters.update(component_parameters)
+
+        self._transmission_layer._parameter_distributions.clear()
+        self._transmission_layer._parameter_distributions.update(parameter_distributions)
+
+        self._transmission_layer._precompute_lasers()
+
+
+class IQAutoencoder(CommunicationSystem):
+    def __init__(
+        self,
+        M: int,
+        n: int,
+        N: int,
+        name: Optional[str] = None
+    ) -> None:
+        if name is None:
+            name = "imdd_autoencoder_system"
+
+        model = IQAutoencoderModel(M=M, n=n, N=N, name=f"{name}_model")
+
+        super().__init__(
+            bits_per_symbol=model.bits_per_symbol,
+            encoder=Lambda(model.encode_input),
+            decoder=Lambda(model.decode_signal),
+            transmitter=model._transmission_layer._transmitter,
+            receiver=model._transmission_layer._receiver,
+            model=model,
+            name=name
+        )
+
+    def setup_model(
+        self,
+        channel: Component,
+        component_parameters: dict[str, Any],
+        parameter_distributions: dict[str, Any]
+    ) -> None:
+        assert isinstance(self.model, IQAutoencoderModel)
+        self.model._setup(channel, component_parameters, parameter_distributions)

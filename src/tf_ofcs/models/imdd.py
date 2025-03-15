@@ -49,29 +49,55 @@ def _slice_signal(signal: Signal, start: int, end: int) -> Signal:
 class TransmissionLayer(keras.layers.Layer):
     def __init__(
         self,
-        autoencoder: "IMDDAutoencoder",
+        *,
+        M: int,
+        N: int,
+        n: int,
+        sampling_rate: float,
+        encoder_network: Callable[[tf.Tensor], tf.Tensor],
+        decoder_network: Callable[[tf.Tensor], tf.Tensor],
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name, trainable=False)
 
-        M = autoencoder.M
-        N = autoencoder.N
-        n = autoencoder.n
+        self._N = N
+        self._M = M
+        self._n = n
+        self._sampling_rate = sampling_rate
+        self._component_parameters: dict[str, Any] = {}
+        self._parameter_distributions: dict[str, Any] = {}
+        self._rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
 
         central_index = (N - 1) // 2
 
-        self._channel = Substitute(autoencoder.channel)
-        self._N = N
-        self._M = M
-        self._sampling_rate = autoencoder.sampling_rate
-        self._component_parameters = autoencoder.component_parameters
-        self._parameter_distributions = autoencoder.parameter_distributions
-        self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
+        bandwidth = 32e9 # Hz
+
+        lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth])
+        self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
+
+        self._transmitter = Composition([
+            SignalFromTensor(sampling_rate=self._sampling_rate),
+            lpf,
+            Fork(shape=[2]),
+            MapComponents([self._laser, Identity()]),
+            MachZehnderModulator()
+        ], name="transmitter")
+
+        self._channel = Substitute(Identity())
+
+        self._receiver = Composition([
+            Photodiode(
+                maximum_power=dbm_to_w(tf.constant([3.0])),
+                dark_current=dbm_to_w(tf.constant([-20.0]))
+            ),
+            lpf,
+            Gain(gain=[1e5])
+        ], name="receiver")
 
         self._communication_system = Composition([
-            autoencoder.transmitter,
+            self._transmitter,
             self._channel,
-            autoencoder.receiver,
+            self._receiver,
             Lambda(function=lambda x: _slice_signal(x, n * central_index, n * (central_index + 1))),
             ExtractSamples()
         ])
@@ -80,11 +106,31 @@ class TransmissionLayer(keras.layers.Layer):
             self._communication_system,
             shape=[1],
             distributions=self._parameter_distributions,
-            rng=self.rng
+            rng=self._rng
         )
 
     def _set_channel(self, channel: Component) -> None:
         self._channel.substitute = channel
+
+    def _precompute_laser(self) -> None:
+        """
+            Replace laser by a function that returns a constant precomputed signal.
+            This can speed up training a bit, but requires the assumption that
+            laser signal doesn't change inbetween steps.
+        """
+
+        def laser_substitute() -> Callable:
+            timing = Timing(sampling_rate=self._sampling_rate, sample_count=self._n * self._N)
+            params = dict(self._component_parameters)
+            params["batch_size"] = tf.constant(1)
+            signal = self._laser.component(timing, **params)
+
+            return lambda *args, **kwargs: Signal(
+                samples=tf.tile(signal.samples, [kwargs["batch_size"], 1]),
+                timing=signal.timing
+            )
+
+        self._laser.substitute = laser_substitute()
 
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
         batch_size = tf.shape(inputs)[0]
@@ -92,7 +138,7 @@ class TransmissionLayer(keras.layers.Layer):
 
         adjacent_inputs = tf.gather(
             inputs,
-            self.rng.uniform(((self._N - 1) * batch_size,), 0, batch_size, dtype=tf.int32)
+            self._rng.uniform(((self._N - 1) * batch_size,), 0, batch_size, dtype=tf.int32)
         )  # shape=[batch_size * (N - 1), n]
 
         # shape=[batch_size, (N - 1) * n]
@@ -122,7 +168,7 @@ class TransmissionLayer(keras.layers.Layer):
         return {}
 
 
-class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
+class IMDDAutoencoderModel(keras.models.Sequential):
     """
         An IM/DD autoencoder model based on [1]. It consists of 3 sections:
         1) Transmitter;
@@ -132,20 +178,11 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
         :ivar M: `int`, number of values a single message (symbol) carries
         :ivar n: `int`, number of samples per symbol produced by the transmitter
         :ivar N: `int`, number of adjacent symbols transmitted during training (must be odd)
-        :ivar sampling_rate: `float`, sampling rate of the system in samples/second
-        :ivar bits_per_symbol: `int`, number of bits a single message (symbol) carries
-
-        :ivar encoder: `Component`, component that encodes a bit sequence into a tensor
-        :ivar encoder_network: `Component`, transmitter layers of the neural network
-        :ivar transmitter: `Component`, component that converts a digital `Signal` into an optical `Signal`
-        :ivar channel: `Component`, component that represents the channel
-        :ivar receiver: `Component`, component that converts an optical `Signal` into a digital `Signal`
-        :ivar decoder: `Component`, component that decodes the digital `Signal` into a bit sequence
-        :ivar decoder_network: `Component`, receiver layers of the neural network
-        :ivar component_parameters: `dict[str, Any]`, arbitrary parameters for the components in the system
 
         [1] 2018. Karanov et al. End-to-End Deep Learning of Optical Fiber Communications.
     """
+
+    bits_per_symbol: int
 
     #: Size of the input one-hot vector
     M: int
@@ -165,17 +202,13 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
         N: int,
         name: Optional[str] = None
     ) -> None:
-        keras.Sequential.__init__(self, name=name)
+        super().__init__(name=name)
 
         self.bits_per_symbol = int(math.log2(M))
-        self.sampling_rate = 336e9
 
         self.M = M
         self.n = n
         self.N = N
-
-        self.component_parameters = {}
-        self.parameter_distributions = {}
 
         if N % 2 != 1:
             raise ValueError("N must be odd")
@@ -183,31 +216,6 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
         self._tx1_layer = keras.layers.Dense(2 * M, activation="relu", name="tx1")
         self._tx2_layer = keras.layers.Dense(2 * M, activation="relu", name="tx2")
         self._tx3_layer = keras.layers.Dense(n, activation=_clip, name="tx3")
-
-        bandwidth = 32e9 # Hz
-
-        lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth])
-
-        self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
-
-        self.transmitter = Composition([
-            SignalFromTensor(sampling_rate=self.sampling_rate),
-            lpf,
-            Fork(shape=[2]),
-            MapComponents([self._laser, Identity()]),
-            MachZehnderModulator()
-        ], name="transmitter")
-
-        self.channel = Identity()
-
-        self.receiver = Composition([
-            Photodiode(
-                maximum_power=dbm_to_w(tf.constant([3.0])),
-                dark_current=dbm_to_w(tf.constant([-20.0]))
-            ),
-            lpf,
-            Gain(gain=[1e5])
-        ], name="receiver")
 
         self.encoder_network = Lambda(
             lambda x: self._tx3_layer(self._tx2_layer(self._tx1_layer(x))),
@@ -218,14 +226,19 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
             name="decoder_network"
         )
 
-        self.encoder = Lambda(self.encode_input)
-        self.decoder = Lambda(self.decode_signal)
-
         self._rx1_layer = keras.layers.Dense(2 * M, activation="relu", name="rx1")
         self._rx2_layer = keras.layers.Dense(2 * M, activation="relu", name="rx2")
         self._rx3_layer = keras.layers.Dense(M, activation="softmax", name="rx3")
 
-        self._transmission_layer = TransmissionLayer(autoencoder=self, name="transmission")
+        self._transmission_layer = TransmissionLayer(
+            M=M,
+            N=N,
+            n=n,
+            sampling_rate=336e9,
+            encoder_network=self.encoder_network,
+            decoder_network=self.decoder_network,
+            name="transmission"
+        )
 
         self.add(keras.Input(shape=(M,)))
         self.add(self._tx1_layer)
@@ -271,29 +284,51 @@ class IMDDAutoencoder(keras.Sequential, CommunicationSystem):
 
         return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
 
-    def _precompute_laser(self) -> None:
-        """
-            Replace laser by a function that returns a constant precomputed signal.
-            This can speed up training a bit, but requires the assumption that
-            laser signal doesn't change inbetween steps.
-        """
-
-        def laser_substitute() -> Callable:
-            timing = Timing(sampling_rate=self.sampling_rate, sample_count=self.n * self.N)
-            signal = self._laser.component(timing, **self.component_parameters)
-
-            return lambda *args, **kwargs: signal
-
-        self._laser.substitute = laser_substitute()
-
-    def set_channel(self, channel: Component) -> None:
-        self._transmission_layer._set_channel(channel)
-
-    def model_setup(
+    def _setup(
         self,
         channel: Component,
         component_parameters: dict[str, Any],
         parameter_distributions: dict[str, Any]
     ) -> None:
-        super().model_setup(channel, component_parameters, parameter_distributions)
-        self._precompute_laser()
+        self._transmission_layer._set_channel(channel)
+
+        self._transmission_layer._component_parameters.clear()
+        self._transmission_layer._component_parameters.update(component_parameters)
+
+        self._transmission_layer._parameter_distributions.clear()
+        self._transmission_layer._parameter_distributions.update(parameter_distributions)
+
+        self._transmission_layer._precompute_laser()
+
+
+class IMDDAutoencoder(CommunicationSystem):
+    def __init__(
+        self,
+        M: int,
+        n: int,
+        N: int,
+        name: Optional[str] = None
+    ) -> None:
+        if name is None:
+            name = "imdd_autoencoder_system"
+
+        model = IMDDAutoencoderModel(M=M, n=n, N=N, name=f"{name}_model")
+
+        super().__init__(
+            bits_per_symbol=model.bits_per_symbol,
+            encoder=Lambda(model.encode_input),
+            decoder=Lambda(model.decode_signal),
+            transmitter=model._transmission_layer._transmitter,
+            receiver=model._transmission_layer._receiver,
+            model=model,
+            name=name
+        )
+
+    def setup_model(
+        self,
+        channel: Component,
+        component_parameters: dict[str, Any],
+        parameter_distributions: dict[str, Any]
+    ) -> None:
+        assert isinstance(self.model, IMDDAutoencoderModel)
+        self.model._setup(channel, component_parameters, parameter_distributions)

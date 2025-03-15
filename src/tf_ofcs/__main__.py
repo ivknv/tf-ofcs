@@ -221,30 +221,31 @@ class TrainCommand(Command):
         setup_parameters.update(profile.training.parameters)
         setup_parameters["batch_size"] = tf.constant(profile.training.batch_size)
 
-        system.model_setup(
+        system.setup_model(
             channel,
             setup_parameters,
             profile.training.parameter_distributions
         )
 
+        assert system.model is not None
+
+        optimizer = keras.optimizers.Adam(**profile.training.optimizer_parameters)
+        system.model.compile(optimizer=optimizer, loss="binary_crossentropy")
+
     def __call__(self, ns: argparse.Namespace) -> int:
         profile = _load_profile(ns.profile)
 
         with tf.device(ns.device):
-            model = _create_system(profile.system)
+            system = _create_system(profile.system)
 
-            if not isinstance(model, keras.models.Model):
+            if system.model is None:
                 raise ValueError("Specified model is not trainable")
 
             if profile.training is None:
                 raise ValueError("Training config is not provided in the profile")
 
-            self._setup_model(model, profile)
-
-            optimizer = keras.optimizers.Adam(**profile.training.optimizer_parameters)
-            model.compile(optimizer=optimizer, loss="binary_crossentropy")
-
-            model.summary()
+            self._setup_model(system, profile)
+            system.model.summary()
 
             if profile.system.model_path is not None:
                 model_path = os.path.join(os.path.dirname(ns.profile), profile.system.model_path)
@@ -259,9 +260,9 @@ class TrainCommand(Command):
             if profile.training.tensorboard is not None:
                 callbacks.append(self._setup_tensorboard(profile.training.tensorboard))
 
-            callbacks.append(RevertToBest(model, treshold=1.3))
+            callbacks.append(RevertToBest(system.model, treshold=1.3))
 
-            M = 2 ** model.bits_per_symbol
+            M = 2 ** system.bits_per_symbol
 
             # Create a training dataset of ~512000 input messages
             tile_factor = 512000 // M
@@ -274,9 +275,9 @@ class TrainCommand(Command):
                 if model_path is None:
                     raise ValueError("Model path was not specified in the profile")
 
-                _load_weights(model, model_path)
+                _load_weights(system.model, model_path)
 
-            model.fit(
+            system.model.fit(
                 dataset,
                 dataset,
                 epochs=profile.training.epochs,
@@ -303,10 +304,10 @@ class BEROverParameterCommand(Command):
         parser.add_argument("--output", help="HDF5 output filename")
         parser.add_argument("--profile", help="simulation profile (JSON file)")
 
-    def _load_model_weights(self, model: Any, profile_path: str, profile: Profile) -> None:
-        if profile.system.model_path is not None and isinstance(model, keras.models.Model):
+    def _load_model_weights(self, system: CommunicationSystem, profile_path: str, profile: Profile) -> None:
+        if profile.system.model_path is not None and system.model is not None:
             model_path = os.path.join(os.path.dirname(profile_path), profile.system.model_path)
-            _load_weights(model, model_path)
+            _load_weights(system.model, model_path)
 
     def __call__(self, ns: argparse.Namespace) -> int:
         profile = _load_profile(ns.profile)
@@ -321,16 +322,8 @@ class BEROverParameterCommand(Command):
 
             channel = _create_channel(profile.ber_estimation.channel or profile.default_channel)
 
-            test_system = components.Composition([
-                system.encoder,
-                system.transmitter,
-                channel,
-                system.receiver,
-                system.decoder
-            ])
-
             ber_tester = components.BERTester(
-                test_system,
+                system,
                 batch_size=profile.ber_estimation.batch_size,
                 n_iterations=profile.ber_estimation.n_iterations
             )
@@ -362,7 +355,7 @@ class BEROverParameterCommand(Command):
                 step_duration = current_timestamp - last_timestamp
                 last_timestamp = current_timestamp
 
-                print(f"BER={ber}, {parameter_name}={parameter_value}, took {step_duration:.3} s")
+                print(f"BER={ber}, {parameter_name}={parameter_value}, took {step_duration:.5} s")
                 ber_values.append(ber)
 
             if ns.output is not None:

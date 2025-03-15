@@ -14,19 +14,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import typing
-from typing import Any, Union
+from typing import Any, Optional
 
-if typing.TYPE_CHECKING:
-    from .components import Component
-    import tensorflow as tf
+import keras  # type: ignore[import-untyped]
+from .components import Composition, Component, Substitute, Identity
 
 __all__ = ["CommunicationSystem"]
 
 
-class CommunicationSystem:
+class CommunicationSystem(Composition):
     """
-        A protocol for communication systems.
+        A base class for communication systems.
         It is composed of an encoder, a decoder, a transmitter and a receiver.
         It doesn't need to be callable, as the channel is specified separately.
         The implementation can be a trainable model.
@@ -36,11 +34,11 @@ class CommunicationSystem:
         :ivar channel: `Component`, communication channel
         :ivar transmitter: `Component`, component that transmits encoded signal
         :ivar receiver: `Component`, component that receives the transmitted signal
-        :ivar sampling_rate: `int | tf.Tensor`, sampling rate of the system
-        :ivar bits_per_symbol: `int | tf.Tensor`, number of bits per symbol
+        :ivar sampling_rate: `int`, sampling rate of the system
+        :ivar bits_per_symbol: `int`, number of bits per symbol
         :ivar component_parameters: ``dict[str, Any]`, component parameters for the system
-        :ivar parameter_distributions: `dict[str, Any]`, distributions for parameter
-                                       randomization to be used during training
+        :ivar model: `Optional[keras.models.Model]`, underlying Keras model (if applicable).
+                     Must implement `AutoencoderModel` protocol if not `None`.
     """
 
     encoder: "Component"
@@ -51,49 +49,76 @@ class CommunicationSystem:
     transmitter: "Component"
     receiver: "Component"
 
-    sampling_rate: Union[float, "tf.Tensor"]
-    bits_per_symbol: Union[int, "tf.Tensor"]
+    bits_per_symbol: int
 
     component_parameters: dict[str, Any]
-    parameter_distributions: dict[str, Any]
 
-    def set_channel(self, channel: "Component") -> None:
+    model: Optional[keras.models.Model]
+
+    def __init__(
+        self,
+        *,
+        bits_per_symbol: int,
+        encoder: Component,
+        decoder: Component,
+        transmitter: Component,
+        receiver: Component,
+        component_parameters: Optional[dict[str, Any]] = None,
+        model: Optional[keras.models.Model] = None,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__([], name=name)
+
+        if component_parameters is None:
+            component_parameters = {}
+
+        self.component_parameters = component_parameters
+        self.model = model
+
+        self.bits_per_symbol = bits_per_symbol
+        self.encoder = encoder
+        self.decoder = decoder
+        self.transmitter = transmitter
+        self.receiver = receiver
+        self.channel = Substitute(Identity())
+
+        self.components = [
+            self.encoder,
+            self.transmitter,
+            self.channel,
+            self.receiver,
+            self.decoder
+        ]
+
+    def setup(
+        self,
+        channel: Component,
+        component_parameters: dict[str, Any]
+    ) -> None:
         """
-            Sets the channel.
-
-            :param channel: `Component`, communication channel that will be used from now on
-        """
-
-        raise NotImplementedError
-
-    def setup(self, channel: "Component", component_parameters: dict[str, Any]) -> None:
-        """
-            Sets the channel (calls `set_channel()`) and component parameters,
-            initializes the system for the provided channel and parameters.
+            Sets the channel and component parameters, initializes the system
+            for the provided channel and parameters.
             This could include channel estimation.
             This method is not meant to be used during training.
 
             :param channel: `Component`, communication channel that will be used from now on
             :param component_parameters: `dict[str, Any]`, component parameters
+            :param training: `bool`, specifies if this method is called during model training
         """
 
-        self.set_channel(channel)
+        self.channel.substitute = channel  # type: ignore[attr-defined]
         self.component_parameters.clear()
         self.component_parameters.update(component_parameters)
 
-    def model_setup(
+    def setup_model(
         self,
-        channel: "Component",
+        channel: Component,
         component_parameters: dict[str, Any],
         parameter_distributions: dict[str, Any]
     ) -> None:
         """
-            This method is called before model is compiled and possibly trained but after
-            all the relevant parameters are known. This could used to set the
-            channel (by calling `set_channel()`), pre-compute some constants or
-            initialize some variables.
-
-            This method is relevant only for trainable models.
+            Sets the channel, component parameters and parameter distributions
+            to be used during model training.
 
             :param channel: `Component`, communication channel that will be used from now on
             :param component_parameters: `dict[str, Any]`, component parameters
@@ -101,9 +126,4 @@ class CommunicationSystem:
                                             randomization to be used during training
         """
 
-        self.set_channel(channel)
-        self.component_parameters.clear()
-        self.component_parameters.update(component_parameters)
-
-        self.parameter_distributions.clear()
-        self.parameter_distributions.update(parameter_distributions)
+        raise NotImplementedError
