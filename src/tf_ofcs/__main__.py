@@ -82,17 +82,19 @@ class OpticalFiberAWGN(components.Composition):
         chromatic_dispersion: TensorCompatible = tf.constant([0.0]),
         eff_non_linear_coeff: TensorCompatible = tf.constant([1.76]),
         length: TensorCompatible = tf.constant([10.0]),
-        central_frequency: TensorCompatible = 193.414e12,
+        central_frequency: float | tf.Tensor = 193.414e12,
         step_count: int | tf.Tensor = 3,
         enable_nonlinear_effects: bool = True,
         osnr: TensorCompatible = tf.constant([30.0]),
-        padding: TensorCompatible = tf.constant(0.0),
+        padding: float | tf.Tensor = tf.constant(0.0),
         name: Optional[str] = None
     ) -> None:
         super().__init__([], name=name)
 
-        self.components = [
-            components.PadSignal(padding, name=f"{self.name}__pad_signal"),
+        if float(padding) > 1e-6:
+            self.components.append(components.PadSignal(padding, name=f"{self.name}__pad_signal"))
+
+        self.components.append(
             components.OpticalFiber(
                 attenuation=attenuation,
                 chromatic_dispersion=chromatic_dispersion,
@@ -102,13 +104,20 @@ class OpticalFiberAWGN(components.Composition):
                 step_count=step_count,
                 enable_nonlinear_effects=enable_nonlinear_effects,
                 name=f"{self.name}__optical_fiber"
-            ),
-            components.PadSignal(padding, unpad=True, name=f"{self.name}__pad_signal"),
+            )
+        )
+
+        if float(padding) > 1e-6:
+            self.components.append(
+                components.PadSignal(padding, unpad=True, name=f"{self.name}__pad_signal")
+            )
+
+        self.components.append(
             components.OpticalAWGN(
                 relative_db=-tf.convert_to_tensor(osnr),
                 name=f"{self.name}__optical_awgn"
             )
-        ]
+        )
 
 
 def _create_channel(channel_profile: Profile.Channel) -> components.Component:
