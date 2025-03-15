@@ -109,7 +109,7 @@ class OpticalFiberAWGN(components.Composition):
 
         if float(padding) > 1e-6:
             self.components.append(
-                components.PadSignal(padding, unpad=True, name=f"{self.name}__pad_signal")
+                components.UnpadSignal(padding, name=f"{self.name}__unpad_signal")
             )
 
         self.components.append(

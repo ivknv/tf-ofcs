@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 
-from tf_ofcs.components import Composition, OpticalAWGN, OpticalFiber, PadSignal
+from tf_ofcs.components import Composition, OpticalAWGN, OpticalFiber, PadSignal, UnpadSignal
 from tf_ofcs.reference_systems import PAMSystem
 from tf_ofcs.utils import wavelength_nm_to_frequency
 
@@ -28,7 +28,7 @@ def test_pam4_system() -> None:
              central_frequency=wavelength_nm_to_frequency(1550.0),
              step_count=1
         ),
-        PadSignal(0.125, unpad=True)
+        UnpadSignal(0.125)
     ])
 
     input_sequence = tf.constant([

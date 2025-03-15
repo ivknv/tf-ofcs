@@ -27,7 +27,7 @@ from .split_signals import SplitSignals
 from .merge_signals import MergeSignals
 from .tile_signals import TileSignals
 from .randomize_parameters import RandomizeParameters
-from .pad_signal import PadSignal
+from .pad_signal import PadSignal, UnpadSignal
 from .loop import Loop
 from .substitute import Substitute
 from .truncate_signal import TruncateSignal
@@ -46,6 +46,7 @@ __all__ = [
     "TileSignals",
     "RandomizeParameters",
     "PadSignal",
+    "UnpadSignal",
     "Loop",
     "Substitute",
     "TruncateSignal"

@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 
-from tf_ofcs.components import PadSignal
+from tf_ofcs.components import PadSignal, UnpadSignal
 from tf_ofcs.datatypes import Signal, Timing
 
 
@@ -25,7 +25,7 @@ def test_pad_signal() -> None:
     assert tf.math.reduce_all(padded_signal.samples[:, 30:] == 0.0)  # type: ignore[operator]
     assert tf.math.reduce_all(padded_signal.samples[:, 20:30] == input_signal.samples)  # type: ignore[operator]
 
-    unpad_signal = PadSignal(left_padding=2, right_padding=3, unpad=True)
+    unpad_signal = UnpadSignal(left_padding=2, right_padding=3)
     unpadded_signal = unpad_signal(padded_signal)
 
     assert isinstance(unpadded_signal, Signal)
