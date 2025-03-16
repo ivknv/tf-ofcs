@@ -66,6 +66,7 @@ class Profile:
         optimizer_parameters: dict[str, Any]
         channel: Optional["Profile.Channel"]
         tensorboard: Optional[dict[str, Any]]
+        reduce_lr_on_plateau: Optional[dict[str, Any]]
 
         @staticmethod
         def from_json(json: dict[str, Any]) -> "Profile.Training":
@@ -84,7 +85,8 @@ class Profile:
                 ),
                 optimizer_parameters=json.get("optimizer_parameters", {}),
                 channel=channel,
-                tensorboard=json.get("tensorboard")
+                tensorboard=json.get("tensorboard"),
+                reduce_lr_on_plateau=json.get("reduce_lr_on_plateau")
             )
 
         @staticmethod

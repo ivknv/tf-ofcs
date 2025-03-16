@@ -263,6 +263,11 @@ class TrainCommand(Command):
             if profile.training.tensorboard is not None:
                 callbacks.append(self._setup_tensorboard(profile.training.tensorboard, base_directory))
 
+            if profile.training.reduce_lr_on_plateau is not None:
+                callbacks.append(
+                    keras.callbacks.ReduceLROnPlateau(**profile.training.reduce_lr_on_plateau)
+                )
+
             callbacks.append(RevertToBest(system.model, treshold=1.3))
 
             M = 2 ** system.bits_per_symbol
