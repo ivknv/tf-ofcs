@@ -101,6 +101,7 @@ class TransmissionLayer(keras.layers.Layer):
         sampling_rate: float,
         encoder_network: Callable[[tf.Tensor], tf.Tensor],
         decoder_network: Callable[[tf.Tensor], tf.Tensor],
+        enable_phase_noise: bool = False,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name, trainable=False)
@@ -122,8 +123,14 @@ class TransmissionLayer(keras.layers.Layer):
             name="lpf"
         )
 
-        self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
-        self._local_oscillator = Substitute(Laser(power=dbm_to_w([-6.0]), name="local_oscillator"))
+        self._laser = Substitute(Laser(power=dbm_to_w([2.0]), enable_phase_noise=enable_phase_noise))
+        self._local_oscillator = Substitute(
+            Laser(
+                power=dbm_to_w([-6.0]),
+                enable_phase_noise=enable_phase_noise,
+                name="local_oscillator"
+            )
+        )
 
         self._transmitter = Composition([
             Lambda(_to_iq, name="to_iq"),
@@ -259,9 +266,10 @@ class IQAutoencoderModel(keras.models.Sequential):
         M: int,
         n: int,
         N: int,
+        enable_phase_noise: bool = False,
         name: Optional[str] = None
     ) -> None:
-        keras.Sequential.__init__(self, name=name)
+        super().__init__(name=name)
 
         self.bits_per_symbol = int(math.log2(M))
 
@@ -273,6 +281,8 @@ class IQAutoencoderModel(keras.models.Sequential):
 
         #: Number of ANN blocks
         self.N = N
+
+        self._enable_phase_noise = enable_phase_noise
 
         if N % 2 != 1:
             raise ValueError("N must be odd")
@@ -310,6 +320,7 @@ class IQAutoencoderModel(keras.models.Sequential):
             sampling_rate=336e9,
             encoder_network=self.encoder_network,
             decoder_network=self.decoder_network,
+            enable_phase_noise=enable_phase_noise,
             name="transmission"
         )
 
@@ -386,7 +397,8 @@ class IQAutoencoderModel(keras.models.Sequential):
         self._transmission_layer._parameter_distributions.clear()
         self._transmission_layer._parameter_distributions.update(parameter_distributions)
 
-        self._transmission_layer._precompute_lasers()
+        if not self._enable_phase_noise:
+            self._transmission_layer._precompute_lasers()
 
 
 class IQAutoencoder(CommunicationSystem):
@@ -395,12 +407,19 @@ class IQAutoencoder(CommunicationSystem):
         M: int,
         n: int,
         N: int,
+        enable_phase_noise: bool = False,
         name: Optional[str] = None
     ) -> None:
         if name is None:
-            name = "imdd_autoencoder_system"
+            name = "iq_autoencoder_system"
 
-        model = IQAutoencoderModel(M=M, n=n, N=N, name=f"{name}_model")
+        model = IQAutoencoderModel(
+            M=M,
+            n=n,
+            N=N,
+            enable_phase_noise=enable_phase_noise,
+            name=f"{name}_model"
+        )
 
         super().__init__(
             bits_per_symbol=model.bits_per_symbol,
