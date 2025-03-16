@@ -126,6 +126,9 @@ class Gain(Component):
             samples=signal.samples * gain
         )
 
+def _diff_round(x: tf.Tensor) -> tf.Tensor:
+    return x - tf.stop_gradient(x - tf.round(x))
+
 
 class DigitalToAnalogConverter(Component):
     """
@@ -193,7 +196,7 @@ class DigitalToAnalogConverter(Component):
 
         analog_samples = tf.repeat(
             tf.clip_by_value(
-                tf.round(digital_signal.samples / step) * step,
+                _diff_round(digital_signal.samples / step) * step,
                 min_level,
                 max_level
             ),
@@ -274,16 +277,16 @@ class AnalogToDigitalConverter(Component):
             message="Got fractional downsampling factor"
         )
 
-        digital_samples = tf.round(
+        digital_samples = _diff_round(
             tf.clip_by_value(
-                analog_signal.samples[:, ::downsample_factor],
+                analog_signal.samples,
                 min_level,
                 max_level
             ) / step
         ) * step
 
         return Signal(
-            samples=digital_samples,
+            samples=digital_samples[:, ::downsample_factor],
             timing=Timing(
                 sample_count=tf.shape(digital_samples)[-1],
                 sampling_rate=sampling_rate
