@@ -60,6 +60,13 @@ class RandomizeParameters(Component):
                     mean=distribution["mean"],
                     dtype=distribution["dtype"]
                 )
+            elif distribution["type"] == "truncated_normal":
+                kwargs[parameter] = self.rng.truncated_normal(
+                    shape,
+                    stddev=distribution["stddev"],
+                    mean=distribution["mean"],
+                    dtype=distribution["dtype"]
+                )
             elif distribution["type"] == "uniform":
                 kwargs[parameter] = self.rng.uniform(
                     shape,
