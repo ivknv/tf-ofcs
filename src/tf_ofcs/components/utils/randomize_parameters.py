@@ -54,12 +54,12 @@ class RandomizeParameters(Component):
 
         for parameter, distribution in self.distributions.items():
             if distribution["type"] == "normal":
-                    kwargs[parameter] = self.rng.normal(
-                        shape,
-                        stddev=distribution["stddev"],
-                        mean=distribution["mean"],
-                        dtype=distribution["dtype"]
-                    )
+                kwargs[parameter] = self.rng.normal(
+                    shape,
+                    stddev=distribution["stddev"],
+                    mean=distribution["mean"],
+                    dtype=distribution["dtype"]
+                )
             elif distribution["type"] == "uniform":
                 kwargs[parameter] = self.rng.uniform(
                     shape,
@@ -69,5 +69,12 @@ class RandomizeParameters(Component):
                 )
             else:
                  raise ValueError(f"Unknown distribution type: {distribution['type']}")
+
+            if distribution["type"] != "uniform" and "minval" in distribution and "maxval" in distribution:
+                kwargs[parameter] = tf.clip_by_value(
+                    kwargs[parameter],
+                    distribution["minval"],
+                    distribution["maxval"]
+                )
 
         return self.next_component(inp, tracing_level=tracing_level + 1, **kwargs)
