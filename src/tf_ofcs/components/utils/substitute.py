@@ -42,9 +42,9 @@ class Substitute(Component):
         self.component = component
 
         if substitute is None:
-            substitute = component
+            substitute = component.__call__
 
         self.substitute = substitute
 
-    def call(self, *args, **kwargs) -> Any:
+    def __call__(self, *args, **kwargs) -> Any:
         return self.substitute(*args, **kwargs)
