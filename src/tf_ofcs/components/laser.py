@@ -36,6 +36,7 @@ class Laser(Component):
         :ivar frequency: `shape=[None], dtype=tf.float32`, laser frequency offset
                          (relative to the central frequency) in Hz
         :ivar linewidth: `shape=[None], dtype=tf.float32`, laser linewidth in Hz
+        :ivar initial_phase: `shape=[None], dtype=tf.float32`, initial phase (in radians)
         :ivar batch_size: `shape=[], dtype=tf.int32`, determines the output
                           signal's shape is `(batch_size, tf.size(time))`
         :ivar enable_phase_noise: `bool`, enables/disables phase noise
@@ -51,6 +52,9 @@ class Laser(Component):
     #: Linewidth in Hz
     linewidth: tf.Variable  # shape=[None]; dtype=float32
 
+    #: Initial phase
+    initial_phase: tf.Variable  # shape=[None]; dtype=tf.float32
+
     #: The output signal's shape is `(batch_size, tf.size(time))`
     batch_size: tf.Variable  # shape=[]; dtype=int32
 
@@ -64,6 +68,7 @@ class Laser(Component):
         power: TensorCompatible,
         frequency: TensorCompatible = tf.constant([0.0]),
         linewidth: TensorCompatible = tf.constant([0.0]),
+        initial_phase: TensorCompatible = tf.constant([0.0]),
         batch_size: TensorCompatible = 1,
         enable_phase_noise: bool = False,
         rng: Optional[tf.random.Generator] = None,
@@ -74,6 +79,7 @@ class Laser(Component):
         self.power = tf.Variable(to_tensor(power), name=f"{self.name}__power")
         self.frequency = tf.Variable(to_tensor(frequency), name=f"{self.name}__frequency")
         self.linewidth = tf.Variable(to_tensor(linewidth), name=f"{self.name}__linewidth")
+        self.initial_phase = tf.Variable(to_tensor(initial_phase), name=f"{self.name}__initial_phase")
         self.batch_size = tf.Variable(to_tensor(batch_size), name=f"{self.name}__batch_size")
         self.enable_phase_noise = enable_phase_noise
 
@@ -83,7 +89,7 @@ class Laser(Component):
         self.rng = rng
 
         self.global_parameters = ["batch_size"]
-        self.local_parameters = ["power", "frequency", "linewidth", "batch_size"]
+        self.local_parameters = ["power", "frequency", "linewidth", "initial_phase", "batch_size"]
 
     def implementation(
         self,
@@ -92,6 +98,7 @@ class Laser(Component):
         power: tf.Tensor,
         frequency: tf.Tensor,
         linewidth: tf.Tensor,
+        initial_phase: tf.Tensor,
         batch_size: tf.Tensor
     ) -> Signal:
         if isinstance(timing_or_signal, Signal):
@@ -103,8 +110,9 @@ class Laser(Component):
 
         power = tf.expand_dims(power, -1)  # shape=[None, 1]
         frequency = tf.expand_dims(frequency, -1)  # shape=[None, 1]
+        initial_phase = tf.expand_dims(initial_phase, -1)  # shape=[None, 1]
 
-        phase = 2.0 * constants.pi * frequency * time
+        phase = 2.0 * constants.pi * frequency * time + initial_phase
 
         if self.enable_phase_noise:
             phase_noise_stddev = tf.sqrt(2.0 * constants.pi / timing.sampling_rate * linewidth)
