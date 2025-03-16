@@ -27,7 +27,8 @@ from ..utils import dbm_to_w
 from ..components import (
     Component, Composition, MachZehnderModulator, Laser, Photodiode,
     BandPassFilter, SignalFromTensor, Lambda, RandomizeParameters,
-    Gain, ExtractSamples, Fork, Identity, MapComponents, Substitute
+    Gain, ExtractSamples, Fork, Identity, MapComponents, Substitute,
+    AnalogToDigitalConverter, DigitalToAnalogConverter, Downsample, Upsample
 )
 
 from ..communication_system import CommunicationSystem
@@ -54,8 +55,6 @@ class TransmissionLayer(keras.layers.Layer):
         N: int,
         n: int,
         sampling_rate: float,
-        encoder_network: Callable[[tf.Tensor], tf.Tensor],
-        decoder_network: Callable[[tf.Tensor], tf.Tensor],
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name, trainable=False)
@@ -72,12 +71,36 @@ class TransmissionLayer(keras.layers.Layer):
 
         bandwidth = 32e9 # Hz
 
-        lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth])
+        self._lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth])
+        self._gain = Gain(gain=[1e5])
         self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
 
+        adc_sampling_rate = dac_sampling_rate = 84e9
+        dsp_sampling_rate = 336e9
+        dac_max_power = 1.0
+        dac_step = dac_max_power / 256.0
+        adc_max_power = dbm_to_w(2.0)
+        adc_step = adc_max_power / 256.0
+
+        adc = AnalogToDigitalConverter(
+            sampling_rate=adc_sampling_rate,
+            step=adc_step,
+            min_level=0.0,
+            max_level=adc_max_power
+        )
+
+        dac = DigitalToAnalogConverter(
+            sampling_rate=dac_sampling_rate,
+            step=dac_step,
+            min_level=0.0,
+            max_level=dac_max_power
+        )
+
         self._transmitter = Composition([
-            SignalFromTensor(sampling_rate=self._sampling_rate),
-            lpf,
+            self._lpf,
+            Downsample(int(dsp_sampling_rate / dac_sampling_rate)),
+            dac,
+            Upsample(int(dsp_sampling_rate / dac_sampling_rate)),
             Fork(shape=[2]),
             MapComponents([self._laser, Identity()]),
             MachZehnderModulator()
@@ -90,11 +113,14 @@ class TransmissionLayer(keras.layers.Layer):
                 maximum_power=dbm_to_w(tf.constant([3.0])),
                 dark_current=dbm_to_w(tf.constant([-20.0]))
             ),
-            lpf,
-            Gain(gain=[1e5])
+            adc,
+            self._lpf,
+            self._gain,
+            Upsample(int(dsp_sampling_rate / dac_sampling_rate))
         ], name="receiver")
 
         self._communication_system = Composition([
+            SignalFromTensor(sampling_rate=self._sampling_rate),
             self._transmitter,
             self._channel,
             self._receiver,
@@ -192,8 +218,6 @@ class IMDDAutoencoderModel(keras.models.Sequential):
 
     #: Number of ANN blocks
     N: int
-    encoder_network: Component
-    decoder_network: Component
 
     def __init__(
         self,
@@ -205,6 +229,7 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         super().__init__(name=name)
 
         self.bits_per_symbol = int(math.log2(M))
+        self._sampling_rate = 336e9
 
         self.M = M
         self.n = n
@@ -235,8 +260,6 @@ class IMDDAutoencoderModel(keras.models.Sequential):
             N=N,
             n=n,
             sampling_rate=336e9,
-            encoder_network=self.encoder_network,
-            decoder_network=self.decoder_network,
             name="transmission"
         )
 
@@ -251,7 +274,7 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         self.add(self._rx2_layer)
         self.add(self._rx3_layer)
 
-    def encode_input(self, bitseq: tf.Tensor) -> tf.Tensor:
+    def encode_input(self, bitseq: tf.Tensor) -> Signal:
         bitseq_size = tf.size(bitseq)
 
         inputs = tf.one_hot(
@@ -267,7 +290,13 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         batch_size = tf.shape(bitseq)[0]
         symbols_per_batch = bits_per_batch // self.bits_per_symbol
 
-        return tf.reshape(x, (batch_size, self.n * symbols_per_batch))
+        return Signal(
+            samples=tf.reshape(x, (batch_size, self.n * symbols_per_batch)),
+            timing=Timing(
+                sample_count=self.n * symbols_per_batch,
+                sampling_rate=self._sampling_rate
+            )
+        )
 
     def decode_signal(self, input_signal: Signal) -> tf.Tensor:
         sample_count = tf.size(input_signal.samples)

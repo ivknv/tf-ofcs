@@ -27,7 +27,8 @@ from ..utils import dbm_to_w
 from ..components import (
     Component, Composition, IQModulator, Laser, IQReceiver, Photodiode,
     BandPassFilter, SignalFromTensor, Lambda, RandomizeParameters,
-    MapComponents, Gain, Fork, Identity, Reindex, Substitute
+    MapComponents, Gain, Fork, Identity, Reindex, Substitute,
+    AnalogToDigitalConverter, DigitalToAnalogConverter, Downsample, Upsample
 )
 from ..communication_system import CommunicationSystem
 
@@ -118,9 +119,27 @@ class TransmissionLayer(keras.layers.Layer):
 
         bandwidth = 32e9 # Hz
 
-        lpf = MapComponents(
-            BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth]),
-            name="lpf"
+        lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth])
+
+        adc_sampling_rate = dac_sampling_rate = 84e9
+        dsp_sampling_rate = 336e9
+        dac_max_power = 1.0
+        dac_step = dac_max_power / 256.0
+        adc_max_power = dbm_to_w(2.0)
+        adc_step = adc_max_power / 256.0
+
+        adc = AnalogToDigitalConverter(
+            sampling_rate=adc_sampling_rate,
+            step=adc_step,
+            min_level=0.0,
+            max_level=adc_max_power
+        )
+
+        dac = DigitalToAnalogConverter(
+            sampling_rate=dac_sampling_rate,
+            step=dac_step,
+            min_level=0.0,
+            max_level=dac_max_power
         )
 
         self._laser = Substitute(Laser(power=dbm_to_w([2.0]), enable_phase_noise=enable_phase_noise))
@@ -133,12 +152,14 @@ class TransmissionLayer(keras.layers.Layer):
         )
 
         self._transmitter = Composition([
-            Lambda(_to_iq, name="to_iq"),
             MapComponents(
-                SignalFromTensor(sampling_rate=sampling_rate),
-                name="iq_waveform_generator"
+                Composition([
+                    lpf,
+                    Downsample(int(dsp_sampling_rate / dac_sampling_rate)),
+                    dac,
+                    Upsample(int(dsp_sampling_rate / dac_sampling_rate))
+                ])
             ),
-            lpf,
             Fork(shape=[2]),
             MapComponents([
                 Composition([
@@ -158,11 +179,17 @@ class TransmissionLayer(keras.layers.Layer):
                 ),
                 self._local_oscillator
             ),
-            lpf,
-            MapComponents(Gain(gain=[1e5]))
+            MapComponents(Composition([
+                adc,
+                lpf,
+                Gain(gain=[1e5]),
+                Upsample(int(dsp_sampling_rate / dac_sampling_rate))
+            ])),
         ], name="receiver")
 
         self._communication_system = Composition([
+            Lambda(_to_iq, name="to_iq"),
+            MapComponents(SignalFromTensor(sampling_rate=sampling_rate)),
             self._transmitter,
             self._channel,
             self._receiver,
@@ -272,6 +299,7 @@ class IQAutoencoderModel(keras.models.Sequential):
         super().__init__(name=name)
 
         self.bits_per_symbol = int(math.log2(M))
+        self._sampling_rate = 336e9
 
         #: Size of the input one-hot vector
         self.M = M
@@ -317,7 +345,7 @@ class IQAutoencoderModel(keras.models.Sequential):
             M=M,
             N=N,
             n=n,
-            sampling_rate=336e9,
+            sampling_rate=self._sampling_rate,
             encoder_network=self.encoder_network,
             decoder_network=self.decoder_network,
             enable_phase_noise=enable_phase_noise,
@@ -336,7 +364,7 @@ class IQAutoencoderModel(keras.models.Sequential):
         self.add(self._rx2_layer)
         self.add(self._rx3_layer)
 
-    def encode_input(self, bitseq: tf.Tensor) -> tf.Tensor:
+    def encode_input(self, bitseq: tf.Tensor) -> tuple[Signal, Signal]:
         bitseq_size = tf.size(bitseq)
 
         inputs = tf.one_hot(
@@ -358,7 +386,9 @@ class IQAutoencoderModel(keras.models.Sequential):
         i_seq = tf.reshape(i_seq, [batch_size, self.n // 2 * symbols_per_batch])
         q_seq = tf.reshape(q_seq, [batch_size, self.n // 2 * symbols_per_batch])
 
-        return tf.stack([i_seq, q_seq], axis=1)  # shape=[batch_size, 2, n * symbols_per_batch]
+        timing = Timing(sample_count=tf.shape(i_seq)[-1], sampling_rate=self._sampling_rate)
+
+        return Signal(samples=i_seq, timing=timing), Signal(samples=q_seq, timing=timing)
 
     def decode_signal(self, input_signal: tuple[Signal, Signal]) -> tf.Tensor:
         samples = _from_iq_signal(input_signal)
