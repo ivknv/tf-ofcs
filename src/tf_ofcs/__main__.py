@@ -183,12 +183,13 @@ class TrainCommand(Command):
         parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
         parser.add_argument("--profile", help="simulation profile (JSON file)")
 
-    def _setup_tensorboard(self, tensorboard_args: dict) -> keras.callbacks.TensorBoard:
+    def _setup_tensorboard(self, tensorboard_args: dict, base_directory: str) -> keras.callbacks.TensorBoard:
         now = datetime.datetime.now()
 
         tensorboard_args = dict(tensorboard_args)
-        tensorboard_args["logdir"] = os.path.join(
-            tensorboard_args.get("logdir", ".logs"),
+        tensorboard_args["log_dir"] = os.path.join(
+            base_directory,
+            tensorboard_args.get("log_dir", ".logs"),
             now.strftime("%Y-%m-%d-%H-%M-%S")
         )
         tensorboard_args.setdefault("histogram_freq", 1)
@@ -247,8 +248,10 @@ class TrainCommand(Command):
             self._setup_model(system, profile)
             system.model.summary()
 
+            base_directory = os.path.dirname(ns.profile)
+
             if profile.system.model_path is not None:
-                model_path = os.path.join(os.path.dirname(ns.profile), profile.system.model_path)
+                model_path = os.path.join(base_directory, profile.system.model_path)
             else:
                 model_path = None
 
@@ -258,7 +261,7 @@ class TrainCommand(Command):
                 callbacks.append(self._setup_checkpoint_callback(model_path))
 
             if profile.training.tensorboard is not None:
-                callbacks.append(self._setup_tensorboard(profile.training.tensorboard))
+                callbacks.append(self._setup_tensorboard(profile.training.tensorboard, base_directory))
 
             callbacks.append(RevertToBest(system.model, treshold=1.3))
 
