@@ -86,7 +86,7 @@ class FFTFilter(Component):
 
 class FIRFilter(Component):
     """
-        Applies FIR filter to the input signal. Accepts `ElectricalSignal` as input.
+        Applies FIR filter to the input signal. Accepts `Signal` as input.
         Returns a slightly longer (delayed) signal with
         `{sample count} + {number of taps} - 1` samples.
 
@@ -164,7 +164,7 @@ class FIRFilter(Component):
 class BandPassFilter(Component):
     """
         Applies band-pass filter to the input signal.
-        Accepts both `ElectricalSignal` and `OpticalSignal` as input.
+        Accepts both electrical and optical `Signal` as input.
 
         :ivar min_frequency: `shape=[None], dtype=tf.float32`, minimum frequency to pass in Hz.
         :ivar max_frequency: `shape=[None], dtype=tf.float32`, maximum frequency to pass in Hz.

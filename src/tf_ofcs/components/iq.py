@@ -169,7 +169,7 @@ class IQModulator(Composition):
                         OpticalPhaseShifter(phase_shift=[0.5 * math.pi], name=f"{self.name}__phase_shifter")
                     ])
                 ]),  # (optical Signal, optical Signal)
-                identity  # (ElectricalSignal, ElectricalSignal)
+                identity  # (electrical Signal, electrical Signal)
             ]),  # ((optical Signal 0, optical Signal 1), (electrical Signal 0, electrical Signal 1))
 
             Reindex(indices=[[(0, 0), (1, 0)], [(0, 1), (1, 1)]], name=f"{self.name}__reindex"),

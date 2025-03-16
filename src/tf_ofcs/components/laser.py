@@ -30,7 +30,7 @@ class Laser(Component):
     """
         Models a laser. Takes a `Timing` or `Signal`
         as input. If the input is a signal rather than timing, then the timing
-        will be extracted from the signal. Outputs an `OpticalSignal` instance.
+        will be extracted from the signal. Outputs an optical `Signal` instance.
 
         :ivar power: `shape=[None], dtype=tf.float32`, output power of the laser.
         :ivar frequency: `shape=[None], dtype=tf.float32`, laser frequency offset
