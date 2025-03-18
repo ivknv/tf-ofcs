@@ -76,7 +76,7 @@ class TransmissionLayer(keras.layers.Layer):
         self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
 
         adc_sampling_rate = dac_sampling_rate = 84e9
-        dsp_sampling_rate = 336e9
+        dsp_sampling_rate = sampling_rate
         dac_max_power = 1.0
         dac_step = dac_max_power / 256.0
         adc_max_power = dbm_to_w(2.0)

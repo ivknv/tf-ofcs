@@ -122,7 +122,7 @@ class TransmissionLayer(keras.layers.Layer):
         lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth])
 
         adc_sampling_rate = dac_sampling_rate = 84e9
-        dsp_sampling_rate = 336e9
+        dsp_sampling_rate = sampling_rate
         dac_max_power = 1.0
         dac_step = dac_max_power / 256.0
         adc_max_power = dbm_to_w(2.0)
@@ -181,9 +181,9 @@ class TransmissionLayer(keras.layers.Layer):
             ),
             MapComponents(Composition([
                 adc,
-                lpf,
                 Gain(gain=[1e5]),
-                Upsample(int(dsp_sampling_rate / dac_sampling_rate))
+                Upsample(int(dsp_sampling_rate / dac_sampling_rate)),
+                lpf
             ])),
         ], name="receiver")
 
