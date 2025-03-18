@@ -60,6 +60,7 @@ class Profile:
     @dataclass
     class Training:
         batch_size: int
+        steps_per_epoch: int
         epochs: int
         parameters: dict[str, Any]
         parameter_distributions: dict[str, tf.Tensor]
@@ -78,6 +79,7 @@ class Profile:
 
             return Profile.Training(
                 batch_size=json.get("batch_size", 512),
+                steps_per_epoch=json.get("steps_per_epoch", 256),
                 epochs=json.get("epochs", 50),
                 parameters=_convert_parameters(json.get("parameters", {})),
                 parameter_distributions=Profile.Training._convert_parameter_distributions(

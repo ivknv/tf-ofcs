@@ -35,6 +35,7 @@ from . import components  # noqa: E402
 from .profile import Profile  # noqa: E402
 from .communication_system import CommunicationSystem  # noqa: E402
 from .datatypes import TensorCompatible  # noqa: E402
+from .message_generator import message_generator  # noqa: E402
 
 class Command:
     description: str = ""
@@ -273,10 +274,13 @@ class TrainCommand(Command):
             M = 2 ** system.bits_per_symbol
 
             # Create a training dataset of ~512000 input messages
-            tile_factor = 512000 // M
-            dataset = tf.tile(
-                tf.cast(tf.one_hot(tf.range(M), M), tf.float32),
-                [tile_factor, 1]
+            dataset = tf.data.Dataset.from_generator(
+                message_generator,
+                args=(M, profile.training.batch_size),
+                output_signature=(
+                    tf.TensorSpec(shape=(profile.training.batch_size, M), dtype=tf.float32),
+                    tf.TensorSpec(shape=(profile.training.batch_size, M), dtype=tf.float32)
+                )
             )
 
             if ns.load:
@@ -287,10 +291,9 @@ class TrainCommand(Command):
 
             system.model.fit(
                 dataset,
-                dataset,
                 epochs=profile.training.epochs,
                 batch_size=profile.training.batch_size,
-                shuffle=True,
+                steps_per_epoch=profile.training.steps_per_epoch,
                 callbacks=callbacks
             )
 
