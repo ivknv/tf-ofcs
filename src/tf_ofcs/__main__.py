@@ -22,6 +22,7 @@ import typing
 from typing import Any, Optional
 import datetime
 
+from keras.src.saving.serialization_lib import Config
 import silence_tensorflow
 silence_tensorflow.silence_tensorflow("WARNING")
 
@@ -382,6 +383,87 @@ class BEROverParameterCommand(Command):
         return 0
 
 
+class ComputeConfusionMatrixCommand(Command):
+    description = """\
+Compute confusion matrix for a system while performing a parameter sweep. \
+This command uses the BER config from the profile.\
+"""
+
+    def setup(self, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
+        parser.add_argument("--output", help="HDF5 output filename")
+        parser.add_argument("--profile", help="simulation profile (JSON file)")
+
+    def _load_model_weights(self, system: CommunicationSystem, profile_path: str, profile: Profile) -> None:
+        if profile.system.model_path is not None and system.model is not None:
+            model_path = os.path.join(os.path.dirname(profile_path), profile.system.model_path)
+            _load_weights(system.model, model_path)
+
+    def __call__(self, ns: argparse.Namespace) -> int:
+        profile = _load_profile(ns.profile)
+
+        with tf.device(ns.device):
+            system: CommunicationSystem = _create_system(profile.system)
+
+            if profile.ber_estimation is None:
+                raise ValueError("BER estimation config is not provided in the profile")
+
+            self._load_model_weights(system, ns.profile, profile)
+
+            channel = _create_channel(profile.ber_estimation.channel or profile.default_channel)
+
+            confusion_matrix_analyzer = components.ConfusionMatrixAnalyzer(
+                system,
+                batch_size=profile.ber_estimation.batch_size,
+                n_iterations=profile.ber_estimation.n_iterations,
+                bits_per_symbol=system.bits_per_symbol
+            )
+
+            parameter_name = profile.ber_estimation.parameter_name
+            parameter_values = tf.range(
+                profile.ber_estimation.start,
+                profile.ber_estimation.end,
+                profile.ber_estimation.step
+            )
+
+            bitseq_length = tf.constant(profile.ber_estimation.symbol_count * system.bits_per_symbol)
+
+            system_parameters = dict(profile.system.parameters)
+            system_parameters.update(profile.ber_estimation.parameters)
+            system_parameters["batch_size"] = tf.constant(profile.ber_estimation.batch_size)
+
+            M = 2 ** system.bits_per_symbol
+            confusion_matrix = tf.zeros([M, M], dtype=tf.int64)
+
+            last_timestamp = time.monotonic()
+
+            for parameter_value in parameter_values:
+                system_parameters[parameter_name] = tf.expand_dims(parameter_value, 0)
+
+                system.setup(channel, system_parameters)
+                confusion_matrix += confusion_matrix_analyzer(bitseq_length, **system_parameters)
+
+                current_timestamp = time.monotonic()
+                step_duration = current_timestamp - last_timestamp
+                last_timestamp = current_timestamp
+
+                print(f"{parameter_name}={parameter_value}, took {step_duration:.5} s")
+
+            print("Resulting confusion matrix:")
+            print(confusion_matrix)
+
+            if ns.output is not None:
+                with open(ns.profile, "rb") as profile_file:
+                    profile_json = profile_file.read()
+
+                with h5py.File(ns.output, "w") as hdf5:
+                    hdf5.create_dataset("confusion_matrix", data=confusion_matrix)
+                    hdf5.create_dataset(parameter_name, data=parameter_values)
+                    hdf5.create_dataset("profile", data=profile_json)
+
+        return 0
+
+
 def main(args: list) -> int:
     parser = argparse.ArgumentParser(
         description="Train or evaluate fiber-optic communication system autoencoder models"
@@ -391,7 +473,8 @@ def main(args: list) -> int:
 
     commands: dict[str, Command] = {
         "train": TrainCommand(),
-        "ber-over-parameter": BEROverParameterCommand()
+        "ber-over-parameter": BEROverParameterCommand(),
+        "confusion-matrix": ComputeConfusionMatrixCommand()
     }
 
     for command_name, command in commands.items():

@@ -49,6 +49,7 @@ from .gaussian_pulse_generator import GaussianPulseGenerator
 from .optical_amplifier import OpticalAmplifier
 from .bit_sequence_generator import BitSequenceGenerator
 from .carrier_phase_recovery import DecisionDirectedPhaseRecovery, ViterbiViterbiPhaseRecovery
+from .confusion_matrix_analyzer import ConfusionMatrixAnalyzer
 
 __all__ = [
     "Laser",
@@ -113,5 +114,6 @@ __all__ = [
     "OpticalAmplifier",
     "BitSequenceGenerator",
     "DecisionDirectedPhaseRecovery",
-    "ViterbiViterbiPhaseRecovery"
+    "ViterbiViterbiPhaseRecovery",
+    "ConfusionMatrixAnalyzer"
 ]
