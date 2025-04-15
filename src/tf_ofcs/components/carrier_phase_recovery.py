@@ -21,7 +21,7 @@ from ..datatypes import Signal, TensorCompatible
 from .component import Component
 from ..utils import to_tensor
 
-__all__ = ["DecisionDirectedPhaseRecovery"]
+__all__ = ["DecisionDirectedPhaseRecovery", "ViterbiViterbiPhaseRecovery"]
 
 
 class DecisionDirectedPhaseRecovery(Component):
