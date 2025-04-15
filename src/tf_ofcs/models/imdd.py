@@ -50,6 +50,7 @@ class TransmissionLayer(keras.layers.Layer):
         N_rx: int,
         n: int,
         sampling_rate: float,
+        adc_sampling_rate: float,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name, trainable=False)
@@ -59,6 +60,7 @@ class TransmissionLayer(keras.layers.Layer):
         self._M = M
         self._n = n
         self._sampling_rate = sampling_rate
+        self._oversampling = int(sampling_rate / adc_sampling_rate)
         self._component_parameters: dict[str, Any] = {}
         self._parameter_distributions: dict[str, Any] = {}
         self._rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
@@ -69,7 +71,7 @@ class TransmissionLayer(keras.layers.Layer):
         self._gain = Gain(gain=[1e5])
         self._laser = Substitute(Laser(power=dbm_to_w([2.0])))
 
-        adc_sampling_rate = dac_sampling_rate = 84e9
+        dac_sampling_rate = adc_sampling_rate
         dsp_sampling_rate = sampling_rate
         dac_max_power = 1.0
         dac_step = dac_max_power / 256.0
@@ -115,8 +117,8 @@ class TransmissionLayer(keras.layers.Layer):
         # Number of samples to truncate from the received signal.
         # These samples are used to induce intersymbol interference (ISI)
         # After the signal is received they have to be removed
-        isi_samples = n * (N_tx - 1) // 8
-        isi_samples_to_leave = n * (N_rx - 1) // 8
+        isi_samples = n * (N_tx - 1) // (2 * self._oversampling)
+        isi_samples_to_leave = n * (N_rx - 1) // (2 * self._oversampling)
         isi_samples_to_truncate = isi_samples - isi_samples_to_leave
 
         self._communication_system = Composition([
@@ -187,7 +189,7 @@ class TransmissionLayer(keras.layers.Layer):
                 randomize_parameters__shape=tf.expand_dims(batch_size, 0),
                 **parameters
             ),
-            (batch_size, sample_count * self._N_rx // 4)
+            (batch_size, sample_count * self._N_rx // self._oversampling)
         )
 
     def get_config(self) -> dict:
@@ -205,6 +207,8 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         :ivar n: `int`, number of samples per symbol produced by the transmitter
         :ivar N_tx: `int`, number of symbols transmitted during training (must be odd)
         :ivar N_rx: `int`, number of symbols processed by the receiver (must be odd)
+        :ivar sampling_rate: `float`, DSP sampling rate
+        :ivar adc_sampling_rate: `float`, ADC/DAC sampling rate
 
         [1] 2018. Karanov et al. End-to-End Deep Learning of Optical Fiber Communications.
     """
@@ -225,23 +229,30 @@ class IMDDAutoencoderModel(keras.models.Sequential):
     #: symbol is fully decoded, the adjacent symbols are used to help mitigate ISI
     N_rx: int
 
+    #: ADC/DAC sampling rate
+    adc_sampling_rate: float
+
     def __init__(
         self,
         M: int,
         n: int,
         N_tx: int,
         N_rx: int = 5,
+        sampling_rate: float = 336e9,
+        adc_sampling_rate: float = 84e9,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.bits_per_symbol = int(math.log2(M))
-        self._sampling_rate = 336e9
+        self.sampling_rate = sampling_rate
+        self.adc_sampling_rate = adc_sampling_rate
 
         self.M = M
         self.n = n
         self.N_tx = N_tx
         self.N_rx = N_rx
+        self._oversampling = int(sampling_rate / adc_sampling_rate)
 
         if N_tx % 2 != 1:
             raise ValueError("N must be odd")
@@ -268,7 +279,8 @@ class IMDDAutoencoderModel(keras.models.Sequential):
             N_tx=N_tx,
             N_rx=N_rx,
             n=n,
-            sampling_rate=self._sampling_rate,
+            sampling_rate=self.sampling_rate,
+            adc_sampling_rate=adc_sampling_rate,
             name="transmission"
         )
 
@@ -313,17 +325,22 @@ class IMDDAutoencoderModel(keras.models.Sequential):
             samples=samples,
             timing=Timing(
                 sample_count=self.n * self.N_rx,
-                sampling_rate=self._sampling_rate
+                sampling_rate=self.sampling_rate
             )
         )
 
     def decode_signal(self, input_signal: Signal) -> tf.Tensor:
         batch_size = tf.shape(input_signal.samples)[0]
 
-        samples_per_batch = self.n // 4 * self.N_rx
+        samples_per_batch = self.n * self.N_rx // self._oversampling
 
         # shape=[batch_size, symbol_count, samples_per_batch]
-        samples = tf.signal.frame(input_signal.samples, samples_per_batch, self.n // 4, axis=1)
+        samples = tf.signal.frame(
+            input_signal.samples,
+            samples_per_batch,
+            self.n // self._oversampling,
+            axis=1
+        )
         samples = tf.reshape(samples, (tf.size(samples) // samples_per_batch, samples_per_batch))
 
         x = self.decoder_network(samples)  # shape=[None, M]
@@ -359,12 +376,22 @@ class IMDDAutoencoder(CommunicationSystem):
         n: int,
         N: int,
         N_rx: int = 1,
+        sampling_rate: float = 336e9,
+        adc_sampling_rate: float = 84e9,
         name: Optional[str] = None
     ) -> None:
         if name is None:
             name = "imdd_autoencoder_system"
 
-        model = IMDDAutoencoderModel(M=M, n=n, N_tx=N, N_rx=N_rx, name=f"{name}_model")
+        model = IMDDAutoencoderModel(
+            M=M,
+            n=n,
+            N_tx=N,
+            N_rx=N_rx,
+            sampling_rate=sampling_rate,
+            adc_sampling_rate=adc_sampling_rate,
+            name=f"{name}_model"
+        )
 
         super().__init__(
             bits_per_symbol=model.bits_per_symbol,
