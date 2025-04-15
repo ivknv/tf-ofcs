@@ -355,8 +355,7 @@ class BEROverParameterCommand(Command):
 
             ber_values = []
 
-            # TODO: use time.monotonic() instead
-            last_timestamp = time.time()
+            last_timestamp = time.monotonic()
 
             for parameter_value in parameter_values:
                 system_parameters[parameter_name] = tf.expand_dims(parameter_value, 0)
@@ -364,7 +363,7 @@ class BEROverParameterCommand(Command):
                 system.setup(channel, system_parameters)
                 ber = ber_tester(bitseq_length, **system_parameters)
 
-                current_timestamp = time.time()
+                current_timestamp = time.monotonic()
                 step_duration = current_timestamp - last_timestamp
                 last_timestamp = current_timestamp
 
