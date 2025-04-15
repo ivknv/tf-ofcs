@@ -336,7 +336,8 @@ class BEROverParameterCommand(Command):
             ber_tester = components.BERTester(
                 system,
                 batch_size=profile.ber_estimation.batch_size,
-                n_iterations=profile.ber_estimation.n_iterations
+                n_iterations=profile.ber_estimation.n_iterations,
+                block_size=profile.ber_estimation.block_size
             )
 
             parameter_name = profile.ber_estimation.parameter_name
@@ -354,6 +355,7 @@ class BEROverParameterCommand(Command):
 
             ber_values = []
 
+            # TODO: use time.monotonic() instead
             last_timestamp = time.time()
 
             for parameter_value in parameter_values:

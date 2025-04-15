@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Optional
+from typing import Literal, Optional
 
 import tensorflow as tf
 from .component import Component
@@ -37,12 +37,17 @@ class BERTester(Component):
     #: Number of iterations for testing
     n_iterations: tf.Variable  # shape=[]; dtype=tf.int32
 
+    #: Block size to consider. If `block_size > 1`, then this component
+    #: computes BLER (block error rate), instead of BER (bit error rate)
+    block_size: int
+
     def __init__(
         self,
         system: Component,
         rng: Optional[tf.random.Generator] = None,
         batch_size: TensorCompatible = 100,
         n_iterations: TensorCompatible = 1,
+        block_size: int = 1,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -53,6 +58,8 @@ class BERTester(Component):
             self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
         else:
             self.rng = rng
+
+        self.block_size = block_size
 
         self.batch_size = tf.Variable(to_tensor(batch_size), name=f"{self.name}__batch_size")
         self.n_iterations = tf.Variable(to_tensor(n_iterations), name=f"{self.name}__n_iterations")
@@ -88,14 +95,33 @@ class BERTester(Component):
             output = self.system(inputs, **kwargs)
 
             correct_count += tf.cast(
-                tf.math.count_nonzero(tf.math.equal(inputs, output)),
+                tf.math.count_nonzero(
+                    tf.math.reduce_all(
+                        tf.math.equal(  # Split input bits into blocks
+                            tf.signal.frame(
+                                inputs,
+                                frame_length=self.block_size,
+                                frame_step=self.block_size,
+                                axis=-1
+                            ),
+                            tf.signal.frame(  # Split output bits into blocks
+                                output,
+                                frame_length=self.block_size,
+                                frame_step=self.block_size,
+                                axis=-1
+                            )
+                        ),
+                        axis=-1
+                    )
+                ),
                 tf.float32
             )
 
-        total_bits = (
+        total_blocks = (
             tf.cast(n_iterations, tf.float32) *
             tf.cast(batch_size, tf.float32) *
-            tf.cast(sequence_length, tf.float32)
+            tf.cast(sequence_length, tf.float32) /
+            tf.cast(self.block_size, tf.float32)
         )
 
-        return 1.0 - correct_count / total_bits
+        return 1.0 - correct_count / total_blocks

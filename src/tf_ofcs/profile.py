@@ -114,6 +114,7 @@ class Profile:
         symbol_count: int
         batch_size: int
         n_iterations: int
+        block_size: int
         parameter_name: str
         start: int | float
         end: int | float
@@ -133,6 +134,7 @@ class Profile:
                 symbol_count=json["symbol_count"],
                 batch_size=json["batch_size"],
                 n_iterations=json["n_iterations"],
+                block_size=json.get("block_size", 1),
                 parameters=_convert_parameters(json.get("parameters", {})),
                 parameter_name=json["parameter_name"],
                 start=json["start"],
