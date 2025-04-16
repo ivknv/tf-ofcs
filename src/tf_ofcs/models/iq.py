@@ -100,8 +100,7 @@ class TransmissionLayer(keras.layers.Layer):
         N: int,
         n: int,
         sampling_rate: float,
-        encoder_network: Callable[[tf.Tensor], tf.Tensor],
-        decoder_network: Callable[[tf.Tensor], tf.Tensor],
+        adc_sampling_rate: float,
         enable_phase_noise: bool = False,
         name: Optional[str] = None
     ) -> None:
@@ -116,12 +115,13 @@ class TransmissionLayer(keras.layers.Layer):
         self._N = N
         self._n = n
         self._sampling_rate = sampling_rate
+        self._oversampling = int(sampling_rate / adc_sampling_rate)
 
         bandwidth = 32e9 # Hz
 
         lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth])
 
-        adc_sampling_rate = dac_sampling_rate = 84e9
+        dac_sampling_rate = adc_sampling_rate
         dsp_sampling_rate = sampling_rate
         dac_max_power = 1.0
         dac_step = dac_max_power / 256.0
@@ -182,7 +182,6 @@ class TransmissionLayer(keras.layers.Layer):
             MapComponents(Composition([
                 adc,
                 Gain(gain=[1e5]),
-                Upsample(int(dsp_sampling_rate / dac_sampling_rate)),
                 lpf
             ])),
         ], name="receiver")
@@ -220,12 +219,10 @@ class TransmissionLayer(keras.layers.Layer):
             params["batch_size"] = tf.constant(1)
             signal = laser.component(timing, **params)
 
-            return lambda *args, **kwargs: Signal(
+            return lambda *_, **kwargs: Signal(
                 samples=tf.tile(signal.samples, [kwargs["batch_size"], 1]),
                 timing=signal.timing
             )
-
-            return lambda *args, **kwargs: signal
 
         self._laser.substitute = laser_substitute(self._laser)
         self._local_oscillator.substitute = laser_substitute(self._local_oscillator)
@@ -234,16 +231,20 @@ class TransmissionLayer(keras.layers.Layer):
         batch_size = tf.shape(inputs)[0]
         sample_count = tf.shape(inputs)[-1]
 
-        adjacent_inputs = tf.gather(
-            inputs,
-            self.rng.uniform(((self._N - 1) * batch_size,), 0, batch_size, dtype=tf.int32)
-        )  # shape=[batch_size * (N - 1), 2, n]
-
-        # shape=[batch_size, 2, (N - 1) * n // 2]
-        adjacent_inputs = tf.reshape(adjacent_inputs, [batch_size, 2, tf.size(adjacent_inputs) // batch_size // 2])
         symbol_index = self.rng.uniform([], 0, self._N, dtype=tf.int32)
 
         if self._N > 1:
+            adjacent_inputs = tf.gather(
+                inputs,
+                self.rng.uniform(((self._N - 1) * batch_size,), 0, batch_size, dtype=tf.int32)
+            )  # shape=[batch_size * (N - 1), 2, n]
+
+            # shape=[batch_size, 2, (N - 1) * n // 2]
+            adjacent_inputs = tf.reshape(
+                adjacent_inputs,
+                [batch_size, 2, tf.size(adjacent_inputs) // batch_size // 2]
+            )
+
             inputs = tf.concat([
                 adjacent_inputs[:, :, :symbol_index * sample_count],
                 inputs,
@@ -258,10 +259,10 @@ class TransmissionLayer(keras.layers.Layer):
                 inputs,
                 randomize_parameters__shape=tf.expand_dims(batch_size, 0),
                 select_symbol__index=symbol_index,
-                select_symbol__size=sample_count,
+                select_symbol__size=sample_count // self._oversampling,
                 **parameters
             ),
-            [batch_size, 2, sample_count]
+            [batch_size, 2, sample_count // self._oversampling]
         )
 
     def get_config(self) -> dict:
@@ -294,12 +295,16 @@ class IQAutoencoderModel(keras.models.Sequential):
         n: int,
         N: int,
         enable_phase_noise: bool = False,
+        sampling_rate: float = 336e9,
+        adc_sampling_rate: float = 84e9,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.bits_per_symbol = int(math.log2(M))
-        self._sampling_rate = 336e9
+        self.sampling_rate = sampling_rate
+        self.adc_sampling_rate = adc_sampling_rate
+        self._oversampling = int(sampling_rate / adc_sampling_rate)
 
         #: Size of the input one-hot vector
         self.M = M
@@ -345,16 +350,15 @@ class IQAutoencoderModel(keras.models.Sequential):
             M=M,
             N=N,
             n=n,
-            sampling_rate=self._sampling_rate,
-            encoder_network=self.encoder_network,
-            decoder_network=self.decoder_network,
+            sampling_rate=sampling_rate,
+            adc_sampling_rate=adc_sampling_rate,
             enable_phase_noise=enable_phase_noise,
             name="transmission"
         )
 
         self.add(self._transmission_layer)
 
-        self._rx_reshape_layer = keras.layers.Reshape((n,), name="rx_reshape_layer")
+        self._rx_reshape_layer = keras.layers.Reshape((n // self._oversampling,), name="rx_reshape_layer")
         self._rx1_layer = keras.layers.Dense(2 * M, activation="relu", name="rx1")
         self._rx2_layer = keras.layers.Dense(2 * M, activation="relu", name="rx2")
         self._rx3_layer = keras.layers.Dense(M, activation="softmax", name="rx3")
@@ -386,7 +390,7 @@ class IQAutoencoderModel(keras.models.Sequential):
         i_seq = tf.reshape(i_seq, [batch_size, self.n // 2 * symbols_per_batch])
         q_seq = tf.reshape(q_seq, [batch_size, self.n // 2 * symbols_per_batch])
 
-        timing = Timing(sample_count=tf.shape(i_seq)[-1], sampling_rate=self._sampling_rate)
+        timing = Timing(sample_count=tf.shape(i_seq)[-1], sampling_rate=self.sampling_rate)
 
         return Signal(samples=i_seq, timing=timing), Signal(samples=q_seq, timing=timing)
 
@@ -438,6 +442,8 @@ class IQAutoencoder(CommunicationSystem):
         n: int,
         N: int,
         enable_phase_noise: bool = False,
+        sampling_rate: float = 336e9,
+        adc_sampling_rate: float = 84e9,
         name: Optional[str] = None
     ) -> None:
         if name is None:
@@ -448,6 +454,8 @@ class IQAutoencoder(CommunicationSystem):
             n=n,
             N=N,
             enable_phase_noise=enable_phase_noise,
+            sampling_rate=sampling_rate,
+            adc_sampling_rate=adc_sampling_rate,
             name=f"{name}_model"
         )
 
