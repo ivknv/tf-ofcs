@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2024 Ivan Konovalov
+# Copyright (C) 2025 Ivan Konovalov
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -36,7 +36,8 @@ from .ber import BERTester
 from .utils import (
     Composition, MapComponents, Identity, Reindex, Fork, Downsample, Upsample,
     ExtractSamples, Lambda, SplitSignals, MergeSignals, TileSignals,
-    RandomizeParameters, PadSignal, UnpadSignal, Loop, Substitute, TruncateSignal
+    RandomizeParameters, PadSignal, UnpadSignal, Loop, Substitute, TruncateSignal,
+    SelectSamples
 )
 from .electrical_and_digital import (
     Adder, Subtractor, SignalFromTensor,
@@ -106,6 +107,7 @@ __all__ = [
     "Loop",
     "Substitute",
     "TruncateSignal",
+    "SelectSamples",
     "Component",
     "ChannelLossEstimator",
     "GaussianPulseGenerator",

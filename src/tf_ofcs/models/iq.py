@@ -28,7 +28,8 @@ from ..components import (
     Component, Composition, IQModulator, Laser, IQReceiver, Photodiode,
     BandPassFilter, SignalFromTensor, Lambda, RandomizeParameters,
     MapComponents, Gain, Fork, Identity, Reindex, Substitute,
-    AnalogToDigitalConverter, DigitalToAnalogConverter, Downsample, Upsample
+    AnalogToDigitalConverter, DigitalToAnalogConverter, Downsample, Upsample,
+    SelectSamples
 )
 from ..communication_system import CommunicationSystem
 
@@ -53,46 +54,6 @@ def _from_iq_signal(signals: tuple[Signal, Signal]) -> tf.Tensor:
     batch_size, sample_count = shape[0], shape[1]
 
     return tf.reshape(tf.stack([i.samples, q.samples], axis=1), [batch_size, 2, sample_count])
-
-
-# Slices the signal to select multiple symbols (made up of `size` samples) at `index * size`
-class _SelectSymbols(Component):
-    index: tf.Variable  # shape=[]; dtype=tf.int32
-    size: tf.Variable  # shape=[]; dtype=tf.int32
-    count: tf.Variable  # shape=[]; dtype=tf.int32
-
-    def __init__(
-        self,
-        index: int | tf.Tensor = 0,
-        size: int | tf.Tensor = 0,
-        count: int | tf.Tensor = 1,
-        name: Optional[str] = None
-    ) -> None:
-        super().__init__(name=name)
-
-        self.index = tf.Variable(tf.constant(index), name=f"{self.name}__index")
-        self.size = tf.Variable(tf.constant(size), name=f"{self.name}__size")
-        self.count = tf.Variable(tf.constant(count), name=f"{self.name}__count")
-
-        self.local_parameters = ["index", "size", "count"]
-
-    def implementation(
-        self,
-        signal: Signal | Signal,
-        /,
-        index: tf.Tensor,
-        size: tf.Tensor,
-        count: tf.Tensor
-    ) -> Any:
-        Signal = signal.__class__
-
-        return Signal(
-            timing=Timing(
-                sample_count=size,
-                sampling_rate=signal.timing.sampling_rate
-            ),
-            samples=signal.samples[:, index * size:(index + count) * size]
-        )
 
 
 class TransmissionLayer(keras.layers.Layer):
@@ -197,7 +158,7 @@ class TransmissionLayer(keras.layers.Layer):
             self._transmitter,
             self._channel,
             self._receiver,
-            MapComponents(_SelectSymbols(
+            MapComponents(SelectSamples(
                 count=N_rx,
                 size=n // 2 // self._oversampling,
                 name="select_symbols"

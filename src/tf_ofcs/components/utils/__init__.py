@@ -31,8 +31,10 @@ from .pad_signal import PadSignal, UnpadSignal
 from .loop import Loop
 from .substitute import Substitute
 from .truncate_signal import TruncateSignal
+from .select_samples import SelectSamples
 
 __all__ = [
+    "Composition",
     "MapComponents",
     "Identity",
     "Reindex",
@@ -49,5 +51,6 @@ __all__ = [
     "UnpadSignal",
     "Loop",
     "Substitute",
-    "TruncateSignal"
+    "TruncateSignal",
+    "SelectSamples"
 ]
