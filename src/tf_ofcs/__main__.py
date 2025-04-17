@@ -22,7 +22,6 @@ import typing
 from typing import Any, Optional
 import datetime
 
-from keras.src.saving.serialization_lib import Config
 import silence_tensorflow
 silence_tensorflow.silence_tensorflow("WARNING")
 
