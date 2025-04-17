@@ -55,23 +55,26 @@ def _from_iq_signal(signals: tuple[Signal, Signal]) -> tf.Tensor:
     return tf.reshape(tf.stack([i.samples, q.samples], axis=1), [batch_size, 2, sample_count])
 
 
-# Slices the signal to select a single symbol (made up of `size` samples) at `index * size`
-class _SelectSymbol(Component):
+# Slices the signal to select multiple symbols (made up of `size` samples) at `index * size`
+class _SelectSymbols(Component):
     index: tf.Variable  # shape=[]; dtype=tf.int32
     size: tf.Variable  # shape=[]; dtype=tf.int32
+    count: tf.Variable  # shape=[]; dtype=tf.int32
 
     def __init__(
         self,
         index: int | tf.Tensor = 0,
         size: int | tf.Tensor = 0,
+        count: int | tf.Tensor = 1,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
         self.index = tf.Variable(tf.constant(index), name=f"{self.name}__index")
         self.size = tf.Variable(tf.constant(size), name=f"{self.name}__size")
+        self.count = tf.Variable(tf.constant(count), name=f"{self.name}__count")
 
-        self.local_parameters = ["index", "size"]
+        self.local_parameters = ["index", "size", "count"]
 
     def implementation(
         self,
@@ -79,7 +82,7 @@ class _SelectSymbol(Component):
         /,
         index: tf.Tensor,
         size: tf.Tensor,
-        **kwargs
+        count: tf.Tensor
     ) -> Any:
         Signal = signal.__class__
 
@@ -88,7 +91,7 @@ class _SelectSymbol(Component):
                 sample_count=size,
                 sampling_rate=signal.timing.sampling_rate
             ),
-            samples=signal.samples[:, index * size:(index + 1) * size]
+            samples=signal.samples[:, index * size:(index + count) * size]
         )
 
 
@@ -97,7 +100,8 @@ class TransmissionLayer(keras.layers.Layer):
         self,
         *,
         M: int,
-        N: int,
+        N_tx: int,
+        N_rx: int,
         n: int,
         sampling_rate: float,
         adc_sampling_rate: float,
@@ -112,7 +116,8 @@ class TransmissionLayer(keras.layers.Layer):
         self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
 
         self._M = M
-        self._N = N
+        self._N_tx = N_tx
+        self._N_rx = N_rx
         self._n = n
         self._sampling_rate = sampling_rate
         self._oversampling = int(sampling_rate / adc_sampling_rate)
@@ -192,7 +197,11 @@ class TransmissionLayer(keras.layers.Layer):
             self._transmitter,
             self._channel,
             self._receiver,
-            MapComponents(_SelectSymbol(name="select_symbol")),
+            MapComponents(_SelectSymbols(
+                count=N_rx,
+                size=n // 2 // self._oversampling,
+                name="select_symbols"
+            )),
             Lambda(_from_iq_signal)
         ])
 
@@ -214,7 +223,7 @@ class TransmissionLayer(keras.layers.Layer):
         """
 
         def laser_substitute(laser: Substitute) -> Callable:
-            timing = Timing(sampling_rate=self._sampling_rate, sample_count=self._n // 2 * self._N)
+            timing = Timing(sampling_rate=self._sampling_rate, sample_count=self._n // 2 * self._N_tx)
             params = dict(self._component_parameters)
             params["batch_size"] = tf.constant(1)
             signal = laser.component(timing, **params)
@@ -231,12 +240,15 @@ class TransmissionLayer(keras.layers.Layer):
         batch_size = tf.shape(inputs)[0]
         sample_count = tf.shape(inputs)[-1]
 
-        symbol_index = self.rng.uniform([], 0, self._N, dtype=tf.int32)
+        # Number of adjacent symbols that will be kept after the receiver (before and after the main symbol)
+        half_adj_rx = (self._N_rx - 1) // 2
 
-        if self._N > 1:
+        main_symbol_index = self.rng.uniform([], half_adj_rx, self._N_tx - half_adj_rx, dtype=tf.int32)
+
+        if self._N_tx > 1:
             adjacent_inputs = tf.gather(
                 inputs,
-                self.rng.uniform(((self._N - 1) * batch_size,), 0, batch_size, dtype=tf.int32)
+                self.rng.uniform(((self._N_tx - 1) * batch_size,), 0, batch_size, dtype=tf.int32)
             )  # shape=[batch_size * (N - 1), 2, n]
 
             # shape=[batch_size, 2, (N - 1) * n // 2]
@@ -246,9 +258,9 @@ class TransmissionLayer(keras.layers.Layer):
             )
 
             inputs = tf.concat([
-                adjacent_inputs[:, :, :symbol_index * sample_count],
+                adjacent_inputs[:, :, :main_symbol_index * sample_count],
                 inputs,
-                adjacent_inputs[:, :, symbol_index * sample_count:]
+                adjacent_inputs[:, :, main_symbol_index * sample_count:]
             ], -1)
 
         parameters = dict(self._component_parameters)
@@ -258,11 +270,10 @@ class TransmissionLayer(keras.layers.Layer):
             self._system_with_randomization(
                 inputs,
                 randomize_parameters__shape=tf.expand_dims(batch_size, 0),
-                select_symbol__index=symbol_index,
-                select_symbol__size=sample_count // self._oversampling,
+                select_symbols__index=main_symbol_index - half_adj_rx,
                 **parameters
             ),
-            [batch_size, 2, sample_count // self._oversampling]
+            [batch_size, 2, sample_count * self._N_rx // self._oversampling]
         )
 
     def get_config(self) -> dict:
@@ -275,7 +286,8 @@ class IQAutoencoderModel(keras.models.Sequential):
 
         :ivar M: `int`, number of values a single message (symbol) carries
         :ivar n: `int`, number of samples per symbol produced by the transmitter
-        :ivar N: `int`, number of adjacent symbols transmitted during training (must be odd)
+        :ivar N_tx: `int`, number of adjacent symbols transmitted during training (must be odd)
+        :ivar N_rx: `int`, number of symbols processed by the receiver (must be odd)
 
         :ivar encoder_network: `Component`, transmitter layers of the neural network
         :ivar decoder_network: `Component`, receiver layers of the neural network
@@ -283,7 +295,8 @@ class IQAutoencoderModel(keras.models.Sequential):
 
     M: int
     n: int
-    N: int
+    N_tx: int
+    N_rx: int
     bits_per_symbol: int
 
     encoder_network: Component
@@ -293,7 +306,8 @@ class IQAutoencoderModel(keras.models.Sequential):
         self,
         M: int,
         n: int,
-        N: int,
+        N_tx: int,
+        N_rx: int = 1,
         enable_phase_noise: bool = False,
         sampling_rate: float = 336e9,
         adc_sampling_rate: float = 84e9,
@@ -313,12 +327,17 @@ class IQAutoencoderModel(keras.models.Sequential):
         self.n = n
 
         #: Number of ANN blocks
-        self.N = N
+        self.N_tx = N_tx
+
+        self.N_rx = N_rx
 
         self._enable_phase_noise = enable_phase_noise
 
-        if N % 2 != 1:
+        if N_tx % 2 != 1:
             raise ValueError("N must be odd")
+
+        if N_rx % 2 != 1:
+            raise ValueError("N_rx must be odd")
 
         if n % 2 != 0:
             raise ValueError("n must be even")
@@ -348,8 +367,9 @@ class IQAutoencoderModel(keras.models.Sequential):
 
         self._transmission_layer = TransmissionLayer(
             M=M,
-            N=N,
+            N_tx=N_tx,
             n=n,
+            N_rx=N_rx,
             sampling_rate=sampling_rate,
             adc_sampling_rate=adc_sampling_rate,
             enable_phase_noise=enable_phase_noise,
@@ -358,7 +378,7 @@ class IQAutoencoderModel(keras.models.Sequential):
 
         self.add(self._transmission_layer)
 
-        self._rx_reshape_layer = keras.layers.Reshape((n // self._oversampling,), name="rx_reshape_layer")
+        self._rx_reshape_layer = keras.layers.Reshape((n * N_rx // self._oversampling,), name="rx_reshape_layer")
         self._rx1_layer = keras.layers.Dense(2 * M, activation="relu", name="rx1")
         self._rx2_layer = keras.layers.Dense(2 * M, activation="relu", name="rx2")
         self._rx3_layer = keras.layers.Dense(M, activation="softmax", name="rx3")
@@ -369,26 +389,34 @@ class IQAutoencoderModel(keras.models.Sequential):
         self.add(self._rx3_layer)
 
     def encode_input(self, bitseq: tf.Tensor) -> tuple[Signal, Signal]:
-        bitseq_size = tf.size(bitseq)
-
         inputs = tf.one_hot(
-            tf.reshape(
+            tf.expand_dims(
                 bits_to_indices(bitseq, tf.constant(self.bits_per_symbol)),
-                [bitseq_size // self.bits_per_symbol, 1]
+                -1
             ),
             self.M
-        )
+        )  # shape=[batch_size, bitseq_size // batch_size // self.bits_per_symbol, self.M]
+
+        # Mirror inputs on both sides to add (N_rx - 1) // 2 adjacent symbols
+        adjacent_symbols_count = (self.N_rx - 1) // 2
+        inputs = tf.concat(
+            [
+                inputs[:, :adjacent_symbols_count],
+                inputs,
+                inputs[:, tf.shape(inputs)[1] - adjacent_symbols_count:]
+            ],
+            1
+        )  # shape=[batch_size, bitseq_size // self.bits_per_symbol + N_rx - 1, self.M]
+        inputs = tf.reshape(inputs, [tf.size(inputs) // self.M, self.M])
         x = self.encoder_network(inputs)  # shape=[batch_size * symbols_per_batch, 2, n // 2]
 
-        bits_per_batch = tf.shape(bitseq)[1]
         batch_size = tf.shape(bitseq)[0]
-        symbols_per_batch = bits_per_batch // self.bits_per_symbol
 
         i_seq = x[:, 0, :]
         q_seq = x[:, 1, :]
 
-        i_seq = tf.reshape(i_seq, [batch_size, self.n // 2 * symbols_per_batch])
-        q_seq = tf.reshape(q_seq, [batch_size, self.n // 2 * symbols_per_batch])
+        i_seq = tf.reshape(i_seq, [batch_size, tf.size(i_seq) // batch_size])
+        q_seq = tf.reshape(q_seq, [batch_size, tf.size(q_seq) // batch_size])
 
         timing = Timing(sample_count=tf.shape(i_seq)[-1], sampling_rate=self.sampling_rate)
 
@@ -397,15 +425,24 @@ class IQAutoencoderModel(keras.models.Sequential):
     def decode_signal(self, input_signal: tuple[Signal, Signal]) -> tf.Tensor:
         samples = _from_iq_signal(input_signal)
 
-        samples_per_batch = tf.shape(samples)[-1]
         batch_size = tf.shape(samples)[0]
-        symbols_per_batch = samples_per_batch // (self.n // 2)
+        samples_per_symbol = self.n // 2 // self._oversampling
+        samples_per_block = self.N_rx * samples_per_symbol
+
+        samples = tf.signal.frame(
+            samples,
+            samples_per_block,
+            samples_per_symbol,
+            axis=2
+        )
 
         i_seq = samples[:, 0, :]
         q_seq = samples[:, 1, :]
 
-        i_seq = tf.reshape(i_seq, [batch_size * symbols_per_batch, self.n // 2])
-        q_seq = tf.reshape(q_seq, [batch_size * symbols_per_batch, self.n // 2])
+        tf.debugging.assert_equal(tf.size(i_seq) % samples_per_block, 0)
+
+        i_seq = tf.reshape(i_seq, [tf.size(i_seq) // samples_per_block, samples_per_block])
+        q_seq = tf.reshape(q_seq, [tf.size(q_seq) // samples_per_block, samples_per_block])
 
         samples = tf.stack([i_seq, q_seq], axis=1)
 
@@ -440,7 +477,8 @@ class IQAutoencoder(CommunicationSystem):
         self,
         M: int,
         n: int,
-        N: int,
+        N_tx: int,
+        N_rx: int = 1,
         enable_phase_noise: bool = False,
         sampling_rate: float = 336e9,
         adc_sampling_rate: float = 84e9,
@@ -452,7 +490,8 @@ class IQAutoencoder(CommunicationSystem):
         model = IQAutoencoderModel(
             M=M,
             n=n,
-            N=N,
+            N_tx=N_tx,
+            N_rx=N_rx,
             enable_phase_noise=enable_phase_noise,
             sampling_rate=sampling_rate,
             adc_sampling_rate=adc_sampling_rate,
