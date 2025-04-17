@@ -153,7 +153,7 @@ class TransmissionLayer(keras.layers.Layer):
             params["batch_size"] = tf.constant(1)
             signal = self._laser.component(timing, **params)
 
-            return lambda *args, **kwargs: Signal(
+            return lambda *_, **kwargs: Signal(
                 samples=tf.tile(signal.samples, [kwargs["batch_size"], 1]),
                 timing=signal.timing
             )
@@ -196,6 +196,71 @@ class TransmissionLayer(keras.layers.Layer):
         return {}
 
 
+class TransmitterLayer(keras.layers.Layer):
+    def __init__(
+        self,
+        M: int,
+        n: int,
+        n_layers: int,
+        trainable: bool = True,
+        enable_batch_normalization = True,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(trainable=trainable, name=name)
+
+        self._layers = []
+
+        for i in range(n_layers - 1):
+            self._layers.append(keras.layers.Dense(2 * M, name=f"{self.name}_{i + 1}"))
+
+            if enable_batch_normalization:
+                self._layers.append(keras.layers.BatchNormalization(name=f"{self.name}_batch_norm{i + 1}"))
+
+            self._layers.append(keras.layers.Activation("relu", name=f"{self.name}_{i + 1}_relu"))
+
+        self._layers.append(keras.layers.Dense(n, activation=_clip, name=f"{self.name}_{n_layers}"))
+
+    def call(self, inputs: tf.Tensor) -> tf.Tensor:
+        output = inputs
+
+        for layer in self._layers:
+            output = layer(output)
+
+        return output
+
+
+class ReceiverLayer(keras.layers.Layer):
+    def __init__(
+        self,
+        M: int,
+        n_layers: int,
+        trainable: bool = True,
+        enable_batch_normalization = True,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(trainable=trainable, name=name)
+
+        self._layers = []
+
+        for i in range(n_layers - 1):
+            self._layers.append(keras.layers.Dense(2 * M, name=f"{self.name}_{i + 1}"))
+
+            if enable_batch_normalization:
+                self._layers.append(keras.layers.BatchNormalization(name=f"{self.name}_batch_norm{i + 1}"))
+
+            self._layers.append(keras.layers.Activation("relu", name=f"{self.name}_{i + 1}_relu"))
+
+        self._layers.append(keras.layers.Dense(M, activation="softmax", name="rx3"))
+
+    def call(self, inputs: tf.Tensor) -> tf.Tensor:
+        output = inputs
+
+        for layer in self._layers:
+            output = layer(output)
+
+        return output
+
+
 class IMDDAutoencoderModel(keras.models.Sequential):
     """
         An IM/DD autoencoder model based on [1]. It consists of 3 sections:
@@ -203,12 +268,14 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         2) Channel (in this case referred to as transmission layer);
         3) Receiver.
 
-        :ivar M: `int`, number of values a single message (symbol) carries
-        :ivar n: `int`, number of samples per symbol produced by the transmitter
-        :ivar N_tx: `int`, number of symbols transmitted during training (must be odd)
-        :ivar N_rx: `int`, number of symbols processed by the receiver (must be odd)
-        :ivar sampling_rate: `float`, DSP sampling rate
-        :ivar adc_sampling_rate: `float`, ADC/DAC sampling rate
+        :param M: `int`, number of values a single message (symbol) carries
+        :param n: `int`, number of samples per symbol produced by the transmitter
+        :param N_tx: `int`, number of symbols transmitted during training (must be odd)
+        :param N_rx: `int`, number of symbols processed by the receiver (must be odd)
+        :param n_tx_layers: `int`, number of transmitter layers
+        :param n_rx_layers: `int`, number of receiver layers
+        :param sampling_rate: `float`, DSP sampling rate
+        :param adc_sampling_rate: `float`, ADC/DAC sampling rate
 
         [1] 2018. Karanov et al. End-to-End Deep Learning of Optical Fiber Communications.
     """
@@ -229,6 +296,8 @@ class IMDDAutoencoderModel(keras.models.Sequential):
     #: symbol is fully decoded, the adjacent symbols are used to help mitigate ISI
     N_rx: int
 
+    sampling_rate: float
+
     #: ADC/DAC sampling rate
     adc_sampling_rate: float
 
@@ -240,6 +309,8 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         N_rx: int = 5,
         sampling_rate: float = 336e9,
         adc_sampling_rate: float = 84e9,
+        n_tx_layers: int = 3,
+        n_rx_layers: int = 9,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -257,22 +328,11 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         if N_tx % 2 != 1:
             raise ValueError("N must be odd")
 
-        self._tx1_layer = keras.layers.Dense(2 * M, activation="relu", name="tx1")
-        self._tx2_layer = keras.layers.Dense(2 * M, activation="relu", name="tx2")
-        self._tx3_layer = keras.layers.Dense(n, activation=_clip, name="tx3")
+        self._tx_layer = TransmitterLayer(M=M, n=n, n_layers=n_tx_layers, name="tx")
+        self._rx_layer = ReceiverLayer(M=M, n_layers=n_rx_layers, name="rx")
 
-        self.encoder_network = Lambda(
-            lambda x: self._tx3_layer(self._tx2_layer(self._tx1_layer(x))),
-            name="encoder_network"
-        )
-        self.decoder_network = Lambda(
-            lambda x: self._rx3_layer(self._rx2_layer(self._rx1_layer(x))),
-            name="decoder_network"
-        )
-
-        self._rx1_layer = keras.layers.Dense(2 * M, activation="relu", name="rx1")
-        self._rx2_layer = keras.layers.Dense(2 * M, activation="relu", name="rx2")
-        self._rx3_layer = keras.layers.Dense(M, activation="softmax", name="rx3")
+        self.encoder_network = Lambda(self._tx_layer, name="encoder_network")
+        self.decoder_network = Lambda(self._rx_layer, name="decoder_network")
 
         self._transmission_layer = TransmissionLayer(
             M=M,
@@ -285,15 +345,9 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         )
 
         self.add(keras.Input(shape=(M,)))
-        self.add(self._tx1_layer)
-        self.add(self._tx2_layer)
-        self.add(self._tx3_layer)
-
+        self.add(self._tx_layer)
         self.add(self._transmission_layer)
-
-        self.add(self._rx1_layer)
-        self.add(self._rx2_layer)
-        self.add(self._rx3_layer)
+        self.add(self._rx_layer)
 
     def encode_input(self, bitseq: tf.Tensor) -> Signal:
         batch_size = tf.shape(bitseq)[0]
@@ -374,10 +428,12 @@ class IMDDAutoencoder(CommunicationSystem):
         self,
         M: int,
         n: int,
-        N: int,
+        N_tx: int,
         N_rx: int = 1,
         sampling_rate: float = 336e9,
         adc_sampling_rate: float = 84e9,
+        n_tx_layers: int = 3,
+        n_rx_layers: int = 9,
         name: Optional[str] = None
     ) -> None:
         if name is None:
@@ -386,10 +442,12 @@ class IMDDAutoencoder(CommunicationSystem):
         model = IMDDAutoencoderModel(
             M=M,
             n=n,
-            N_tx=N,
+            N_tx=N_tx,
             N_rx=N_rx,
             sampling_rate=sampling_rate,
             adc_sampling_rate=adc_sampling_rate,
+            n_tx_layers=n_tx_layers,
+            n_rx_layers=n_rx_layers,
             name=f"{name}_model"
         )
 
