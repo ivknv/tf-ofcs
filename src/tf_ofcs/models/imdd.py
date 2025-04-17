@@ -311,6 +311,8 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         adc_sampling_rate: float = 84e9,
         n_tx_layers: int = 3,
         n_rx_layers: int = 9,
+        train_tx: bool = True,
+        train_rx: bool = True,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -328,8 +330,12 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         if N_tx % 2 != 1:
             raise ValueError("N must be odd")
 
-        self._tx_layer = TransmitterLayer(M=M, n=n, n_layers=n_tx_layers, name="tx")
-        self._rx_layer = ReceiverLayer(M=M, n_layers=n_rx_layers, name="rx")
+        self._tx_layer = TransmitterLayer(
+            M=M, n=n, n_layers=n_tx_layers, trainable=train_tx, name="tx"
+        )
+        self._rx_layer = ReceiverLayer(
+            M=M, n_layers=n_rx_layers, trainable=train_rx, name="rx"
+        )
 
         self.encoder_network = Lambda(self._tx_layer, name="encoder_network")
         self.decoder_network = Lambda(self._rx_layer, name="decoder_network")
@@ -434,6 +440,8 @@ class IMDDAutoencoder(CommunicationSystem):
         adc_sampling_rate: float = 84e9,
         n_tx_layers: int = 3,
         n_rx_layers: int = 9,
+        train_tx: bool = True,
+        train_rx: bool = True,
         name: Optional[str] = None
     ) -> None:
         if name is None:
@@ -448,6 +456,8 @@ class IMDDAutoencoder(CommunicationSystem):
             adc_sampling_rate=adc_sampling_rate,
             n_tx_layers=n_tx_layers,
             n_rx_layers=n_rx_layers,
+            train_tx=train_tx,
+            train_rx=train_rx,
             name=f"{name}_model"
         )
 

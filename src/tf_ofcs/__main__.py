@@ -135,8 +135,11 @@ def _load_weights(model: keras.models.Model, path: str) -> None:
         raise ValueError(f"Invalid file extension: expected a '.keras' file, got {repr(path)} instead")
 
     # Load only trainable weights, we don't care about the non-trainable ones
+    # We also load layers named "tx" and "rx", it's an accepted convention for
+    # this project that these layers correspond to transmitter and receiver layers,
+    # and thus should be always loaded
     with h5py.File(path, "r") as file:
-        trainable_layers = [layer for layer in model.layers if layer.trainable]
+        trainable_layers = [layer for layer in model.layers if layer.trainable or layer.name in ("tx", "rx")]
 
         for layer in trainable_layers:
             for variable in layer.weights:
