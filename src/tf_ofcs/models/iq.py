@@ -241,6 +241,77 @@ class TransmissionLayer(keras.layers.Layer):
         return {}
 
 
+class TransmitterLayer(keras.layers.Layer):
+    def __init__(
+        self,
+        M: int,
+        n: int,
+        n_layers: int,
+        trainable: bool = True,
+        enable_batch_normalization = True,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(trainable=trainable, name=name)
+
+        self._layers = []
+
+        for i in range(n_layers - 1):
+            self._layers.append(keras.layers.Dense(2 * M, name=f"{self.name}_{i + 1}"))
+
+            if enable_batch_normalization:
+                self._layers.append(keras.layers.BatchNormalization(name=f"{self.name}_batch_norm{i + 1}"))
+
+            self._layers.append(keras.layers.Activation("relu", name=f"{self.name}_{i + 1}_relu"))
+
+        self._layers.append(keras.layers.Dense(n, activation=_clip, name=f"{self.name}_{n_layers}"))
+        self._layers.append(keras.layers.Reshape((2, n // 2), name=f"{self.name}_reshape"))
+
+    def call(self, inputs: tf.Tensor) -> tf.Tensor:
+        output = inputs
+
+        for layer in self._layers:
+            output = layer(output)
+
+        return output
+
+
+class ReceiverLayer(keras.layers.Layer):
+    def __init__(
+        self,
+        M: int,
+        n: int,
+        N_rx: int,
+        n_layers: int,
+        oversampling: int,
+        trainable: bool = True,
+        enable_batch_normalization = True,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(trainable=trainable, name=name)
+
+        self._layers = []
+
+        self._layers.append(keras.layers.Reshape((n * N_rx // oversampling,), name=f"{self.name}__reshape"))
+
+        for i in range(n_layers - 1):
+            self._layers.append(keras.layers.Dense(2 * M, name=f"{self.name}_{i + 1}"))
+
+            if enable_batch_normalization:
+                self._layers.append(keras.layers.BatchNormalization(name=f"{self.name}_batch_norm{i + 1}"))
+
+            self._layers.append(keras.layers.Activation("relu", name=f"{self.name}_{i + 1}_relu"))
+
+        self._layers.append(keras.layers.Dense(M, activation="softmax", name=f"{self.name}_{n_layers}"))
+
+    def call(self, inputs: tf.Tensor) -> tf.Tensor:
+        output = inputs
+
+        for layer in self._layers:
+            output = layer(output)
+
+        return output
+
+
 class IQAutoencoderModel(keras.models.Sequential):
     """
         An autoencoder model with an IQ modulator.
@@ -269,6 +340,8 @@ class IQAutoencoderModel(keras.models.Sequential):
         n: int,
         N_tx: int,
         N_rx: int = 1,
+        n_tx_layers: int = 3,
+        n_rx_layers: int = 3,
         enable_phase_noise: bool = False,
         sampling_rate: float = 336e9,
         adc_sampling_rate: float = 84e9,
@@ -303,28 +376,15 @@ class IQAutoencoderModel(keras.models.Sequential):
         if n % 2 != 0:
             raise ValueError("n must be even")
 
-        self._tx1_layer = keras.layers.Dense(2 * M, activation="relu", name="tx1")
-        self._tx2_layer = keras.layers.Dense(2 * M, activation="relu", name="tx2")
-        self._tx3_layer = keras.layers.Dense(n, activation=_clip, name="tx3")
-        self._tx_reshape_layer = keras.layers.Reshape((2, n // 2))
-
-        self.add(keras.Input(shape=(M,)))
-        self.add(self._tx1_layer)
-        self.add(self._tx2_layer)
-        self.add(self._tx3_layer)
-        self.add(self._tx_reshape_layer)
-
-        self.encoder_network = Lambda(
-            lambda x: self._tx_reshape_layer(self._tx3_layer(self._tx2_layer(self._tx1_layer(x)))),
-            name="encoder_network"
+        self._tx_layer = TransmitterLayer(M=M, n=n, n_layers=n_tx_layers, name="tx")
+        self._rx_layer = ReceiverLayer(
+            M=M,
+            n=n,
+            N_rx=N_rx,
+            n_layers=n_rx_layers,
+            oversampling=self._oversampling,
+            name="rx"
         )
-        self.decoder_network = Lambda(
-            lambda x: self._rx3_layer(self._rx2_layer(self._rx1_layer(self._rx_reshape_layer(x)))),
-            name="decoder_network"
-        )
-
-        self.encoder = Lambda(self.encode_input)
-        self.decoder = Lambda(self.decode_signal)
 
         self._transmission_layer = TransmissionLayer(
             M=M,
@@ -337,17 +397,16 @@ class IQAutoencoderModel(keras.models.Sequential):
             name="transmission"
         )
 
+        self.encoder_network = Lambda(self._tx_layer, name="encoder_network")
+        self.decoder_network = Lambda(self._rx_layer, name="decoder_network")
+
+        self.encoder = Lambda(self.encode_input)
+        self.decoder = Lambda(self.decode_signal)
+
+        self.add(keras.Input(shape=(M,)))
+        self.add(self._tx_layer)
         self.add(self._transmission_layer)
-
-        self._rx_reshape_layer = keras.layers.Reshape((n * N_rx // self._oversampling,), name="rx_reshape_layer")
-        self._rx1_layer = keras.layers.Dense(2 * M, activation="relu", name="rx1")
-        self._rx2_layer = keras.layers.Dense(2 * M, activation="relu", name="rx2")
-        self._rx3_layer = keras.layers.Dense(M, activation="softmax", name="rx3")
-
-        self.add(self._rx_reshape_layer)
-        self.add(self._rx1_layer)
-        self.add(self._rx2_layer)
-        self.add(self._rx3_layer)
+        self.add(self._rx_layer)
 
     def encode_input(self, bitseq: tf.Tensor) -> tuple[Signal, Signal]:
         inputs = tf.one_hot(
@@ -440,6 +499,8 @@ class IQAutoencoder(CommunicationSystem):
         n: int,
         N_tx: int,
         N_rx: int = 1,
+        n_tx_layers: int = 3,
+        n_rx_layers: int = 3,
         enable_phase_noise: bool = False,
         sampling_rate: float = 336e9,
         adc_sampling_rate: float = 84e9,
@@ -453,6 +514,8 @@ class IQAutoencoder(CommunicationSystem):
             n=n,
             N_tx=N_tx,
             N_rx=N_rx,
+            n_tx_layers=n_tx_layers,
+            n_rx_layers=n_rx_layers,
             enable_phase_noise=enable_phase_noise,
             sampling_rate=sampling_rate,
             adc_sampling_rate=adc_sampling_rate,
