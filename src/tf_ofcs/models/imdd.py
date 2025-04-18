@@ -250,7 +250,7 @@ class ReceiverLayer(keras.layers.Layer):
 
             self._layers.append(keras.layers.Activation("relu", name=f"{self.name}_{i + 1}_relu"))
 
-        self._layers.append(keras.layers.Dense(M, activation="softmax", name="rx3"))
+        self._layers.append(keras.layers.Dense(M, activation="softmax", name=f"{self.name}_{n_layers}"))
 
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
         output = inputs
