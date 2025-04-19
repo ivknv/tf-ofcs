@@ -21,8 +21,7 @@ import tensorflow as tf
 import keras  # type: ignore[import-untyped]
 
 from ..datatypes import Signal, Timing
-from ..utils import bits_to_indices, indices_to_bits
-from ..utils import dbm_to_w
+from ..utils import bits_to_indices, indices_to_bits, dbm_to_w, index_to_gray, gray_to_binary
 
 from ..components import (
     Component, Composition, MachZehnderModulator, Laser, Photodiode,
@@ -276,6 +275,7 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         :param n_rx_layers: `int`, number of receiver layers
         :param sampling_rate: `float`, DSP sampling rate
         :param adc_sampling_rate: `float`, ADC/DAC sampling rate
+        :param gray_coding: `bool`, specifies whether to use Gray coding or not
 
         [1] 2018. Karanov et al. End-to-End Deep Learning of Optical Fiber Communications.
     """
@@ -301,6 +301,8 @@ class IMDDAutoencoderModel(keras.models.Sequential):
     #: ADC/DAC sampling rate
     adc_sampling_rate: float
 
+    gray_coding: bool
+
     def __init__(
         self,
         M: int,
@@ -313,6 +315,7 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         n_rx_layers: int = 9,
         train_tx: bool = True,
         train_rx: bool = True,
+        gray_coding: bool = False,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -325,6 +328,7 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         self.n = n
         self.N_tx = N_tx
         self.N_rx = N_rx
+        self.gray_coding = gray_coding
         self._oversampling = int(sampling_rate / adc_sampling_rate)
 
         if N_tx % 2 != 1:
@@ -358,13 +362,12 @@ class IMDDAutoencoderModel(keras.models.Sequential):
     def encode_input(self, bitseq: tf.Tensor) -> Signal:
         batch_size = tf.shape(bitseq)[0]
 
-        inputs = tf.one_hot(
-            tf.expand_dims(
-                bits_to_indices(bitseq, tf.constant(self.bits_per_symbol)),
-                -1
-            ),
-            self.M
-        )  # shape=[batch_size, bitseq_size // batch_size // self.bits_per_symbol, self.M]
+        inputs = bits_to_indices(bitseq, tf.constant(self.bits_per_symbol))
+        if self.gray_coding:
+            inputs = gray_to_binary(inputs)
+
+        # shape=[batch_size, bitseq_size // batch_size // self.bits_per_symbol, self.M]
+        inputs = tf.one_hot(tf.expand_dims(inputs, -1), self.M)
 
         # Mirror inputs on both sides to add (N_rx - 1) // 2 adjacent symbols
         adjacent_symbols_count = (self.N_rx - 1) // 2
@@ -405,10 +408,12 @@ class IMDDAutoencoderModel(keras.models.Sequential):
 
         x = self.decoder_network(samples)  # shape=[None, M]
 
-        bitseq = indices_to_bits(
-            tf.cast(tf.argmax(x, axis=1), tf.int32),
-            tf.constant(self.bits_per_symbol)
-        )
+        indices = tf.cast(tf.argmax(x, axis=1), tf.int32)
+
+        if self.gray_coding:
+            indices = index_to_gray(indices)
+
+        bitseq = indices_to_bits(indices, tf.constant(self.bits_per_symbol))
 
         return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
 
@@ -442,6 +447,7 @@ class IMDDAutoencoder(CommunicationSystem):
         n_rx_layers: int = 9,
         train_tx: bool = True,
         train_rx: bool = True,
+        gray_coding: bool = False,
         name: Optional[str] = None
     ) -> None:
         if name is None:
@@ -458,6 +464,7 @@ class IMDDAutoencoder(CommunicationSystem):
             n_rx_layers=n_rx_layers,
             train_tx=train_tx,
             train_rx=train_rx,
+            gray_coding=gray_coding,
             name=f"{name}_model"
         )
 
