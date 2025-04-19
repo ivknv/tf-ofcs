@@ -303,13 +303,6 @@ class TrainCommand(Command):
         return 0
 
 
-def _number(x: str) -> float | int:
-    if "." in x or "e" in x.lower():
-        return float(x)
-
-    return int(x)
-
-
 class BEROverParameterCommand(Command):
     description = "Evaluate autoencoder's BER as a function of chosen parameter."
 
@@ -372,6 +365,10 @@ class BEROverParameterCommand(Command):
 
                 print(f"BER={ber}, {parameter_name}={parameter_value}, took {step_duration:.5} s")
                 ber_values.append(ber)
+
+            ber_mean = sum(ber_values) / len(ber_values)
+            ber_std = float(tf.math.reduce_std(ber_values))
+            print(f"Average BER={ber_mean} \u00B1 {ber_std}")
 
             if ns.output is not None:
                 with open(ns.profile, "rb") as profile_file:
