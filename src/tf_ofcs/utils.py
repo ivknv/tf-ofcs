@@ -50,7 +50,9 @@ __all__ = [
     "combine_shape",
     "lorentz_distribution",
     "brickwall_frequency_response",
-    "to_tensor"
+    "to_tensor",
+    "index_to_gray",
+    "gray_to_binary"
 ]
 
 _log_of_10 = tf.math.log(10.0)
@@ -218,6 +220,24 @@ def index_to_gray(index: tf.Tensor) -> tf.Tensor:
     """
 
     return index ^ tf.bitwise.right_shift(index, 1)
+
+
+def gray_to_binary(gray_code: tf.Tensor) -> tf.Tensor:
+    """
+        Converts a Gray code to its binary representation.
+
+        :param gray_code: any shape, `dtype=tf.int32`, tensor of Gray codes.
+
+        :return: same shape but with binary representation
+    """
+
+    mask = result = gray_code
+
+    while tf.math.reduce_any(mask != 0):  # type: ignore[operator]
+        mask = tf.bitwise.right_shift(mask, 1)
+        result = tf.bitwise.bitwise_xor(result, mask)
+
+    return result
 
 
 def symbol_mapping_to_gray(mapping: list) -> list:
