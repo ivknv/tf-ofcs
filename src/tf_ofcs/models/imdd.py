@@ -14,14 +14,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 import math
 from typing import Any, Optional
 import tensorflow as tf
 import keras  # type: ignore[import-untyped]
 
 from ..datatypes import Signal, Timing
-from ..utils import bits_to_indices, indices_to_bits, dbm_to_w, index_to_gray, gray_to_binary
+from ..utils import bits_to_indices, indices_to_bits, dbm_to_w
 
 from ..components import (
     Component, Composition, MachZehnderModulator, Laser, Photodiode,
@@ -38,6 +38,14 @@ __all__ = ["IMDDAutoencoder"]
 
 def _clip(x: tf.Tensor) -> tf.Tensor:
     return tf.clip_by_value(x, 0.0, 1.0)
+
+
+def _apply_symbol_mapping(inputs: tf.Tensor, mapping: tf.Tensor) -> tf.Tensor:
+    return tf.gather(mapping, inputs, axis=-1)
+
+
+def _reverse_mapping(mapping: tf.Tensor) -> tf.Tensor:
+    return tf.argsort(mapping)
 
 
 class TransmissionLayer(keras.layers.Layer):
@@ -275,7 +283,8 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         :param n_rx_layers: `int`, number of receiver layers
         :param sampling_rate: `float`, DSP sampling rate
         :param adc_sampling_rate: `float`, ADC/DAC sampling rate
-        :param gray_coding: `bool`, specifies whether to use Gray coding or not
+        :param symbol_mapping: `Optional[Sequence[int] or tf.Tensor]`, translation
+            table for symbols, can be used to minimize BER (like Gray code)
 
         [1] 2018. Karanov et al. End-to-End Deep Learning of Optical Fiber Communications.
     """
@@ -301,7 +310,7 @@ class IMDDAutoencoderModel(keras.models.Sequential):
     #: ADC/DAC sampling rate
     adc_sampling_rate: float
 
-    gray_coding: bool
+    symbol_mapping: tf.Tensor
 
     def __init__(
         self,
@@ -315,7 +324,7 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         n_rx_layers: int = 9,
         train_tx: bool = True,
         train_rx: bool = True,
-        gray_coding: bool = False,
+        symbol_mapping: Optional[Sequence[int] | tf.Tensor] = None,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -328,7 +337,14 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         self.n = n
         self.N_tx = N_tx
         self.N_rx = N_rx
-        self.gray_coding = gray_coding
+
+        if symbol_mapping is None:
+            self.symbol_mapping = tf.range(M, dtype=tf.int32)
+        else:
+            self.symbol_mapping = tf.constant(symbol_mapping, dtype=tf.int32)
+
+        self._reverse_symbol_mapping = _reverse_mapping(self.symbol_mapping)
+
         self._oversampling = int(sampling_rate / adc_sampling_rate)
 
         if N_tx % 2 != 1:
@@ -363,8 +379,7 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         batch_size = tf.shape(bitseq)[0]
 
         inputs = bits_to_indices(bitseq, tf.constant(self.bits_per_symbol))
-        if self.gray_coding:
-            inputs = gray_to_binary(inputs)
+        inputs = _apply_symbol_mapping(inputs, self._reverse_symbol_mapping)
 
         # shape=[batch_size, bitseq_size // batch_size // self.bits_per_symbol, self.M]
         inputs = tf.one_hot(tf.expand_dims(inputs, -1), self.M)
@@ -410,9 +425,7 @@ class IMDDAutoencoderModel(keras.models.Sequential):
 
         indices = tf.cast(tf.argmax(x, axis=1), tf.int32)
 
-        if self.gray_coding:
-            indices = index_to_gray(indices)
-
+        indices = _apply_symbol_mapping(indices, self.symbol_mapping)
         bitseq = indices_to_bits(indices, tf.constant(self.bits_per_symbol))
 
         return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
@@ -447,7 +460,7 @@ class IMDDAutoencoder(CommunicationSystem):
         n_rx_layers: int = 9,
         train_tx: bool = True,
         train_rx: bool = True,
-        gray_coding: bool = False,
+        symbol_mapping: Optional[Sequence[int] | tf.Tensor] = None,
         name: Optional[str] = None
     ) -> None:
         if name is None:
@@ -464,7 +477,7 @@ class IMDDAutoencoder(CommunicationSystem):
             n_rx_layers=n_rx_layers,
             train_tx=train_tx,
             train_rx=train_rx,
-            gray_coding=gray_coding,
+            symbol_mapping=symbol_mapping,
             name=f"{name}_model"
         )
 
