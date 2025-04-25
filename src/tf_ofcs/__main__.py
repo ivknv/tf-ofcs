@@ -25,6 +25,8 @@ import datetime
 import silence_tensorflow
 silence_tensorflow.silence_tensorflow("WARNING")
 
+import numpy as np  # noqa: E402
+import numpy.typing as npt  # noqa: E402
 import h5py  # type: ignore[import-untyped] # noqa: E402
 import keras  # type: ignore[import-untyped] # noqa: E402
 import tensorflow as tf # noqa: E402
@@ -36,6 +38,7 @@ from .profile import Profile  # noqa: E402
 from .communication_system import CommunicationSystem  # noqa: E402
 from .datatypes import TensorCompatible  # noqa: E402
 from .message_generator import message_generator  # noqa: E402
+from .optimize_symbol_mapping import optimize_symbol_mapping  # noqa: E402
 
 class Command:
     description: str = ""
@@ -463,6 +466,76 @@ This command uses the BER config from the profile.\
         return 0
 
 
+class OptimizeSymbolMapping(Command):
+    description = "Optimize symbol mapping to minimize BER given a previously computed confusion matrix as input"
+
+    def setup(self, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--input",
+            default=None,
+            help="Path to the previous optimization result to be used as starting point (HD5)"
+        )
+        parser.add_argument("--output", help="HDF5 output filename")
+        parser.add_argument("--confusion-matrix", help="Path to the confusion matrix file (HD5)")
+        parser.add_argument(
+            "--population-size",
+            type=int,
+            default=10000,
+            help="Population size for the genetic algorithm"
+        )
+        parser.add_argument(
+            "--max-survivors",
+            type=int,
+            default=9000,
+            help="Maximum number of survivors per iteration for the genetic algorithm"
+        )
+        parser.add_argument(
+            "--n-iterations",
+            type=int,
+            default=1000,
+            help="Number of iterations for the algorithm"
+        )
+
+    def __call__(self, ns: argparse.Namespace) -> int:
+        if ns.confusion_matrix is None:
+            raise ValueError("Confusion matrix path must be specified")
+
+        with h5py.File(ns.confusion_matrix, "r") as f:
+            confusion_matrix = np.array(f["confusion_matrix"], dtype=np.int64)
+
+
+        def iteration_callback(iteration: int, candidates: list[list]) -> bool:
+            if (iteration + 1) % 100 == 0 or (iteration + 1) == ns.n_iterations:
+                best = candidates[0][0]
+                average = sum(i[0] for i in candidates) / len(candidates)
+                print(f"Iteration {iteration + 1}: best error count: {best}, average error count: {average}")
+
+            return iteration < ns.n_iterations
+
+
+        if ns.input is not None:
+            with h5py.File(ns.input, "r") as f:
+                initial_mapping = np.array(f["optimized_mapping"], dtype=np.int16)
+        else:
+            M = len(confusion_matrix)
+            initial_mapping = np.arange(M, dtype=np.int16)
+
+        mapping = optimize_symbol_mapping(
+            confusion_matrix,
+            initial_mapping,
+            iteration_callback,
+            population_size=ns.population_size,
+            max_survivors=ns.max_survivors
+        )
+
+        if ns.output is not None:
+            with h5py.File(ns.output, "w") as f:
+                f.create_dataset("confusion_matrix", data=confusion_matrix)
+                f.create_dataset("optimized_mapping", data=mapping)
+
+        return 0
+
+
 def main(args: list) -> int:
     parser = argparse.ArgumentParser(
         description="Train or evaluate fiber-optic communication system autoencoder models"
@@ -473,7 +546,8 @@ def main(args: list) -> int:
     commands: dict[str, Command] = {
         "train": TrainCommand(),
         "ber-over-parameter": BEROverParameterCommand(),
-        "confusion-matrix": ComputeConfusionMatrixCommand()
+        "confusion-matrix": ComputeConfusionMatrixCommand(),
+        "optimize-symbol-mapping": OptimizeSymbolMapping()
     }
 
     for command_name, command in commands.items():
