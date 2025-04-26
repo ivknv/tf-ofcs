@@ -70,7 +70,13 @@ def _errors_from_confusion_matrix(
 def _random_swap(x: npt.NDArray, n: int = 1) -> None:
     for i in range(n):
         i = random.randint(0, len(x) - 1)
-        j = random.randint(0, len(x) - 1)
+
+        while True:
+            j = random.randint(0, len(x) - 1)
+
+            if j != i:
+                break
+
         x[i], x[j] = x[j], x[i]
 
 
