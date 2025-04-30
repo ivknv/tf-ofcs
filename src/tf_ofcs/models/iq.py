@@ -204,13 +204,16 @@ class TransmissionLayer(keras.layers.Layer):
         # Number of adjacent symbols that will be kept after the receiver (before and after the main symbol)
         half_adj_rx = (self._N_rx - 1) // 2
 
-        main_symbol_index = self.rng.uniform([], half_adj_rx, self._N_tx - half_adj_rx, dtype=tf.int32)
+        main_symbol_index = (self._N_tx - 1) // 2
+
+        # FIXME: figure out if this line is actually needed or not
+        # main_symbol_index = self.rng.uniform([], half_adj_rx, self._N_tx - half_adj_rx, dtype=tf.int32)
 
         if self._N_tx > 1:
             adjacent_inputs = tf.gather(
                 inputs,
                 self.rng.uniform(((self._N_tx - 1) * batch_size,), 0, batch_size, dtype=tf.int32)
-            )  # shape=[batch_size * (N - 1), 2, n]
+            )  # shape=[batch_size * (N - 1), 2, n // 2]
 
             # shape=[batch_size, 2, (N - 1) * n // 2]
             adjacent_inputs = tf.reshape(
@@ -466,11 +469,10 @@ class IQAutoencoderModel(keras.models.Sequential):
 
         samples = tf.stack([i_seq, q_seq], axis=1)
 
-        x = self.decoder_network(samples)  # shape=[batch_size, M]
-        bitseq = indices_to_bits(
-            tf.cast(tf.argmax(x, axis=1), tf.int32),
-            tf.constant(self.bits_per_symbol)
-        )
+        x = self.decoder_network(samples)  # shape=[None, M]
+        indices = tf.cast(tf.argmax(x, axis=1), tf.int32)
+
+        bitseq = indices_to_bits(indices, tf.constant(self.bits_per_symbol))
 
         return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
 
