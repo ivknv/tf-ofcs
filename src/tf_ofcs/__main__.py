@@ -504,7 +504,7 @@ class OptimizeSymbolMapping(Command):
             confusion_matrix = np.array(f["confusion_matrix"], dtype=np.int64)
 
 
-        def iteration_callback(iteration: int, candidates: list[list]) -> bool:
+        def iteration_callback(iteration: int, candidates: list[tuple[int, npt.NDArray]]) -> bool:
             if (iteration + 1) % 100 == 0 or (iteration + 1) == ns.n_iterations:
                 best = candidates[0][0]
                 average = sum(i[0] for i in candidates) / len(candidates)
