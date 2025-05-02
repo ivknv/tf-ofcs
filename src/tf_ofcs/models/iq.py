@@ -206,19 +206,24 @@ class TransmissionLayer(keras.layers.Layer):
 
         main_symbol_index = (self._N_tx - 1) // 2
 
-        # FIXME: figure out if this line is actually needed or not
-        # main_symbol_index = self.rng.uniform([], half_adj_rx, self._N_tx - half_adj_rx, dtype=tf.int32)
-
         if self._N_tx > 1:
             adjacent_inputs = tf.gather(
                 inputs,
                 self.rng.uniform(((self._N_tx - 1) * batch_size,), 0, batch_size, dtype=tf.int32)
             )  # shape=[batch_size * (N - 1), 2, n // 2]
 
+            tf.debugging.assert_equal(
+                tf.shape(adjacent_inputs),
+                [batch_size * (self._N_tx - 1), 2, self._n // 2]
+            )
+
             # shape=[batch_size, 2, (N - 1) * n // 2]
-            adjacent_inputs = tf.reshape(
-                adjacent_inputs,
-                [batch_size, 2, tf.size(adjacent_inputs) // batch_size // 2]
+            adjacent_inputs = tf.stack(
+                [
+                    tf.reshape(adjacent_inputs[:, 0, :], [batch_size, -1]),
+                    tf.reshape(adjacent_inputs[:, 1, :], [batch_size, -1])
+                ],
+                axis=1
             )
 
             inputs = tf.concat([
@@ -226,6 +231,8 @@ class TransmissionLayer(keras.layers.Layer):
                 inputs,
                 adjacent_inputs[:, :, main_symbol_index * sample_count:]
             ], -1)
+
+        tf.debugging.assert_equal(tf.shape(inputs)[-1], self._N_tx * self._n // 2)
 
         parameters = dict(self._component_parameters)
         parameters["batch_size"] = batch_size
