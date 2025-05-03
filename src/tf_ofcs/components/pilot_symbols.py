@@ -118,6 +118,15 @@ class InsertPilotSymbols(Component):
 
 
 class RemovePilotSymbols(Component):
+    """
+        Removes pilot symbols from a signal at regular intervals.
+
+        :param pilot_symbol_size: `shape=[], dtype=tf.int32`,
+            size of the pilot symbols.
+        :param pilot_interval: `shape=[], dtype=tf.int32`, interval (in samples)
+            at which the pilot symbols were previously inserted
+    """
+
     pilot_interval: tf.Variable  # shape=[]; dtype=tf.int32
     pilot_symbol_size: tf.Variable  # shape=[]; dtype=tf.int32
 
