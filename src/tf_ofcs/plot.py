@@ -162,12 +162,12 @@ def plot_phase(
 
     if isinstance(signal, tuple):
         timing = signal[0].timing
-        phase = tf.math.atan2(signal[0].samples[index], signal[1].samples[index])
+        phase = tf.math.atan2(signal[1].samples[index], signal[0].samples[index])
     else:
         timing = signal.timing
         samples = signal.samples
 
-        phase = tf.math.atan2(tf.math.real(samples[index]), tf.math.imag(samples[index]))
+        phase = tf.math.atan2(tf.math.imag(samples[index]), tf.math.real(samples[index]))
 
     phase /= constants.pi / 180.0
 
