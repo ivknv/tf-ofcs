@@ -49,7 +49,9 @@ from .channel_loss_estimator import ChannelLossEstimator
 from .gaussian_pulse_generator import GaussianPulseGenerator
 from .optical_amplifier import OpticalAmplifier
 from .bit_sequence_generator import BitSequenceGenerator
-from .carrier_phase_recovery import DecisionDirectedPhaseRecovery, ViterbiViterbiPhaseRecovery
+from .carrier_phase_recovery import (
+    DecisionDirectedPhaseRecovery, ViterbiViterbiPhaseRecovery, PilotAidedPhaseRecovery
+)
 from .confusion_matrix_analyzer import ConfusionMatrixAnalyzer
 from .pilot_symbols import InsertPilotSymbols, RemovePilotSymbols
 
@@ -118,6 +120,7 @@ __all__ = [
     "BitSequenceGenerator",
     "DecisionDirectedPhaseRecovery",
     "ViterbiViterbiPhaseRecovery",
+    "PilotAidedPhaseRecovery",
     "ConfusionMatrixAnalyzer",
     "InsertPilotSymbols",
     "RemovePilotSymbols"

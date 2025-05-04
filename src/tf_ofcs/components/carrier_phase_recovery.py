@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from collections.abc import Sequence
 from typing import Optional
 import tensorflow as tf
 
@@ -21,7 +22,7 @@ from ..datatypes import Signal, TensorCompatible
 from .component import Component
 from ..utils import to_tensor
 
-__all__ = ["DecisionDirectedPhaseRecovery", "ViterbiViterbiPhaseRecovery"]
+__all__ = ["DecisionDirectedPhaseRecovery", "ViterbiViterbiPhaseRecovery", "PilotAidedPhaseRecovery"]
 
 
 class DecisionDirectedPhaseRecovery(Component):
@@ -169,5 +170,91 @@ class ViterbiViterbiPhaseRecovery(Component):
 
         return Signal(
             samples=input_symbols.samples * rotation,
+            timing=input_symbols.timing
+        )
+
+
+class PilotAidedPhaseRecovery(Component):
+    """
+        Pilot-aided carrier phase recovery. Estimates phase error based on known
+        pilot symbols periodically inserted into the data stream.
+
+        :param pilot_symbol_size: `shape=[], dtype=tf.int32`, pilot symbol size
+        :param pilot_interval: `shape=[], dtype=tf.int32`, pilot symbol interval (number of samples)
+        :param keep_pilot_symbols: `bool`, if `True`, the pilot symbols are kept in the output,
+            otherwise they are discarded
+    """
+
+    pilot_symbol: tf.Variable  # shape=[None]; dtype=tf.complex64
+    pilot_interval: tf.Variable  # shape=[]; dtype=tf.int32
+    keep_pilot_symbols: bool
+
+    def __init__(
+        self,
+        pilot_symbol: Sequence[complex] | tf.Tensor,
+        pilot_interval: int | tf.Tensor,
+        keep_pilot_symbols: bool = False,
+        name: Optional[str] = None
+    ) -> None:
+        super().__init__(name=name)
+        self.pilot_symbol = tf.Variable(
+            tf.constant(pilot_symbol),  # type: ignore[arg-type]
+            name=f"{self.name}__pilot_symbol"
+        )
+        self.pilot_interval = tf.Variable(
+            tf.constant(pilot_interval),
+            name=f"{self.name}__pilot_interval"
+        )
+        self.keep_pilot_symbols = keep_pilot_symbols
+        self.local_parameters = ["pilot_symbol", "pilot_interval"]
+
+    def implementation(
+        self,
+        input_symbols: Signal,
+        /,
+        pilot_symbol: tf.Tensor,
+        pilot_interval: tf.Tensor,
+    ) -> Signal:
+        assert input_symbols.samples.dtype is tf.complex64
+
+        signal_shape = tf.shape(input_symbols.samples)
+        batch_size = signal_shape[0]
+        pilot_symbol_size = tf.size(pilot_symbol)
+
+        # The idea here is to split the samples into groups of pilot_interval + pilot_symbol_size
+        # and then slice each group to isolate the pilot symbols
+        # We will then compute the phase error between the expected and the received pilot symbols
+
+        # We might have to pad the samples to make it a multiple of pilot_interval + pilot_symbol_size
+        n = pilot_interval + pilot_symbol_size
+        padding_size = (n - (signal_shape[-1] % n)) % n
+
+        samples = tf.pad(input_symbols.samples, [[0, 0], [0, padding_size]])
+        samples = tf.reshape(samples, [batch_size, -1, n])
+
+        extracted_pilot_symbols = samples[:, :, :pilot_symbol_size]
+
+        if not self.keep_pilot_symbols:
+            samples = samples[:, :, pilot_symbol_size:]
+
+        samples = tf.reshape(samples, [batch_size, -1])
+        samples = samples[:, :tf.shape(samples)[-1] - padding_size]
+
+        phase_error = tf.repeat(
+            tf.math.reduce_mean(
+                tf.math.angle(extracted_pilot_symbols) - tf.math.angle(pilot_symbol)[None, None, :],
+                axis=-1
+            ),
+            pilot_symbol_size * tf.shape(samples)[-1] // (tf.size(extracted_pilot_symbols) // batch_size),
+            axis=-1
+        )
+
+        phase_corrected_symbols = samples * tf.complex(
+            tf.cos(-phase_error),
+            tf.math.sin(-phase_error)
+        )
+
+        return Signal(
+            samples=phase_corrected_symbols,
             timing=input_symbols.timing
         )
