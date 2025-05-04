@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 import math
 from typing import Any, Optional
 import tensorflow as tf
@@ -38,6 +38,14 @@ __all__ = ["IQAutoencoder"]
 
 def _clip(x: tf.Tensor) -> tf.Tensor:
     return tf.clip_by_value(x, 0.0, 1.0)
+
+
+def _apply_symbol_mapping(inputs: tf.Tensor, mapping: tf.Tensor) -> tf.Tensor:
+    return tf.gather(mapping, inputs, axis=-1)
+
+
+def _reverse_mapping(mapping: tf.Tensor) -> tf.Tensor:
+    return tf.argsort(mapping)
 
 
 def _to_iq(samples: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
@@ -355,6 +363,7 @@ class IQAutoencoderModel(keras.models.Sequential):
         enable_phase_noise: bool = False,
         sampling_rate: float = 336e9,
         adc_sampling_rate: float = 84e9,
+        symbol_mapping: Optional[Sequence[int] | tf.Tensor] = None,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
@@ -374,6 +383,13 @@ class IQAutoencoderModel(keras.models.Sequential):
         self.N_tx = N_tx
 
         self.N_rx = N_rx
+
+        if symbol_mapping is None:
+            self.symbol_mapping = tf.range(M, dtype=tf.int32)
+        else:
+            self.symbol_mapping = tf.constant(symbol_mapping, dtype=tf.int32)
+
+        self._reverse_symbol_mapping = _reverse_mapping(self.symbol_mapping)
 
         self._enable_phase_noise = enable_phase_noise
 
@@ -419,13 +435,11 @@ class IQAutoencoderModel(keras.models.Sequential):
         self.add(self._rx_layer)
 
     def encode_input(self, bitseq: tf.Tensor) -> tuple[Signal, Signal]:
-        inputs = tf.one_hot(
-            tf.expand_dims(
-                bits_to_indices(bitseq, tf.constant(self.bits_per_symbol)),
-                -1
-            ),
-            self.M
-        )  # shape=[batch_size, bitseq_size // batch_size // self.bits_per_symbol, self.M]
+        inputs = bits_to_indices(bitseq, tf.constant(self.bits_per_symbol))
+        inputs = _apply_symbol_mapping(inputs, self._reverse_symbol_mapping)
+
+        # shape=[batch_size, bitseq_size // batch_size // self.bits_per_symbol, self.M]
+        inputs = tf.one_hot(tf.expand_dims(inputs, -1), self.M)
 
         # Mirror inputs on both sides to add (N_rx - 1) // 2 adjacent symbols
         adjacent_symbols_count = (self.N_rx - 1) // 2
@@ -477,8 +491,9 @@ class IQAutoencoderModel(keras.models.Sequential):
         samples = tf.stack([i_seq, q_seq], axis=1)
 
         x = self.decoder_network(samples)  # shape=[None, M]
-        indices = tf.cast(tf.argmax(x, axis=1), tf.int32)
 
+        indices = tf.cast(tf.argmax(x, axis=1), tf.int32)
+        indices = _apply_symbol_mapping(indices, self.symbol_mapping)
         bitseq = indices_to_bits(indices, tf.constant(self.bits_per_symbol))
 
         return tf.reshape(bitseq, (batch_size, tf.size(bitseq) // batch_size))
@@ -513,6 +528,7 @@ class IQAutoencoder(CommunicationSystem):
         enable_phase_noise: bool = False,
         sampling_rate: float = 336e9,
         adc_sampling_rate: float = 84e9,
+        symbol_mapping: Optional[Sequence[int] | tf.Tensor] = None,
         name: Optional[str] = None
     ) -> None:
         if name is None:
@@ -528,6 +544,7 @@ class IQAutoencoder(CommunicationSystem):
             enable_phase_noise=enable_phase_noise,
             sampling_rate=sampling_rate,
             adc_sampling_rate=adc_sampling_rate,
+            symbol_mapping=symbol_mapping,
             name=f"{name}_model"
         )
 
