@@ -188,7 +188,7 @@ class TrainCommand(Command):
         )
 
         parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
-        parser.add_argument("--profile", help="simulation profile (JSON file)")
+        parser.add_argument("profile", help="simulation profile (JSON file)")
 
     def _setup_tensorboard(self, tensorboard_args: dict, base_directory: str) -> keras.callbacks.TensorBoard:
         now = datetime.datetime.now()
@@ -312,7 +312,7 @@ class BEROverParameterCommand(Command):
     def setup(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
         parser.add_argument("--output", help="HDF5 output filename")
-        parser.add_argument("--profile", help="simulation profile (JSON file)")
+        parser.add_argument("profile", help="simulation profile (JSON file)")
 
     def _load_model_weights(self, system: CommunicationSystem, profile_path: str, profile: Profile) -> None:
         if profile.system.model_path is not None and system.model is not None:
@@ -394,7 +394,7 @@ This command uses the BER config from the profile.\
     def setup(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
         parser.add_argument("--output", help="HDF5 output filename")
-        parser.add_argument("--profile", help="simulation profile (JSON file)")
+        parser.add_argument("profile", help="simulation profile (JSON file)")
 
     def _load_model_weights(self, system: CommunicationSystem, profile_path: str, profile: Profile) -> None:
         if profile.system.model_path is not None and system.model is not None:
