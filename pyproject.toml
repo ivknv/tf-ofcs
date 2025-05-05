@@ -20,7 +20,8 @@ dependencies = [
     "plotly",
     "tensorflow==2.15.0",
     "silence-tensorflow",
-    "h5py"
+    "h5py",
+    "numba"
 ]
 
 [project.optional-dependencies]
