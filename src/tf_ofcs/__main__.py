@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
+from collections.abc import Callable
 import json
 import os
 import time
@@ -237,8 +238,22 @@ class TrainCommand(Command):
 
         assert system.model is not None
 
+        loss_function: str | Callable
+
+        if profile.training.loss is not None:
+            assert profile.training is not None
+            function = keras.losses.get(profile.training.loss)
+
+            if function is None:
+                raise ValueError(f"unknown loss function {profile.training.loss}")
+
+            loss_parameters = profile.training.loss_parameters
+            loss_function = lambda y_true, y_pred: function(y_true, y_pred, **loss_parameters)
+        else:
+            loss_function = "binary_crossentropy"
+
         optimizer = keras.optimizers.Adam(**profile.training.optimizer_parameters)
-        system.model.compile(optimizer=optimizer, loss=profile.training.loss or "binary_crossentropy")
+        system.model.compile(optimizer=optimizer, loss=loss_function)
 
     def __call__(self, ns: argparse.Namespace) -> int:
         profile = _load_profile(ns.profile)
