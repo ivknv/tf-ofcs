@@ -238,7 +238,7 @@ class TrainCommand(Command):
         assert system.model is not None
 
         optimizer = keras.optimizers.Adam(**profile.training.optimizer_parameters)
-        system.model.compile(optimizer=optimizer, loss="binary_crossentropy")
+        system.model.compile(optimizer=optimizer, loss=profile.training.loss or "binary_crossentropy")
 
     def __call__(self, ns: argparse.Namespace) -> int:
         profile = _load_profile(ns.profile)
