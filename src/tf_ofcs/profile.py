@@ -70,6 +70,7 @@ class Profile:
         reduce_lr_on_plateau: Optional[dict[str, Any]]
         loss: Optional[str]
         loss_parameters: dict[str, Any]
+        metrics: list[str]
 
         @staticmethod
         def from_json(json: dict[str, Any]) -> "Profile.Training":
@@ -92,7 +93,8 @@ class Profile:
                 tensorboard=json.get("tensorboard"),
                 reduce_lr_on_plateau=json.get("reduce_lr_on_plateau"),
                 loss=json.get("loss"),
-                loss_parameters=json.get("loss_parameters", {})
+                loss_parameters=json.get("loss_parameters", {}),
+                metrics=json.get("metrics", [])
             )
 
         @staticmethod

@@ -241,7 +241,6 @@ class TrainCommand(Command):
         loss_function: str | Callable
 
         if profile.training.loss is not None:
-            assert profile.training is not None
             function = keras.losses.get(profile.training.loss)
 
             if function is None:
@@ -253,7 +252,11 @@ class TrainCommand(Command):
             loss_function = "binary_crossentropy"
 
         optimizer = keras.optimizers.Adam(**profile.training.optimizer_parameters)
-        system.model.compile(optimizer=optimizer, loss=loss_function)
+        system.model.compile(
+            optimizer=optimizer,
+            loss=loss_function,
+            metrics=profile.training.metrics
+        )
 
     def __call__(self, ns: argparse.Namespace) -> int:
         profile = _load_profile(ns.profile)
