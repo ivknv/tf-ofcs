@@ -238,18 +238,23 @@ class TrainCommand(Command):
 
         assert system.model is not None
 
-        loss_function: str | Callable
+        loss_function: str | Callable = "binary_crossentropy"
 
-        if profile.training.loss is not None:
-            function = keras.losses.get(profile.training.loss)
+        function = keras.losses.get(profile.training.loss)
 
-            if function is None:
-                raise ValueError(f"unknown loss function {profile.training.loss}")
+        if function is None:
+            raise ValueError(f"unknown loss function {profile.training.loss}")
 
-            loss_parameters = profile.training.loss_parameters
-            loss_function = lambda y_true, y_pred: function(y_true, y_pred, **loss_parameters)
+        loss_parameters = profile.training.loss_parameters
+
+        if profile.training.minimum_loss is not None:
+            minimum_loss = profile.training.minimum_loss
+            loss_function = lambda y_true, y_pred: tf.math.maximum(
+                typing.cast(tf.Tensor, function(y_true, y_pred, **loss_parameters)),
+                tf.constant(minimum_loss)
+            )
         else:
-            loss_function = "binary_crossentropy"
+            loss_function = lambda y_true, y_pred: function(y_true, y_pred, **loss_parameters)
 
         optimizer = keras.optimizers.Adam(**profile.training.optimizer_parameters)
         system.model.compile(

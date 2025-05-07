@@ -70,6 +70,7 @@ class Profile:
         reduce_lr_on_plateau: Optional[dict[str, Any]]
         loss: Optional[str]
         loss_parameters: dict[str, Any]
+        minimum_loss: Optional[float]
         metrics: list[str]
 
         @staticmethod
@@ -94,7 +95,8 @@ class Profile:
                 reduce_lr_on_plateau=json.get("reduce_lr_on_plateau"),
                 loss=json.get("loss"),
                 loss_parameters=json.get("loss_parameters", {}),
-                metrics=json.get("metrics", [])
+                metrics=json.get("metrics", []),
+                minimum_loss=json.get("minimum_loss")
             )
 
         @staticmethod
