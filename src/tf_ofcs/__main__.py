@@ -256,8 +256,8 @@ class TrainCommand(Command):
         if profile.training.minimum_loss is not None:
             minimum_loss = profile.training.minimum_loss
             loss_function = lambda y_true, y_pred: tf.math.maximum(
-                typing.cast(tf.Tensor, function(y_true, y_pred, **loss_parameters)),
-                tf.constant(minimum_loss)
+                typing.cast(tf.Tensor, function(y_true, y_pred, **loss_parameters)) - minimum_loss,
+                tf.constant(0.0)
             )
         else:
             loss_function = lambda y_true, y_pred: function(y_true, y_pred, **loss_parameters)
