@@ -244,7 +244,7 @@ class TrainCommand(Command):
 
         assert system.model is not None
 
-        loss_function: str | Callable = "binary_crossentropy"
+        loss_function: str | Callable = "categorical_crossentropy"
 
         function = keras.losses.get(profile.training.loss)
 
