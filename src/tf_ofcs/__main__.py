@@ -177,18 +177,18 @@ class TrainCommand(Command):
 
     def setup(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
-            "--store",
+            "--store", "-s",
             action="store_true",
             help="store trained model in a .keras file specified in the profile"
         )
 
         parser.add_argument(
-            "--load",
+            "--load", "-l",
             action="store_true",
             help="load trained model from a .keras file specified in the profile"
         )
 
-        parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
+        parser.add_argument("--device", "-d", default="/CPU:0", help="device to run the model on")
         parser.add_argument("profile", help="simulation profile (JSON file)")
 
     def _setup_tensorboard(self, tensorboard_args: dict, base_directory: str) -> keras.callbacks.TensorBoard:
@@ -357,8 +357,8 @@ class BEROverParameterCommand(Command):
     description = "Evaluate autoencoder's BER as a function of chosen parameter."
 
     def setup(self, parser: argparse.ArgumentParser) -> None:
-        parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
-        parser.add_argument("--output", help="HDF5 output filename")
+        parser.add_argument("--device", "-d", default="/CPU:0", help="device to run the model on")
+        parser.add_argument("--output", "-o", help="HDF5 output filename")
         parser.add_argument("profile", help="simulation profile (JSON file)")
 
     def _load_model_weights(self, system: CommunicationSystem, profile_path: str, profile: Profile) -> None:
@@ -439,8 +439,8 @@ This command uses the BER config from the profile.\
 """
 
     def setup(self, parser: argparse.ArgumentParser) -> None:
-        parser.add_argument("--device", default="/CPU:0", help="device to run the model on")
-        parser.add_argument("--output", help="HDF5 output filename")
+        parser.add_argument("--device", "-d", default="/CPU:0", help="device to run the model on")
+        parser.add_argument("--output", "-o", help="HDF5 output filename")
         parser.add_argument("profile", help="simulation profile (JSON file)")
 
     def _load_model_weights(self, system: CommunicationSystem, profile_path: str, profile: Profile) -> None:
@@ -518,26 +518,26 @@ class OptimizeSymbolMapping(Command):
 
     def setup(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
-            "--input",
+            "--input", "-i",
             default=None,
             help="Path to the previous optimization result to be used as starting point (HD5)"
         )
-        parser.add_argument("--output", help="HDF5 output filename")
-        parser.add_argument("--confusion-matrix", help="Path to the confusion matrix file (HD5)")
+        parser.add_argument("--output", "-o", help="HDF5 output filename")
+        parser.add_argument("--confusion-matrix", "-c", help="Path to the confusion matrix file (HD5)")
         parser.add_argument(
-            "--population-size",
+            "--population-size", "-p",
             type=int,
             default=10000,
             help="Population size for the genetic algorithm"
         )
         parser.add_argument(
-            "--max-survivors",
+            "--max-survivors", "-s",
             type=int,
             default=9000,
             help="Maximum number of survivors per iteration for the genetic algorithm"
         )
         parser.add_argument(
-            "--n-iterations",
+            "--n-iterations", "-n",
             type=int,
             default=1000,
             help="Number of iterations for the algorithm"
