@@ -114,7 +114,9 @@ class CommunicationSystem(Composition):
         self,
         channel: Component,
         component_parameters: dict[str, Any],
-        parameter_distributions: dict[str, Any]
+        validation_component_parameters: dict[str, Any],
+        parameter_distributions: dict[str, Any],
+        validation_parameter_distributions: dict[str, Any]
     ) -> None:
         """
             Sets the channel, component parameters and parameter distributions
@@ -122,8 +124,12 @@ class CommunicationSystem(Composition):
 
             :param channel: `Component`, communication channel that will be used from now on
             :param component_parameters: `dict[str, Any]`, component parameters
+            :param validation_component_parameters: `dict[str, Any`, component parameters
+                to be used for validation
             :param parameter_distributions: `dict[str, Any]`, distributions for parameter
-                                            randomization to be used during training
+                randomization to be used during training
+            :param validation_parameter_distributions: `dict[str, Any]`, distributions
+                for parameter randomization to be used during validation
         """
 
         raise NotImplementedError

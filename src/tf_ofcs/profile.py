@@ -64,6 +64,11 @@ class Profile:
         epochs: int
         parameters: dict[str, Any]
         parameter_distributions: dict[str, tf.Tensor]
+        enable_validation: bool
+        validation_parameters: dict[str, Any]
+        validation_parameter_distributions: dict[str, tf.Tensor]
+        validation_steps: int
+        validation_freq: int
         optimizer_parameters: dict[str, Any]
         channel: Optional["Profile.Channel"]
         tensorboard: Optional[dict[str, Any]]
@@ -86,9 +91,16 @@ class Profile:
                 steps_per_epoch=json.get("steps_per_epoch", 256),
                 epochs=json.get("epochs", 50),
                 parameters=_convert_parameters(json.get("parameters", {})),
+                validation_parameters=_convert_parameters(json.get("validation_parameters", {})),
                 parameter_distributions=Profile.Training._convert_parameter_distributions(
                     json.get("parameter_distributions", {})
                 ),
+                validation_parameter_distributions=Profile.Training._convert_parameter_distributions(
+                    json.get("validation_parameter_distributions", {})
+                ),
+                validation_steps=json.get("validation_steps", 1),
+                validation_freq=json.get("validation_freq", 1),
+                enable_validation=json.get("enable_validation", False),
                 optimizer_parameters=json.get("optimizer_parameters", {}),
                 channel=channel,
                 tensorboard=json.get("tensorboard"),

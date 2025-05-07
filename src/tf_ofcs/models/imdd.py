@@ -70,6 +70,10 @@ class TransmissionLayer(keras.layers.Layer):
         self._oversampling = int(sampling_rate / adc_sampling_rate)
         self._component_parameters: dict[str, Any] = {}
         self._parameter_distributions: dict[str, Any] = {}
+
+        self._validation_component_parameters: dict[str, Any] = {}
+        self._validation_parameter_distributions: dict[str, Any] = {}
+
         self._rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
 
         bandwidth = 32e9 # Hz
@@ -137,11 +141,20 @@ class TransmissionLayer(keras.layers.Layer):
             ExtractSamples()
         ])
 
-        self._system_with_randomization = RandomizeParameters(
+        self._training_randomize = RandomizeParameters(
             self._communication_system,
             shape=[1],
             distributions=self._parameter_distributions,
-            rng=self._rng
+            rng=self._rng,
+            name="training_randomize"
+        )
+
+        self._validation_randomize = RandomizeParameters(
+            self._communication_system,
+            shape=[1],
+            distributions=self._validation_parameter_distributions,
+            rng=self._rng,
+            name="validation_randomize"
         )
 
     def _set_channel(self, channel: Component) -> None:
@@ -167,7 +180,7 @@ class TransmissionLayer(keras.layers.Layer):
 
         self._laser.substitute = laser_substitute()
 
-    def call(self, inputs: tf.Tensor) -> tf.Tensor:
+    def call(self, inputs: tf.Tensor, training: Optional[bool] = None) -> tf.Tensor:
         batch_size = tf.shape(inputs)[0]
         sample_count = tf.shape(inputs)[1]
 
@@ -187,13 +200,20 @@ class TransmissionLayer(keras.layers.Layer):
                 adjacent_inputs[:, central_index:]
             ], -1)
 
-        parameters = dict(self._component_parameters)
+        if training:
+            parameters = dict(self._component_parameters)
+            component = self._training_randomize
+        else:
+            parameters = dict(self._validation_component_parameters)
+            component = self._validation_randomize
+
         parameters["batch_size"] = batch_size
+        parameters["validation_randomize__shape"] = tf.expand_dims(batch_size, 0)
+        parameters["training_randomize__shape"] = tf.expand_dims(batch_size, 0)
 
         return tf.reshape(
-            self._system_with_randomization(
+            component(
                 inputs,
-                randomize_parameters__shape=tf.expand_dims(batch_size, 0),
                 **parameters
             ),
             (batch_size, sample_count * self._N_rx // self._oversampling)
@@ -434,15 +454,23 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         self,
         channel: Component,
         component_parameters: dict[str, Any],
-        parameter_distributions: dict[str, Any]
+        validation_component_parameters: dict[str, Any],
+        parameter_distributions: dict[str, Any],
+        validation_parameter_distributions: dict[str, Any]
     ) -> None:
         self._transmission_layer._set_channel(channel)
 
         self._transmission_layer._component_parameters.clear()
         self._transmission_layer._component_parameters.update(component_parameters)
 
+        self._transmission_layer._validation_component_parameters.clear()
+        self._transmission_layer._validation_component_parameters.update(validation_component_parameters)
+
         self._transmission_layer._parameter_distributions.clear()
         self._transmission_layer._parameter_distributions.update(parameter_distributions)
+
+        self._transmission_layer._validation_parameter_distributions.clear()
+        self._transmission_layer._validation_parameter_distributions.update(validation_parameter_distributions)
 
         self._transmission_layer._precompute_laser()
 
@@ -495,7 +523,15 @@ class IMDDAutoencoder(CommunicationSystem):
         self,
         channel: Component,
         component_parameters: dict[str, Any],
-        parameter_distributions: dict[str, Any]
+        validation_component_parameters: dict[str, Any],
+        parameter_distributions: dict[str, Any],
+        validation_parameter_distributions: dict[str, Any]
     ) -> None:
         assert isinstance(self.model, IMDDAutoencoderModel)
-        self.model._setup(channel, component_parameters, parameter_distributions)
+        self.model._setup(
+            channel,
+            component_parameters,
+            validation_component_parameters,
+            parameter_distributions,
+            validation_parameter_distributions
+        )

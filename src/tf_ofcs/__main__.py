@@ -230,10 +230,16 @@ class TrainCommand(Command):
         setup_parameters.update(profile.training.parameters)
         setup_parameters["batch_size"] = tf.constant(profile.training.batch_size)
 
+        validation_parameters = dict(profile.system.parameters)
+        validation_parameters.update(profile.training.validation_parameters)
+        validation_parameters["batch_size"] = tf.constant(profile.training.batch_size)
+
         system.setup_model(
             channel,
             setup_parameters,
-            profile.training.parameter_distributions
+            validation_parameters,
+            profile.training.parameter_distributions,
+            profile.training.validation_parameter_distributions
         )
 
         assert system.model is not None
@@ -301,16 +307,20 @@ class TrainCommand(Command):
             callbacks.append(RevertToBest(system.model, treshold=1.3))
 
             M = 2 ** system.bits_per_symbol
+            batch_size = profile.training.batch_size
 
-            # Create a training dataset of ~512000 input messages
-            dataset = tf.data.Dataset.from_generator(
-                message_generator,
-                args=(M, profile.training.batch_size),
-                output_signature=(
-                    tf.TensorSpec(shape=(profile.training.batch_size, M), dtype=tf.float32),
-                    tf.TensorSpec(shape=(profile.training.batch_size, M), dtype=tf.float32)
+            def _make_dataset(name: Optional[str] = None):
+                return tf.data.Dataset.from_generator(
+                    message_generator,
+                    args=(M, batch_size),
+                    output_signature=(
+                        tf.TensorSpec(shape=(batch_size, M), dtype=tf.float32),
+                        tf.TensorSpec(shape=(batch_size, M), dtype=tf.float32)
+                    ),
+                    name=name
                 )
-            )
+
+            dataset = _make_dataset("training")
 
             if ns.load:
                 if model_path is None:
@@ -318,13 +328,27 @@ class TrainCommand(Command):
 
                 _load_weights(system.model, model_path)
 
-            system.model.fit(
-                dataset,
-                epochs=profile.training.epochs,
-                batch_size=profile.training.batch_size,
-                steps_per_epoch=profile.training.steps_per_epoch,
-                callbacks=callbacks
-            )
+            if profile.training.enable_validation:
+                validation_dataset = _make_dataset("validation")
+
+                system.model.fit(
+                    dataset,
+                    epochs=profile.training.epochs,
+                    batch_size=batch_size,
+                    steps_per_epoch=profile.training.steps_per_epoch,
+                    validation_data=validation_dataset,
+                    validation_steps=profile.training.validation_steps,
+                    validation_freq=profile.training.validation_freq,
+                    callbacks=callbacks
+                )
+            else:
+                system.model.fit(
+                    dataset,
+                    epochs=profile.training.epochs,
+                    batch_size=batch_size,
+                    steps_per_epoch=profile.training.steps_per_epoch,
+                    callbacks=callbacks
+                )
 
         return 0
 
