@@ -102,7 +102,7 @@ class TransmissionLayer(keras.layers.Layer):
         self._N_tx = tx_config["N"]
         self._N_rx = rx_config["N"]
         self._n = n
-        self._sampling_rate = simulation_sampling_rate
+        self._simulation_sampling_rate = simulation_sampling_rate
         self._rx_oversampling = int(simulation_sampling_rate / adc_sampling_rate)
 
         bandwidth = 32e9 # Hz
@@ -174,7 +174,7 @@ class TransmissionLayer(keras.layers.Layer):
 
         self._communication_system = Composition([
             Lambda(_to_iq, name="to_iq"),
-            MapComponents(SignalFromTensor(sampling_rate=simulation_sampling_rate)),
+            MapComponents(SignalFromTensor(sampling_rate=tx_dsp_sampling_rate)),
             self._transmitter,
             self._channel,
             self._receiver,
@@ -212,7 +212,7 @@ class TransmissionLayer(keras.layers.Layer):
         """
 
         def laser_substitute(laser: Substitute) -> Callable:
-            timing = Timing(sampling_rate=self._sampling_rate, sample_count=self._n // 2 * self._N_tx)
+            timing = Timing(sampling_rate=self._simulation_sampling_rate, sample_count=self._n // 2 * self._N_tx)
             params = dict(self._component_parameters)
             params["batch_size"] = tf.constant(1)
             signal = laser.component(timing, **params)

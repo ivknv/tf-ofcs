@@ -76,8 +76,8 @@ class TransmissionLayer(keras.layers.Layer):
         self._N_rx = rx_config["N"]
         self._M = M
         self._n = n
-        self._sampling_rate = simulation_sampling_rate
-        self._rx_oversampling = int(simulation_sampling_rate / adc_sampling_rate)
+        self._simulation_sampling_rate = simulation_sampling_rate
+        self._rx_oversampling = int(tx_dsp_sampling_rate / adc_sampling_rate)
         self._component_parameters: dict[str, Any] = {}
         self._parameter_distributions: dict[str, Any] = {}
 
@@ -141,7 +141,7 @@ class TransmissionLayer(keras.layers.Layer):
         isi_samples_to_truncate = isi_samples - isi_samples_to_leave
 
         self._communication_system = Composition([
-            SignalFromTensor(sampling_rate=self._sampling_rate),
+            SignalFromTensor(sampling_rate=tx_dsp_sampling_rate),
             self._transmitter,
             self._channel,
             self._receiver,
@@ -176,7 +176,7 @@ class TransmissionLayer(keras.layers.Layer):
         """
 
         def laser_substitute() -> Callable:
-            timing = Timing(sampling_rate=self._sampling_rate, sample_count=self._n * self._N_tx)
+            timing = Timing(sampling_rate=self._simulation_sampling_rate, sample_count=self._n * self._N_tx)
             params = dict(self._component_parameters)
             params["batch_size"] = tf.constant(1)
             signal = self._laser.component(timing, **params)
@@ -404,8 +404,9 @@ class IMDDAutoencoderModel(keras.models.Sequential):
 
         self._reverse_symbol_mapping = _reverse_mapping(self.symbol_mapping)
 
-        assert "adc_sampling_rate" in self.rx_config
-        self._rx_oversampling = int(simulation_sampling_rate / self.rx_config["adc_sampling_rate"])
+        self._rx_oversampling = int(
+            self.tx_config["dsp_sampling_rate"] / self.rx_config["adc_sampling_rate"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        )
 
         if self.tx_config.get("N", 1) % 2 != 1:
             raise ValueError("N (for transmitter) must be odd")
