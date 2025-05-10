@@ -19,7 +19,7 @@ import numpy.typing as npt
 import random
 import operator
 from collections.abc import Callable
-import numba
+import numba  # type: ignore[import-untyped]
 
 __all__ = ["optimize_symbol_mapping"]
 
