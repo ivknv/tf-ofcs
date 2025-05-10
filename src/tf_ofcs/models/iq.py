@@ -299,6 +299,7 @@ class TransmitterLayer(keras.layers.Layer):
         self._layers = []
         n_layers = config.get("n_layers", 3)
         enable_batch_normalization = config.get("enable_batch_normalization", True)
+        dropout_rate = config.get("dropout_rate", 0.0)
 
         l2_regularization = config.get("l2_regularization", 0.0)
 
@@ -320,6 +321,9 @@ class TransmitterLayer(keras.layers.Layer):
                 self._layers.append(keras.layers.BatchNormalization(name=f"{self.name}_batch_norm{i + 1}"))
 
             self._layers.append(keras.layers.Activation("relu", name=f"{self.name}_{i + 1}_relu"))
+
+            if dropout_rate > 0.0:
+                self._layers.append(keras.layers.Dropout(dropout_rate, name=f"{self.name}_dropout{i + 1}"))
 
         self._layers.append(keras.layers.Dense(n, activation=_clip, name=f"{self.name}_{n_layers}"))
         self._layers.append(keras.layers.Reshape((2, n // 2), name=f"{self.name}_reshape"))
@@ -351,6 +355,7 @@ class ReceiverLayer(keras.layers.Layer):
         enable_batch_normalization = config.get("enable_batch_normalization", True)
         N_rx = config.get("N", 1)
         oversampling = int(simulation_sampling_rate / config["adc_sampling_rate"])
+        dropout_rate = config.get("dropout_rate", 0.0)
 
         l2_regularization = config.get("l2_regularization", 0.0)
 
@@ -374,6 +379,9 @@ class ReceiverLayer(keras.layers.Layer):
                 self._layers.append(keras.layers.BatchNormalization(name=f"{self.name}_batch_norm{i + 1}"))
 
             self._layers.append(keras.layers.Activation("relu", name=f"{self.name}_{i + 1}_relu"))
+
+            if dropout_rate > 0.0:
+                self._layers.append(keras.layers.Dropout(dropout_rate, name=f"{self.name}_dropout{i + 1}"))
 
         self._layers.append(keras.layers.Dense(M, activation="softmax", name=f"{self.name}_{n_layers}"))
 

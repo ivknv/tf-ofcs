@@ -30,6 +30,7 @@ class TransmitterConfig(TypedDict, total=False):
         :param trainable: `bool`, specifies whether the transmitter layers are trainable.
         :param enable_batch_normalization: `bool`, specifeis whether to enable batch normalization.
         :param l2_regularization: `float`, L2 regularization factor.
+        :param dropout_rate: `float`, dropout rate.
     """
 
     dsp_sampling_rate: float
@@ -39,6 +40,7 @@ class TransmitterConfig(TypedDict, total=False):
     trainable: bool
     enable_batch_normalization: bool
     l2_regularization: float
+    dropout_rate: float
 
 
 class ReceiverConfig(TypedDict, total=False):
@@ -51,6 +53,7 @@ class ReceiverConfig(TypedDict, total=False):
         :param trainable: `bool`, specifies whether the receiver layers are trainable.
         :param enable_batch_normalization: `bool`, specifeis whether to enable batch normalization.
         :param l2_regularization: `float`, L2 regularization factor.
+        :param dropout_rate: `float`, dropout rate.
     """
 
     adc_sampling_rate: float
@@ -59,3 +62,4 @@ class ReceiverConfig(TypedDict, total=False):
     trainable: bool
     enable_batch_normalization: bool
     l2_regularization: float
+    dropout_rate: float
