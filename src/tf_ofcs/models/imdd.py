@@ -411,8 +411,10 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         # shape=[batch_size, bitseq_size // batch_size // self.bits_per_symbol, self.M]
         inputs = tf.one_hot(tf.expand_dims(inputs, -1), self.M)
 
+        N_rx = self.rx_config["N"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+
         # Mirror inputs on both sides to add (N_rx - 1) // 2 adjacent symbols
-        adjacent_symbols_count = (self.N_rx - 1) // 2
+        adjacent_symbols_count = (N_rx - 1) // 2
         inputs = tf.concat(
             [
                 inputs[:, :adjacent_symbols_count],
@@ -429,15 +431,16 @@ class IMDDAutoencoderModel(keras.models.Sequential):
         return Signal(
             samples=samples,
             timing=Timing(
-                sample_count=self.n * self.N_rx,
+                sample_count=self.n * N_rx,
                 sampling_rate=self.simulation_sampling_rate
             )
         )
 
     def decode_signal(self, input_signal: Signal) -> tf.Tensor:
         batch_size = tf.shape(input_signal.samples)[0]
+        N_rx = self.rx_config["N"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
-        samples_per_batch = self.n * self.N_rx // self._rx_oversampling
+        samples_per_batch = self.n * N_rx // self._rx_oversampling
 
         # shape=[batch_size, symbol_count, samples_per_batch]
         samples = tf.signal.frame(

@@ -480,8 +480,10 @@ class IQAutoencoderModel(keras.models.Sequential):
         # shape=[batch_size, bitseq_size // batch_size // self.bits_per_symbol, self.M]
         inputs = tf.one_hot(tf.expand_dims(inputs, -1), self.M)
 
+        N_rx = self.rx_config["N"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+
         # Mirror inputs on both sides to add (N_rx - 1) // 2 adjacent symbols
-        adjacent_symbols_count = (self.N_rx - 1) // 2
+        adjacent_symbols_count = (N_rx - 1) // 2
         inputs = tf.concat(
             [
                 inputs[:, :adjacent_symbols_count],
@@ -508,9 +510,10 @@ class IQAutoencoderModel(keras.models.Sequential):
     def decode_signal(self, input_signal: tuple[Signal, Signal]) -> tf.Tensor:
         samples = _from_iq_signal(input_signal)
 
+        N_rx = self.rx_config["N"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
         batch_size = tf.shape(samples)[0]
         samples_per_symbol = self.n // 2 // self._rx_oversampling
-        samples_per_block = self.N_rx * samples_per_symbol
+        samples_per_block = N_rx * samples_per_symbol
 
         samples = tf.signal.frame(
             samples,
