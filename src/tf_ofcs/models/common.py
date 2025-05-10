@@ -29,6 +29,7 @@ class TransmitterConfig(TypedDict, total=False):
         :param n_layers: `int`, number of transmitter layers in the neural network.
         :param trainable: `bool`, specifies whether the transmitter layers are trainable.
         :param enable_batch_normalization: `bool`, specifeis whether to enable batch normalization.
+        :param l2_regularization: `float`, L2 regularization factor.
     """
 
     dsp_sampling_rate: float
@@ -37,6 +38,7 @@ class TransmitterConfig(TypedDict, total=False):
     n_layers: int
     trainable: bool
     enable_batch_normalization: bool
+    l2_regularization: float
 
 
 class ReceiverConfig(TypedDict, total=False):
@@ -48,6 +50,7 @@ class ReceiverConfig(TypedDict, total=False):
         :param n_layers: `int`, number of receiver layers in the neural network.
         :param trainable: `bool`, specifies whether the receiver layers are trainable.
         :param enable_batch_normalization: `bool`, specifeis whether to enable batch normalization.
+        :param l2_regularization: `float`, L2 regularization factor.
     """
 
     adc_sampling_rate: float
@@ -55,3 +58,4 @@ class ReceiverConfig(TypedDict, total=False):
     n_layers: int
     trainable: bool
     enable_batch_normalization: bool
+    l2_regularization: float

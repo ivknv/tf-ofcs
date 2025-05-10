@@ -300,8 +300,21 @@ class TransmitterLayer(keras.layers.Layer):
         n_layers = config.get("n_layers", 3)
         enable_batch_normalization = config.get("enable_batch_normalization", True)
 
+        l2_regularization = config.get("l2_regularization", 0.0)
+
+        if l2_regularization > 0.0:
+            regularizer = keras.regularizers.L2(l2=l2_regularization)
+        else:
+            regularizer = None
+
         for i in range(n_layers - 1):
-            self._layers.append(keras.layers.Dense(2 * M, name=f"{self.name}_{i + 1}"))
+            self._layers.append(
+                keras.layers.Dense(
+                    2 * M,
+                    regularizer=regularizer,
+                    name=f"{self.name}_{i + 1}"
+                )
+            )
 
             if enable_batch_normalization:
                 self._layers.append(keras.layers.BatchNormalization(name=f"{self.name}_batch_norm{i + 1}"))
@@ -339,10 +352,23 @@ class ReceiverLayer(keras.layers.Layer):
         N_rx = config.get("N", 1)
         oversampling = int(simulation_sampling_rate / config["adc_sampling_rate"])
 
+        l2_regularization = config.get("l2_regularization", 0.0)
+
+        if l2_regularization > 0.0:
+            regularizer = keras.regularizers.L2(l2=l2_regularization)
+        else:
+            regularizer = None
+
         self._layers.append(keras.layers.Reshape((n * N_rx // oversampling,), name=f"{self.name}__reshape"))
 
         for i in range(n_layers - 1):
-            self._layers.append(keras.layers.Dense(2 * M, name=f"{self.name}_{i + 1}"))
+            self._layers.append(
+                keras.layers.Dense(
+                    2 * M,
+                    kernel_regularizer=regularizer,
+                    name=f"{self.name}_{i + 1}"
+                )
+            )
 
             if enable_batch_normalization:
                 self._layers.append(keras.layers.BatchNormalization(name=f"{self.name}_batch_norm{i + 1}"))
