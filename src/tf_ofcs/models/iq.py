@@ -32,6 +32,7 @@ from ..components import (
     SelectSamples
 )
 from ..communication_system import CommunicationSystem
+from .common import TransmitterConfig, ReceiverConfig
 
 __all__ = ["IQAutoencoder"]
 
@@ -69,15 +70,24 @@ class TransmissionLayer(keras.layers.Layer):
         self,
         *,
         M: int,
-        N_tx: int,
-        N_rx: int,
         n: int,
-        sampling_rate: float,
-        adc_sampling_rate: float,
+        tx_config: TransmitterConfig,
+        rx_config: ReceiverConfig,
+        simulation_sampling_rate: float,
         enable_phase_noise: bool = False,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name, trainable=False)
+
+        assert "N" in tx_config
+        assert "N" in rx_config
+        assert "dac_sampling_rate" in tx_config
+        assert "adc_sampling_rate" in rx_config
+        assert "dsp_sampling_rate" in tx_config
+
+        adc_sampling_rate = rx_config["adc_sampling_rate"]
+        dac_sampling_rate = tx_config["dac_sampling_rate"]
+        tx_dsp_sampling_rate = tx_config["dsp_sampling_rate"]
 
         self._channel = Substitute(Identity())
         self._component_parameters: dict[str, Any] = {}
@@ -89,18 +99,16 @@ class TransmissionLayer(keras.layers.Layer):
         self.rng = tf.random.Generator.from_non_deterministic_state(alg="philox")
 
         self._M = M
-        self._N_tx = N_tx
-        self._N_rx = N_rx
+        self._N_tx = tx_config["N"]
+        self._N_rx = rx_config["N"]
         self._n = n
-        self._sampling_rate = sampling_rate
-        self._oversampling = int(sampling_rate / adc_sampling_rate)
+        self._sampling_rate = simulation_sampling_rate
+        self._rx_oversampling = int(simulation_sampling_rate / adc_sampling_rate)
 
         bandwidth = 32e9 # Hz
 
         lpf = BandPassFilter(min_frequency=[0.0], max_frequency=[bandwidth])
 
-        dac_sampling_rate = adc_sampling_rate
-        dsp_sampling_rate = sampling_rate
         dac_max_power = 1.0
         dac_step = dac_max_power / 256.0
         adc_max_power = dbm_to_w(2.0)
@@ -133,9 +141,9 @@ class TransmissionLayer(keras.layers.Layer):
             MapComponents(
                 Composition([
                     lpf,
-                    Downsample(int(dsp_sampling_rate / dac_sampling_rate)),
+                    Downsample(int(tx_dsp_sampling_rate / dac_sampling_rate)),
                     dac,
-                    Upsample(int(dsp_sampling_rate / dac_sampling_rate))
+                    Upsample(int(tx_dsp_sampling_rate / dac_sampling_rate))
                 ])
             ),
             Fork(shape=[2]),
@@ -166,13 +174,13 @@ class TransmissionLayer(keras.layers.Layer):
 
         self._communication_system = Composition([
             Lambda(_to_iq, name="to_iq"),
-            MapComponents(SignalFromTensor(sampling_rate=sampling_rate)),
+            MapComponents(SignalFromTensor(sampling_rate=simulation_sampling_rate)),
             self._transmitter,
             self._channel,
             self._receiver,
             MapComponents(SelectSamples(
-                count=N_rx,
-                size=n // 2 // self._oversampling,
+                count=self._N_rx,
+                size=n // 2 // self._rx_oversampling,
                 name="select_symbols"
             )),
             Lambda(_from_iq_signal)
@@ -271,7 +279,7 @@ class TransmissionLayer(keras.layers.Layer):
                 select_symbols__index=main_symbol_index - half_adj_rx,
                 **parameters
             ),
-            [batch_size, 2, sample_count * self._N_rx // self._oversampling]
+            [batch_size, 2, sample_count * self._N_rx // self._rx_oversampling]
         )
 
     def get_config(self) -> dict:
@@ -283,14 +291,14 @@ class TransmitterLayer(keras.layers.Layer):
         self,
         M: int,
         n: int,
-        n_layers: int,
-        trainable: bool = True,
-        enable_batch_normalization = True,
+        config: TransmitterConfig,
         name: Optional[str] = None
     ) -> None:
-        super().__init__(trainable=trainable, name=name)
+        super().__init__(trainable=config.get("trainable", True), name=name)
 
         self._layers = []
+        n_layers = config.get("n_layers", 3)
+        enable_batch_normalization = config.get("enable_batch_normalization", True)
 
         for i in range(n_layers - 1):
             self._layers.append(keras.layers.Dense(2 * M, name=f"{self.name}_{i + 1}"))
@@ -317,16 +325,19 @@ class ReceiverLayer(keras.layers.Layer):
         self,
         M: int,
         n: int,
-        N_rx: int,
-        n_layers: int,
-        oversampling: int,
-        trainable: bool = True,
-        enable_batch_normalization = True,
+        simulation_sampling_rate: float,
+        config: ReceiverConfig,
         name: Optional[str] = None
     ) -> None:
-        super().__init__(trainable=trainable, name=name)
+        super().__init__(trainable=config.get("trainable", True), name=name)
+
+        assert "adc_sampling_rate" in config
 
         self._layers = []
+        n_layers = config.get("n_layers", 3)
+        enable_batch_normalization = config.get("enable_batch_normalization", True)
+        N_rx = config.get("N", 1)
+        oversampling = int(simulation_sampling_rate / config["adc_sampling_rate"])
 
         self._layers.append(keras.layers.Reshape((n * N_rx // oversampling,), name=f"{self.name}__reshape"))
 
@@ -364,9 +375,8 @@ class IQAutoencoderModel(keras.models.Sequential):
 
     M: int
     n: int
-    N_tx: int
-    N_rx: int
     bits_per_symbol: int
+    simulation_sampling_rate: float
 
     encoder_network: Component
     decoder_network: Component
@@ -375,33 +385,45 @@ class IQAutoencoderModel(keras.models.Sequential):
         self,
         M: int,
         n: int,
-        N_tx: int,
-        N_rx: int = 1,
-        n_tx_layers: int = 3,
-        n_rx_layers: int = 3,
         enable_phase_noise: bool = False,
-        sampling_rate: float = 336e9,
-        adc_sampling_rate: float = 84e9,
+        simulation_sampling_rate: float = 336e9,
+        tx_config: Optional[TransmitterConfig] = None,
+        rx_config: Optional[ReceiverConfig] = None,
         symbol_mapping: Optional[Sequence[int] | tf.Tensor] = None,
         name: Optional[str] = None
     ) -> None:
         super().__init__(name=name)
 
+        self.tx_config = TransmitterConfig({
+            "dsp_sampling_rate": simulation_sampling_rate,
+            "dac_sampling_rate": 84e9,
+            "N": 1,
+            "n_layers": 3,
+            "trainable": True,
+            "enable_batch_normalization": True
+        })
+        self.tx_config.update(tx_config or {})
+
+        self.rx_config = ReceiverConfig({
+            "adc_sampling_rate": 84e9,
+            "N": 1,
+            "n_layers": 3,
+            "trainable": True,
+            "enable_batch_normalization": True
+        })
+        self.rx_config.update(rx_config or {})
+
         self.bits_per_symbol = int(math.log2(M))
-        self.sampling_rate = sampling_rate
-        self.adc_sampling_rate = adc_sampling_rate
-        self._oversampling = int(sampling_rate / adc_sampling_rate)
+        self.simulation_sampling_rate = simulation_sampling_rate
+
+        assert "adc_sampling_rate" in self.rx_config
+        self._rx_oversampling = int(simulation_sampling_rate / self.rx_config["adc_sampling_rate"])
 
         #: Size of the input one-hot vector
         self.M = M
 
         #: Number of samples produced by the final transmitter layer
         self.n = n
-
-        #: Number of ANN blocks
-        self.N_tx = N_tx
-
-        self.N_rx = N_rx
 
         if symbol_mapping is None:
             self.symbol_mapping = tf.range(M, dtype=tf.int32)
@@ -412,32 +434,30 @@ class IQAutoencoderModel(keras.models.Sequential):
 
         self._enable_phase_noise = enable_phase_noise
 
-        if N_tx % 2 != 1:
-            raise ValueError("N must be odd")
+        if self.tx_config.get("N", 1) % 2 != 1:
+            raise ValueError("N (for transmitter) must be odd")
 
-        if N_rx % 2 != 1:
-            raise ValueError("N_rx must be odd")
+        if self.rx_config.get("N", 1) % 2 != 1:
+            raise ValueError("N (for receiver) must be odd")
 
         if n % 2 != 0:
             raise ValueError("n must be even")
 
-        self._tx_layer = TransmitterLayer(M=M, n=n, n_layers=n_tx_layers, name="tx")
+        self._tx_layer = TransmitterLayer(M=M, n=n, config=self.tx_config, name="tx")
         self._rx_layer = ReceiverLayer(
             M=M,
             n=n,
-            N_rx=N_rx,
-            n_layers=n_rx_layers,
-            oversampling=self._oversampling,
+            simulation_sampling_rate=simulation_sampling_rate,
+            config=self.rx_config,
             name="rx"
         )
 
         self._transmission_layer = TransmissionLayer(
             M=M,
-            N_tx=N_tx,
             n=n,
-            N_rx=N_rx,
-            sampling_rate=sampling_rate,
-            adc_sampling_rate=adc_sampling_rate,
+            tx_config=self.tx_config,
+            rx_config=self.rx_config,
+            simulation_sampling_rate=simulation_sampling_rate,
             enable_phase_noise=enable_phase_noise,
             name="transmission"
         )
@@ -481,7 +501,7 @@ class IQAutoencoderModel(keras.models.Sequential):
         i_seq = tf.reshape(i_seq, [batch_size, tf.size(i_seq) // batch_size])
         q_seq = tf.reshape(q_seq, [batch_size, tf.size(q_seq) // batch_size])
 
-        timing = Timing(sample_count=tf.shape(i_seq)[-1], sampling_rate=self.sampling_rate)
+        timing = Timing(sample_count=tf.shape(i_seq)[-1], sampling_rate=self.simulation_sampling_rate)
 
         return Signal(samples=i_seq, timing=timing), Signal(samples=q_seq, timing=timing)
 
@@ -489,7 +509,7 @@ class IQAutoencoderModel(keras.models.Sequential):
         samples = _from_iq_signal(input_signal)
 
         batch_size = tf.shape(samples)[0]
-        samples_per_symbol = self.n // 2 // self._oversampling
+        samples_per_symbol = self.n // 2 // self._rx_oversampling
         samples_per_block = self.N_rx * samples_per_symbol
 
         samples = tf.signal.frame(
@@ -548,13 +568,10 @@ class IQAutoencoder(CommunicationSystem):
         self,
         M: int,
         n: int,
-        N_tx: int,
-        N_rx: int = 1,
-        n_tx_layers: int = 3,
-        n_rx_layers: int = 3,
         enable_phase_noise: bool = False,
-        sampling_rate: float = 336e9,
-        adc_sampling_rate: float = 84e9,
+        simulation_sampling_rate: float = 336e9,
+        tx_config: Optional[TransmitterConfig] = None,
+        rx_config: Optional[ReceiverConfig] = None,
         symbol_mapping: Optional[Sequence[int] | tf.Tensor] = None,
         name: Optional[str] = None
     ) -> None:
@@ -564,13 +581,10 @@ class IQAutoencoder(CommunicationSystem):
         model = IQAutoencoderModel(
             M=M,
             n=n,
-            N_tx=N_tx,
-            N_rx=N_rx,
-            n_tx_layers=n_tx_layers,
-            n_rx_layers=n_rx_layers,
             enable_phase_noise=enable_phase_noise,
-            sampling_rate=sampling_rate,
-            adc_sampling_rate=adc_sampling_rate,
+            simulation_sampling_rate=simulation_sampling_rate,
+            tx_config=tx_config,
+            rx_config=rx_config,
             symbol_mapping=symbol_mapping,
             name=f"{name}_model"
         )
