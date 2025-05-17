@@ -289,7 +289,6 @@ class TransmissionLayer(keras.layers.Layer):
 class TransmitterLayer(keras.layers.Layer):
     def __init__(
         self,
-        M: int,
         n: int,
         config: TransmitterConfig,
         name: Optional[str] = None
@@ -308,10 +307,12 @@ class TransmitterLayer(keras.layers.Layer):
         else:
             regularizer = None
 
+        n_neurons = config.get("n_neurons", 128)
+
         for i in range(n_layers - 1):
             self._layers.append(
                 keras.layers.Dense(
-                    2 * M,
+                    n_neurons,
                     regularizer=regularizer,
                     name=f"{self.name}_{i + 1}"
                 )
@@ -364,12 +365,14 @@ class ReceiverLayer(keras.layers.Layer):
         else:
             regularizer = None
 
+        n_neurons = config.get("n_neurons", 128)
+
         self._layers.append(keras.layers.Reshape((n * N_rx // oversampling,), name=f"{self.name}__reshape"))
 
         for i in range(n_layers - 1):
             self._layers.append(
                 keras.layers.Dense(
-                    2 * M,
+                    n_neurons,
                     kernel_regularizer=regularizer,
                     name=f"{self.name}_{i + 1}"
                 )
@@ -433,6 +436,7 @@ class IQAutoencoderModel(keras.models.Sequential):
             "dac_sampling_rate": 84e9,
             "N": 1,
             "n_layers": 3,
+            "n_neurons": 128,
             "trainable": True,
             "enable_batch_normalization": True
         })
@@ -442,6 +446,7 @@ class IQAutoencoderModel(keras.models.Sequential):
             "adc_sampling_rate": 84e9,
             "N": 1,
             "n_layers": 3,
+            "n_neurons": 128,
             "trainable": True,
             "enable_batch_normalization": True
         })
@@ -477,7 +482,7 @@ class IQAutoencoderModel(keras.models.Sequential):
         if n % 2 != 0:
             raise ValueError("n must be even")
 
-        self._tx_layer = TransmitterLayer(M=M, n=n, config=self.tx_config, name="tx")
+        self._tx_layer = TransmitterLayer(n=n, config=self.tx_config, name="tx")
         self._rx_layer = ReceiverLayer(
             M=M,
             n=n,
