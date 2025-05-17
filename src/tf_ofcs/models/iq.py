@@ -313,7 +313,7 @@ class TransmitterLayer(keras.layers.Layer):
             self._layers.append(
                 keras.layers.Dense(
                     n_neurons,
-                    regularizer=regularizer,
+                    kernel_regularizer=regularizer,
                     name=f"{self.name}_{i + 1}"
                 )
             )
