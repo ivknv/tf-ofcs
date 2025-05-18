@@ -146,8 +146,12 @@ def _load_weights(model: keras.models.Model, path: str) -> None:
         trainable_layers = [layer for layer in model.layers if layer.trainable or layer.name in ("tx", "rx")]
 
         for layer in trainable_layers:
-            for variable in layer.weights:
-                variable.assign(file[f"{layer.name}/{variable.name}"])
+                for variable in layer.weights:
+                    try:
+                        variable.assign(file[f"{layer.name}/{variable.name}"])
+                    except KeyError:
+                        print(f"Missing weights for {layer.name}/{variable.name} in {path}, skipping")
+                        continue
 
 
 class RevertToBest(keras.callbacks.Callback):
