@@ -1,0 +1,32 @@
+{
+    "model_type": "IQAutoencoder",
+    "model_path": "iq-M64-n96-N11.keras",
+    "batch_size": 4096,
+    "epochs": 50,
+    "model_parameters": {
+        "M": 64,
+        "n": 96,
+        "N": 5,
+        "transmission_layer_parameters": {
+            "optical_fiber__length": [40.0],
+            "optical_fiber__chromatic_dispersion": [17.0],
+            "optical_fiber__attenuation": [0.22],
+            "optical_fiber__eff_non_linear_coeff": [0.0],
+            "optical_fiber__step_count": 2,
+            "optical_awgn__relative_db": [-30.0]
+        },
+        "parameter_distributions": {
+            "optical_fiber__length": {
+                "type": "normal",
+                "mean": 45.0,
+                "stddev": 10.0,
+                "dtype": "float32",
+                "minval": 15.0,
+                "maxval": 60.0
+            },
+            "optical_fiber__chromatic_dispersion": {"type": "uniform", "minval": 0.0, "maxval": 20.0, "dtype": "float32"},
+            "optical_fiber__eff_non_linear_coeff": {"type": "uniform", "minval": 0.0, "maxval": 50000.0, "dtype": "float32"}
+        }
+    },
+    "optimizer_parameters": {"learning_rate": 0.0001}
+}

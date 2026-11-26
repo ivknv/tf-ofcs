@@ -10,4 +10,5 @@ dist/
 .ipynb_checkpoints/
 .virtual_documents/
 .logs
-docker/
+docker/output/
+docker/models/

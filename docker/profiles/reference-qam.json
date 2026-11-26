@@ -1,0 +1,44 @@
+{
+    "system": {
+        "name": "QAMSystem",
+        "init_args": {
+            "n_taps": 25,
+            "bits_per_symbol": 2,
+            "mapping": [
+                [-1.0, -1.0], [-1.0, 1.0],
+                [ 1.0, -1.0], [ 1.0, 1.0]
+            ],
+            "enable_phase_noise": true,
+            "carrier_phase_recovery": "decision_directed"
+        },
+        "parameters": {
+            "lpf__symbol_rate": 32e9,
+            "lpf__rolloff_factor": 0.25,
+            "laser__linewidth": [1e6],
+            "local_oscillator__linewidth": [1e6],
+            "decision_directed_phase_recovery__window_length": 4
+        }
+    },
+    "default_channel": {
+        "name": "OpticalFiberAWGN",
+        "init_args":  {
+            "name": "channel",
+            "length": [20.0],
+            "chromatic_dispersion": [17.0],
+            "attenuation": [0.2],
+            "osnr": [35.0],
+            "padding": 0.125,
+            "enable_nonlinear_effects": false
+        }
+    },
+    "ber_estimation": {
+        "symbol_count": 640,
+        "batch_size": 2500,
+        "n_iterations": 40,
+        "parametera_name": "channel__optical_fiber__length",
+        "parameter_name": "channel__optical_fiber__length",
+        "start": 0.0,
+        "end": 30.0,
+        "step": 10.0
+    }
+}

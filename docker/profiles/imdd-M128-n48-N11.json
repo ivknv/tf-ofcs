@@ -1,0 +1,21 @@
+{
+    "model_type": "IMDDAutoencoder",
+    "model_path": "imdd-M128-n48-N11.keras",
+    "batch_size": 4096,
+    "epochs": 100,
+    "model_parameters": {
+        "M": 128,
+        "n": 48,
+        "N": 11,
+        "transmission_layer_parameters": {
+            "optical_fiber__length": [40.0],
+            "optical_fiber__chromatic_dispersion": [17.0],
+            "optical_fiber__attenuation": [0.22],
+            "optical_awgn__relative_db": [-30.0]
+        },
+        "parameter_distributions": {
+            "optical_fiber__length": {"type": "normal", "mean": 45.0, "stddev": 8.0, "dtype": "float32"},
+            "optical_fiber__chromatic_dispersion": {"type": "uniform", "minval": 0.0, "maxval": 20.0, "dtype": "float32"}
+        }
+    }
+}

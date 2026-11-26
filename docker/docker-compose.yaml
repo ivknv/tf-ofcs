@@ -1,0 +1,22 @@
+version: "3"
+
+services:
+  tf-ofcs:
+    build: .
+    network_mode: host
+    ipc: host
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0 # This is apparently needed to run on RX6600
+      - TF_FORCE_GPU_ALLOW_GROWTH=true # Allocate only necessary amount of VRAM
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_PTRACE
+    group_add:
+      - video
+    volumes:
+      - ${PWD}/:/tf-ofcs:ro
+      - ${PWD}/docker/output:/tf-ofcs/docker/output:rw
